@@ -26,3 +26,10 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# shop-photo-editor (Next.js app) — local-only runtime state
+# `node_modules` already covered above (matches anywhere in tree)
+.next/
+shop-photo-editor/storage/      # 100MB+ of Gemini-generated JPGs
+shop-photo-editor/data/*.db
+shop-photo-editor/data/*.db-journal
