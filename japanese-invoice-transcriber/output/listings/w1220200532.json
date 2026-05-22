@@ -1,0 +1,19 @@
+{
+  "color": "Red",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Leather",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in USA",
+  "condition_summary": "Deadstock, mint condition",
+  "title_confidence": "LOW",
+  "notes": "Brand unknown. Italian leather material confirmed in description; US manufacture confirmed in description. No visible era, model, or designer name identified from web search. Additional information needed: visible brand/label, tag details, hardware style, sleeve length, collar type, closure type, and any other distinguishing design features to improve identification.",
+  "sources": [],
+  "method": "web_search",
+  "input_tokens": 34477,
+  "output_tokens": 631,
+  "cost_usd": 0.0676
+}

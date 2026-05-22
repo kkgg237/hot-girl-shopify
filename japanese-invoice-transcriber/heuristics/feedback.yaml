@@ -1,0 +1,229 @@
+- id: fb-2026-04-19-001
+  date: 2026-04-19
+  topic: data_quality
+  status: applied
+  quote: 'where is it getting this cache-coeur adjective? it should be something like this: Vivienne Tam
+    Black Flower Mesh Corsage Wrap Top and Vivienne Tam Black Belted V Neck Mesh Long Sleeve Top'
+  resolution: 'Japanese カシュクール = French cache-coeur = English "Wrap".
+
+    Updated extractors.STYLE_BUCKETS silhouette regex to canonicalize all
+
+    three forms to "Wrap". Added SILHOUETTE_CATEGORICAL set so Wrap (and
+
+    A-Line / Sheath / Shift / Empire / Fit-and-Flare) move to the END of
+
+    the style chain, while non-categorical silhouettes like "Belted" stay
+
+    at the front. Both anchor titles now produce as user expected.
+
+    '
+  related_rules:
+  - titles.silhouette_categorical
+  - style_buckets.silhouette
+- id: fb-2026-04-20-001
+  date: 2026-04-20
+  topic: titles
+  status: applied
+  quote: c1221895009, V26031000017, V26031300018, V26031300015 can we fix these titles to follow capitalization
+    instructions. No late 90's just 90's for year/eras, add more detail to burberry coats
+  resolution: '1) Stripped qualifier words (early/mid/late) from era in smart_title()
+
+    2) Added Burberry Trench archetype: Beige + Nova Check + Cotton
+
+    3) Tightened smart_title acronym preservation list
+
+    '
+  related_rules:
+  - brand_archetypes.Burberry
+  - titles.era_policy
+- id: fb-2026-04-20-002
+  date: 2026-04-20
+  topic: titles
+  status: applied
+  quote: o1193898519 and g1139158210 have to be more descriptive. add more adjectives from the translation.
+    Also use only numbers when describinbg eras, not y2k
+  resolution: "1) Added STYLE_BUCKETS with 4 ordered groups (silhouette, neckline,\n   fabric-detail,\
+    \ sleeve), each with curated regexes from the translation\n2) Era gate in compose_title: era only\
+    \ flows through if /^\\d{4}$/.\n   Decades + Y2K are computed and stored on items but suppressed from\n\
+    \   the title until decision-per-category is made.\n"
+  related_rules:
+  - titles.era_policy
+  - style_buckets
+- id: fb-2026-04-20-003
+  date: 2026-04-20
+  topic: scope
+  status: applied
+  quote: I dont want to be using tags in shopify yet. I dont need the editable columns. how do i make
+    the titles more robust? any suggestions
+  resolution: 'Misread initially — reverted editable columns. User clarified in fb-2026-04-20-004
+
+    that they wanted editable columns kept, just not for tags. Fix: to_shopify.make_tags()
+
+    now returns "". Editable columns restored.
+
+    '
+  related_rules: []
+- id: fb-2026-04-20-004
+  date: 2026-04-20
+  topic: scope
+  status: applied
+  quote: 'No i meant i dont need the tags as editable columns, i like the editable columns as before.
+    Also i like 1, 2, dont like the niche colors, i like 4, 5, and do not implement 6. i like #7 too,
+    also 8 i like'
+  resolution: 'Restored st.data_editor for both Cost and Pricing tabs. Implemented user-picked
+
+    suggestions from prior brainstorm: per-category templates, model-era DB,
+
+    canonicalization. Skipped niche-color expansion (#3) and item-level tags (#6).
+
+    '
+  related_rules:
+  - titles
+  - model_era
+- id: fb-2026-04-19-002
+  date: 2026-04-19
+  topic: titles
+  status: applied
+  quote: 'Fix the shopify title creation. Should follow this format: [year if known or era, ex. 1997 or
+    00''s or 90''s] + Brand + Color (or multicolor if better descriptor) + Adjectives that are eapplicable
+    like Material, Made in USA, and then Category of item (Top, Bottom, Dress, Trouser, Jacket, etc).
+    This should be really strict.'
+  resolution: 'Implemented compose_title() in pricing.py with strict per-category templates
+
+    (BAG, SUNGLASSES, OUTERWEAR, DRESS, SHOES, DEFAULT). Pure structured concat,
+
+    no description leakage. Added 19 structured fields to LineItem to feed it.
+
+    '
+  related_rules:
+  - titles.era_policy
+  - brand_archetypes
+- id: fb-2026-04-18-001
+  date: 2026-04-18
+  topic: costs
+  status: applied
+  quote: for the brandstreet invoice, what is the handlingximport column from ?
+  resolution: 'Was an opaque combined column. Split into separate handling_amount and
+
+    import_amount fields in InvoiceView.breakdown(). Also added the dedicated
+
+    headline-area display.
+
+    '
+  related_rules: []
+- id: fb-2026-04-18-002
+  date: 2026-04-18
+  topic: costs
+  status: applied
+  quote: break out handling and import. import lets assume 15%, put in headline dashboard area of assumed
+    import cost. for handling, make it 15% for my time and to cover fixed costs. and have total landed
+    cost next to invoice total.
+  resolution: 'Set IMPORT_TAX_RATE=0.15. Set HANDLING_RATE=0.15 initially. Updated to 0.10
+
+    per follow-up note. Total landed cost now displayed next to invoice total in
+
+    Cost Review tab hero area.
+
+    '
+  related_rules: []
+- id: fb-2026-04-18-003
+  date: 2026-04-18
+  topic: costs
+  status: applied
+  quote: make brand street handling 10% actually
+  resolution: 'Updated HANDLING_RATE in costs.py from 0.15 → 0.10.
+
+    '
+  related_rules: []
+- id: fb-2026-04-19-003
+  date: 2026-04-19
+  topic: data_quality
+  status: applied
+  quote: 'for all types of invoices: Standardize all of the text. brands should be first letter capital
+    and titles. have another column thats in the cost input table that has the proposed new title for
+    shopify in the format we described.'
+  resolution: 'smart_title() with acronym preservation + minor-words-lowercase rules.
+
+    canon_brand() / canon_type() canonicalization tables. Added "Proposed
+
+    Shopify Title" column to Cost Review table.
+
+    '
+  related_rules:
+  - canonicalize
+  - titles.acronyms_uppercase
+- id: fb-2026-04-19-004
+  date: 2026-04-19
+  topic: scope
+  status: applied
+  quote: A few things from the shopify preview. separate out the columns that dont appear in the final
+    shopify CSV, maybe grey them out and have them all the way to the left. Also add Product Category
+    column, and have it follow shopify taxonomy. If theres no vendor or brand thats pulled out, then default
+    to 'Vintage'. Also whats the band column
+  resolution: '1) Reordered columns: structured editable fields left-greyed, final CSV columns right
+
+    2) Added Product Category with full Shopify GCP taxonomy map (to_shopify.SHOPIFY_CATEGORY)
+
+    3) Vendor defaults to "Vintage" when brand is null
+
+    4) Removed band column (was internal pricing tier indicator, not user-facing)
+
+    '
+  related_rules: []
+- id: fb-2026-04-19-005
+  date: 2026-04-19
+  topic: scope
+  status: applied
+  quote: allow the tables to be edited and also saved as such
+  resolution: 'Switched from st.dataframe → st.data_editor. Added apply_cost_edits() and
+
+    apply_pricing_edits() that diff the editor state against invoice JSON and
+
+    persist via persist_invoice(). Per-invoice editor keys to avoid state leak.
+
+    '
+  related_rules: []
+- id: fb-2026-04-23-001
+  date: 2026-04-23
+  topic: scope
+  status: applied
+  quote: let's come up with a holistic source of heuristics, a way to save the notes i give you and a
+    way to quickly view the notes/feedback rules engine. it should also be straightforward to modify and
+    update.
+  resolution: 'Built heuristics/ package: rules.yaml + feedback.yaml + loader.py + cli.py.
+
+    rules.yaml is the single source of truth; YAML preserves comments on hand
+
+    edits. CLI: `python -m heuristics view|search|note|feedback`. Streamlit
+
+    "Rules & Notes" tab provides UI view + add-note input + status changes.
+
+    Migration: model_era is fully wired (edits take effect immediately); other
+
+    sections marked MIRROR pending incremental migration.
+
+    '
+  related_rules: []
+- id: fb-2026-04-24-001
+  date: '2026-04-24'
+  topic: titles
+  status: applied
+  quote: Bag titles dropping decades (Fendi Mamma Baguette → no era). Wire allow_decades_for category
+    gate.
+  resolution: 'Wired titles.era_policy.allow_decades_for in compose_title. Set to all bag types + sunglasses.
+    Verified: 90''s Fendi Mamma Baguette Handbag, 90''s Louis Vuitton Pochette Accessoires Monogram Pouch,
+    00''s Chanel Choco Bar etc. Anchor V26031000017 updated. 11 titles changed across 2 invoices, all
+    intentional.'
+  related_rules: []
+- id: fb-2026-05-04-001
+  date: '2026-05-04'
+  topic: titles
+  status: applied
+  quote: 'Phase 1 title enrichment: 2-stage web_search + photo-vision via Haiku 4.5 for V-prefix items.
+    Cost ~$0.07/item.'
+  resolution: 'Built buyee/research.py: research_via_web_search uses Anthropic web_search tool, escalate_with_pdf
+    uses Haiku PDF vision. Confidence-gated apply, junk-value filter, redundant-style filter. enrich_invoice
+    orchestrator persists fields back to JSON. Tested on V26031300018 (Fendi Zucca: era added), V26031300030
+    (D&G vest: color via photo), V26031300028 (Celine set: color+style via photo). 4 anchors updated,
+    snapshots regenerated, 11 tests pass. Cost ~$0.07/item.'
+  related_rules: []

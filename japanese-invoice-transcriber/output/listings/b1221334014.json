@@ -1,0 +1,23 @@
+{
+  "color": "Black",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Fox Fur, Silk",
+  "pattern": null,
+  "garment_length": "Midi",
+  "style_adjectives": "Reversible",
+  "origin": null,
+  "condition_summary": "Mint condition",
+  "title_confidence": "LOW",
+  "notes": "Unbranded vintage blue fox fur × silk reversible coat. Japanese description suggests Japanese origin/market. No designer name or specific model identified from search results. Size notation 'E55' in Japanese description may indicate size code but cannot be definitively decoded without brand context. Mint condition indicated. Similar BALMAIN pieces found in market but this item's brand unknown.",
+  "sources": [
+    "https://www.liveauctioneers.com/price-result/ladies-blue-fox-fur-coat/",
+    "https://fril.jp/brand/1349/category/55",
+    "https://buysell-kaitori.com/column/fur-fox/"
+  ],
+  "method": "web_search",
+  "input_tokens": 32073,
+  "output_tokens": 781,
+  "cost_usd": 0.066
+}

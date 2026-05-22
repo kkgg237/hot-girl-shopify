@@ -1,0 +1,23 @@
+{
+  "color": "Red",
+  "era": "80's",
+  "model_name": null,
+  "model_size": "XS",
+  "material": "Cotton",
+  "pattern": "Sherry Line",
+  "garment_length": null,
+  "style_adjectives": "V-Neck",
+  "origin": "Made in Italy",
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "Sherry Line pattern confirmed as vintage collection from 1970s-1980s era. Search results show similar Sherry Line t-shirts and confirm pattern authenticity. The Sherry Line was part of the Gucci Accessory Collection. Cotton material inferred from similar vintage Gucci t-shirt construction found in searches (100% cotton V-neck t-shirts are standard for this era). No specific model name identified for t-shirt variants.",
+  "sources": [
+    "https://www.1stdibs.com/buy/gucci-sherry-line/",
+    "https://www.thevintagenewyorker.com/products/gucci-sherry-line-vintage-tote",
+    "https://www.ebay.com/itm/388628384567"
+  ],
+  "method": "web_search",
+  "input_tokens": 25661,
+  "output_tokens": 513,
+  "cost_usd": 0.0582
+}

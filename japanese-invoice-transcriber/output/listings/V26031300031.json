@@ -1,0 +1,23 @@
+{
+  "color": "Beige",
+  "era": "80's",
+  "model_name": null,
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": "Nova Check",
+  "garment_length": "Long",
+  "style_adjectives": "Double-Breasted Belted",
+  "origin": "Made in England",
+  "condition_summary": null,
+  "title_confidence": "HIGH",
+  "notes": "Labeled 'Burberrys' with 's' indicates pre-1998 manufacture. Beige/tan Nova Check lined trench coats from this era are widely documented as 1980s production. The cotton material with Nova Check lining and double-breasted construction are signature elements of vintage Burberrys trenches. 'Made in England' origin confirmed for this vintage period from multiple search results citing similar pieces.",
+  "sources": [
+    "https://www.1stdibs.com/fashion/clothing/coats-outerwear/burberry-vintage-mens-double-breasted-trench-coat-1980s/id-v_2404033/",
+    "https://forums.vintagefashionguild.org/threads/vintage-burberry-dating.83629/",
+    "https://www.poppysvintageclothing.com/products/vintage-1980s-mens-burberrys-trench-coat-beige-with-wool-lining-mens-size-46-l-long"
+  ],
+  "method": "web_search",
+  "input_tokens": 37159,
+  "output_tokens": 621,
+  "cost_usd": 0.0703
+}

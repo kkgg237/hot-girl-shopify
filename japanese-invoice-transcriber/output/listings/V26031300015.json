@@ -1,0 +1,23 @@
+{
+  "color": "Beige",
+  "era": "80's",
+  "model_name": "Burberry Nova",
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": "Nova Check",
+  "garment_length": "Long",
+  "style_adjectives": "Belted Double Breasted",
+  "origin": "Made in England",
+  "condition_summary": null,
+  "title_confidence": "HIGH",
+  "notes": "The item matches classic 1980s Burberry trench coat characteristics: beige cotton gabardine exterior, Nova Check lining (a signature Burberry pattern), belted waist, double-breasted closure with button closure, and epaulets. The model is generically called 'Burberry Nova' in vintage listings. Label indicates 'Burberrys' (with 's') typical of pre-1998 production. English/UK manufacture is confirmed across multiple comparable vintage examples from this era.",
+  "sources": [
+    "https://www.ebay.com/itm/226575207053",
+    "https://lovestreetsf.com/products/burberry-80s-belted-trench-coat-with-nova-check-lining-size-small",
+    "https://www.1stdibs.com/buy/burberry-trench-coats/"
+  ],
+  "method": "web_search",
+  "input_tokens": 36400,
+  "output_tokens": 572,
+  "cost_usd": 0.0693
+}

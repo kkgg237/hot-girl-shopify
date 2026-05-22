@@ -1,0 +1,22 @@
+{
+  "color": "Black",
+  "era": "00's",
+  "model_name": null,
+  "model_size": "0",
+  "material": "Nylon",
+  "pattern": "Floral",
+  "garment_length": null,
+  "style_adjectives": "Wrap Mesh",
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "Cache-coeur (wrap) blouse with corsage detail. Nylon mesh construction confirmed for this style. Era estimated as early 2000s (00's) based on iconic production period 1998-2002 for similar Vivienne Tam flower mesh pieces. No specific model name found in search results. Size 0 confirmed in multiple vintage listings.",
+  "sources": [
+    "https://www.secondsightvintage.com/products/vintage-vivienne-tam-mesh-pink-teal-floral-maxi-dress-for-cache",
+    "https://www.ebay.com/shop/vintage-vivienne-tam"
+  ],
+  "method": "web_search",
+  "input_tokens": 28458,
+  "output_tokens": 647,
+  "cost_usd": 0.0617
+}

@@ -1,0 +1,23 @@
+{
+  "color": "Blue",
+  "era": "00's",
+  "model_name": null,
+  "model_size": "40",
+  "material": "Denim",
+  "pattern": null,
+  "garment_length": "Maxi",
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": "Mint, used",
+  "title_confidence": "MED",
+  "notes": "Based on search results showing similar vintage Burberry denim skirts from early 2000s (00's era). Color inferred as blue based on prevalence in vintage Burberry denim skirts. No specific model name found. Origin not specified in search results so left null. Long skirt length confirmed from Japanese description 'ロングスカート' (long skirt). Size 40 corresponds to typical European sizing for vintage Burberry.",
+  "sources": [
+    "https://www.checkitvintage.com/shop-2/p/burberry-mini-denim-skirt",
+    "https://www.checkitvintage.com/shop-2/p/burberrys-heritage-check-denim-skirt",
+    "https://pop-boutique.com/products/burberry-brit-5-pocket-denim-skirt-dark-blue-s"
+  ],
+  "method": "web_search",
+  "input_tokens": 28519,
+  "output_tokens": 763,
+  "cost_usd": 0.0623
+}

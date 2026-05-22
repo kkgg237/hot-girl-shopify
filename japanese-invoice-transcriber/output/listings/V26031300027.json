@@ -1,0 +1,22 @@
+{
+  "color": null,
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Denim",
+  "pattern": "Pleated",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "Generic Issey Miyake pleated denim-look dress. Material confirmed as denim from provided description. Pattern identified as 'Pleated' from Japanese text (プリーツ). Insufficient information to determine specific color, era, model name, garment length, style details, origin, or condition. Item number (11640_0359) not found in search results. Similar trompe l'oeil denim-style pleated pieces documented from 1990s period, but cannot confirm specific era for this item without additional documentation.",
+  "sources": [
+    "https://www.1stdibs.com/creators/issey-miyake/fashion/",
+    "https://www.jamesveloria.com/sold-archive-issey-miyake"
+  ],
+  "method": "web_search",
+  "input_tokens": 54026,
+  "output_tokens": 827,
+  "cost_usd": 0.0882
+}

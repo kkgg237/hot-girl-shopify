@@ -1,0 +1,23 @@
+{
+  "color": null,
+  "era": "90's",
+  "model_name": "Mamma Baguette",
+  "model_size": null,
+  "material": "Cotton Canvas, Leather",
+  "pattern": "Zucca",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in Italy",
+  "condition_summary": null,
+  "title_confidence": "HIGH",
+  "notes": "<cite index=\"29-1,29-3\">The Mamma Baguette was created in the late 1990s as a larger version of the iconic Baguette.</cite> <cite index=\"5-2\">The majority of Fendi Baguette Mamma handbags feature the beloved signature Zucca double F print.</cite> <cite index=\"18-1\">Documented examples show cotton canvas and leather construction with silver hardware and Italian origin.</cite> Color and condition_summary cannot be determined without seeing the specific item's images/description.",
+  "sources": [
+    "https://www.casanova-vintage.com/products/65539",
+    "https://blog.fashionphile.com/legend-of-the-fendi-baguette/",
+    "https://whatgoesaroundnyc.com/en-us/blog-howfashionsfavoritesmakeacomeback.html"
+  ],
+  "method": "web_search",
+  "input_tokens": 46017,
+  "output_tokens": 632,
+  "cost_usd": 0.0792
+}

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.buyee.notesdigest.plist
+
+  macOS launchd user agent that sends a Telegram digest of stale pending
+  feedback notes every other day at 9:00am. Skips silently when there are
+  no notes pending >= 2 days old, so it doesn't spam.
+
+  Install via: bash buyee/launchd/install_notesdigest.sh
+  Stop:        launchctl bootout gui/$UID/com.paststudies.buyee.notesdigest
+
+  Logs at:
+    {{PROJECT_ROOT}}/buyee/state/notesdigest.log
+    {{PROJECT_ROOT}}/buyee/state/notesdigest.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.buyee.notesdigest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{UV_PATH}}</string>
+        <string>run</string>
+        <string>--with</string><string>playwright</string>
+        <string>--with</string><string>pyyaml</string>
+        <string>--with</string><string>pydantic</string>
+        <string>--with</string><string>python-dotenv</string>
+        <string>python</string>
+        <string>-u</string>
+        <string>-m</string>
+        <string>buyee</string>
+        <string>notes-digest</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <!-- Run every other day at 9:00am. StartCalendarInterval can't directly
+         express "every 2nd day" so we use two weekday entries that together
+         hit Mon/Wed/Fri (close enough to "every other day" without spamming). -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>9</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/notesdigest.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/notesdigest.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

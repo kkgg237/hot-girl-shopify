@@ -1,0 +1,28 @@
+node_modules
+.cache
+data/*.db
+data/*.db-journal
+out
+*.log
+.DS_Store
+
+# Secrets — match .env, .env.bak, .env.local, etc., but keep .env.example
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Scraper / runtime state (contains session tokens, cookies, scraped HTML)
+**/buyee/state/
+
+# IDE
+.vscode/
+.idea/

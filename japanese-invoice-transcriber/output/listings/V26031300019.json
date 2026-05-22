@@ -1,0 +1,23 @@
+{
+  "color": "White",
+  "era": "90's",
+  "model_name": null,
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": "Zucca",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in Italy",
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "Zucca pattern created by Karl Lagerfeld in 1965-1966. White Zucca shirts/blouses from Fendi appear frequently in 90s-00s vintage markets. Cotton Zucca pieces confirmed in multiple listings. Fendi is made in Italy. No specific model name identified for this generic shirt classification. Product code (11641_0253) suggests Japanese resale origin but does not provide era/style specifics.",
+  "sources": [
+    "https://www.1stdibs.com/buy/fendi-zucca-shirt/",
+    "https://allu-official.com/jp/ja/blogs/brand/62/",
+    "https://www.ebay.com/itm/395762641408"
+  ],
+  "method": "web_search",
+  "input_tokens": 38857,
+  "output_tokens": 491,
+  "cost_usd": 0.0713
+}

@@ -1,0 +1,19 @@
+{
+  "color": "Purple",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Nylon",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "Limited search results for this specific vintage Burberry London water-repellent nylon jacket in purple. Color and material confirmed from provided description. No production era, specific model name, or manufacturing origin could be verified from search results. Further research with item images or more detailed product codes may help identify the exact model and production period.",
+  "sources": [],
+  "method": "web_search",
+  "input_tokens": 21542,
+  "output_tokens": 465,
+  "cost_usd": 0.0539
+}

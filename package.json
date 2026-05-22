@@ -1,0 +1,30 @@
+{
+  "name": "hot-girl-shopify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "post": "tsx --env-file=.env src/cli.ts",
+    "review": "tsx --env-file=.env src/server.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1034.0",
+    "@fontsource/newsreader": "^5.2.10",
+    "@fontsource/playfair-display": "^5.1.0",
+    "@fontsource/red-hat-text": "^5.2.8",
+    "@hono/node-server": "^2.0.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "better-sqlite3": "^11.5.0",
+    "hono": "^4.12.14",
+    "react": "^18.3.1",
+    "satori": "^0.11.3",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

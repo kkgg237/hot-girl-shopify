@@ -1,0 +1,16 @@
+# Session cookies — sensitive auth state, never commit
+state/session.json
+# Index of what's been downloaded — local state, not portable
+state/index.json
+# Sync metadata (last sync time, counts) — local state
+state/meta.json
+# Telegram bot token + authorized chat id — SECRETS, never commit
+state/config.json
+# Debug HTML dumps — temporary, regenerated on each sync
+state/raw_html/
+# Persistent Chromium profile (cookies, localStorage, history)
+state/chromium_profile/
+# Manual save signal file — transient
+state/.save_now
+# Listener logs from launchd
+state/*.log

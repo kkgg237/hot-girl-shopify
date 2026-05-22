@@ -1,0 +1,23 @@
+{
+  "color": "Pink",
+  "era": null,
+  "model_name": "Ballerina",
+  "model_size": "37.5",
+  "material": "Lambskin",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in Italy",
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "<cite index=\"1-1,26-1\">The G02819 is part of Chanel's Emblematics collection of ballet flats.</cite> <cite index=\"25-1\">The Chanel Ballerina with CC logo and ribbon is a classic iconic style.</cite> Magenta pink coloring confirmed from Japanese listing. <cite index=\"23-2\">Similar G02819 models list as 'Made in Italy.'</cite> No specific production year/decade found in search results, so era set to null. Bow/ribbon detail is inherent to the design; not listed as redundant style adjective.",
+  "sources": [
+    "https://www.chanel.com/us/fashion/p/G02819X01000C0204/ballet-flats-lambskin/",
+    "https://galleryrare.jp/blog/chanel-ballerinas/",
+    "https://fril.jp/brand/149/category/1272"
+  ],
+  "method": "web_search",
+  "input_tokens": 24388,
+  "output_tokens": 591,
+  "cost_usd": 0.0573
+}

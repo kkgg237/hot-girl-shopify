@@ -1,0 +1,22 @@
+{
+  "color": null,
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "The item code 11640_0339 did not match any specific listings in search results. Generic denim vest from Dolce & Gabbana brand with no distinguishing model name, era, or color information found in sources. Material confirmed as cotton based on typical D&G denim vest construction.",
+  "sources": [
+    "https://www.1stdibs.com/buy/dolce-gabbana-denim-jacket/",
+    "https://www.amarcordvintagefashion.com/products/d-g-by-dolce-gabbana-vintage-blue-stretch-denim-backwards-vest-top"
+  ],
+  "method": "web_search",
+  "input_tokens": 37770,
+  "output_tokens": 661,
+  "cost_usd": 0.0711
+}

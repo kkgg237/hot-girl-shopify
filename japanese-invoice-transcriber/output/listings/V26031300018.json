@@ -1,0 +1,23 @@
+{
+  "color": null,
+  "era": "90's",
+  "model_name": null,
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": "Zucca",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "Era set to 90's based on consistent market evidence of Fendi Zucca shirts being produced during 1990s period. Material and pattern confirmed from provided description. Color cannot be determined from search results or listing. No specific model name or production country explicitly stated in available sources.",
+  "sources": [
+    "https://www.1stdibs.com/buy/fendi-zucca-shirt/",
+    "https://fruitvintage.com/products/fendi-black-and-white-zucca-logo-print-tee",
+    "https://www.1stdibs.com/fashion/clothing/shirts/rare-vintage-fendi-mare-zucca-monogram-t-shirt/id-v_20875772/"
+  ],
+  "method": "web_search",
+  "input_tokens": 61555,
+  "output_tokens": 597,
+  "cost_usd": 0.0945
+}

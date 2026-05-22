@@ -1,0 +1,23 @@
+{
+  "color": "Blue",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": "Cotton",
+  "pattern": "Nova Check",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in Japan",
+  "condition_summary": null,
+  "title_confidence": "MED",
+  "notes": "Burberry Blue Label is a Japan-exclusive line. Multiple search results confirm Blue Label coats with Nova Check patterns in cotton. Searches identified similar items (trench coats, duffle coats) but no specific named model for this generic 'coat' category. Era cannot be determined from available sources—no production year/tag information found. Origin 'Made in Japan' confirmed for Blue Label line.",
+  "sources": [
+    "https://poshmark.com/listing/Authentic-Burberry-Blue-Label-Jacket-Beige-color-605f843e7f80d22a52f7c7ce",
+    "https://www.ebay.com/itm/234901228862",
+    "https://knownsource.co.uk/en-us/products/burberry-blue-label-nova-check-cotton-trousers"
+  ],
+  "method": "web_search",
+  "input_tokens": 33158,
+  "output_tokens": 524,
+  "cost_usd": 0.0658
+}

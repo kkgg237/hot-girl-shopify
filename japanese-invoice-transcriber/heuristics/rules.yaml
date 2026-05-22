@@ -1,0 +1,705 @@
+# =============================================================================
+# rules.yaml — single source of truth for invoice transcriber heuristics
+# =============================================================================
+#
+# HOW TO USE THIS FILE
+# --------------------
+#   * Edit it by hand. YAML is forgiving: keep indentation as 2 spaces,
+#     keep strings with apostrophes in "double quotes" (e.g. "90's").
+#   * Or open the "Rules & Notes" tab in the Streamlit app for a UI view.
+#   * Run `uv run python -m heuristics view` for a terminal dump.
+#   * Run `uv run python -m heuristics search burberry` to find rules.
+#   * Run `uv run python -m heuristics note "your feedback"` to save a note.
+#
+# MIGRATION STATUS
+# ----------------
+# Each section is marked WIRED or MIRROR.
+#   WIRED   = code reads this file directly. Edits take effect on next run.
+#   MIRROR  = code still hardcodes this. Edit the YAML for documentation /
+#             planning, but also edit the source file noted below until
+#             that area is migrated.
+#
+#   model_era         WIRED   (pricing.py)
+#   brand_archetypes  WIRED   (extractors.py)
+#   silhouette        WIRED   (extractors.py SILHOUETTE_CATEGORICAL)
+#   acronyms          WIRED   (pricing.py _ACRONYMS)
+#   canonicalize      WIRED   (pricing.py _BRAND_ALIASES, _TYPE_ALIASES)
+#   tier_brands       WIRED   (pricing.py LUXURY_BRANDS, MID_TIER_BRANDS)
+#
+# All sections now load from this YAML. Edits take effect on next Python start.
+# Each section has an inline `_X_FALLBACK` constant in its source file used
+# only if the YAML loader fails (missing pyyaml, parse error).
+# =============================================================================
+
+meta:
+  version: 1
+  title_format: "[Era] Brand Color Pattern Material Category"
+  notes: |
+    Strict structured-only titles. Never leak description text.
+    Era is gated to 4-digit years by default; decades may be allowed
+    per category in the future via titles.era_policy.allow_decades_for.
+
+# =============================================================================
+# Title rules
+# =============================================================================
+titles:
+  era_policy:
+    # 4-digit years ("1997") always pass through to titles regardless of category.
+    allow_in_title_regex: '^\d{4}$'
+    # Categories where decades like "90's", "00's" are *also* allowed.
+    # For vintage resale, decade is a high-volume SEO term across most
+    # categories: "90's Fendi Shirt", "00's Celine Set", "Y2K Chanel Bag".
+    # We intentionally include apparel because vintage shoppers search by era.
+    # (Y2K is already canonicalized to "00's" in extractors before reaching
+    # the title.)
+    allow_decades_for:
+      # Bags / accessories
+      - Handbag
+      - Shoulder Bag
+      - Clutch Bag
+      - Clutch
+      - Tote Bag
+      - Hobo Bag
+      - Duffle Bag
+      - Duffel Bag
+      - Boston Bag
+      - Travel Bag
+      - Weekender
+      - Backpack
+      - Crossbody Bag
+      - Pouch
+      - Belt Bag
+      - Bag
+      - Sunglasses
+      - Scarf
+      - Belt
+      # Outerwear
+      - Coat
+      - Trench Coat
+      - Fur Coat
+      - Jacket
+      - Leather Jacket
+      - Blazer
+      # Tops
+      - Top
+      - Shirt
+      - T-Shirt
+      - Blouse
+      - Cardigan
+      - Sweater
+      - Vest
+      # Bottoms / dresses
+      - Dress
+      - Skirt
+      - Pants
+      # Shoes
+      - Shoes
+      - Boots
+      - Heels
+      - Pumps
+      - Loafers
+      - Sneakers
+      - Sandals
+      - Mules
+      - Slides
+      - Ballet Flats
+      # Catch-alls
+      - Set
+
+  # Silhouettes that move to END of style chain instead of front.
+  # e.g. "Vivienne Tam Black Flower Mesh Corsage Wrap Top" (Wrap last)
+  # rather than "Vivienne Tam Black Wrap Flower Mesh Corsage Top".
+  silhouette_categorical:
+    - Wrap
+    - A-Line
+    - Sheath
+    - Shift
+    - Empire
+    - Fit-and-Flare
+
+  # Materials that EARN a place in product titles. Anything not in this list
+  # (Cotton, Polyester, Nylon, regular Wool, Linen, etc.) is dropped from
+  # title rendering — the material is still stored on the item for cost /
+  # internal use, just suppressed in the title because it doesn't add
+  # luxury / SEO value. Edit this list to tighten or loosen.
+  # Match is case-insensitive on the canonical material name.
+  deluxe_materials:
+    # Leathers
+    - Leather
+    - Lambskin
+    - Patent Leather
+    - Suede
+    - Pony Hair
+    - Goat Leather
+    - Calf Leather
+    # Exotic skins
+    - Crocodile
+    - Alligator
+    - Python
+    - Snake
+    - Snakeskin
+    - Ostrich
+    - Lizard
+    - Stingray
+    # Furs
+    - Mink
+    - Fox Fur
+    - Sable
+    - Chinchilla
+    - Rabbit Fur
+    - Raccoon Fur
+    - Squirrel Fur
+    - Weasel Fur
+    - Shearling
+    - Sheepskin
+    - Fur
+    # Luxury fabrics
+    - Cashmere
+    - Silk
+    - Satin
+    - Velvet
+    - Tweed
+    - Mohair
+    - Alpaca
+    - Boucle
+    - Pashmina
+    - Chiffon
+    - Organza
+    - Tulle
+    - Jacquard
+    - Brocade
+    - Sequin
+    - Lamé
+    - Lurex
+    - Linen
+    # Brand-signature leathers / canvases
+    - Saffiano Leather
+    - Caviar Leather
+    - Coated Canvas    # LV / Goyard signature
+    - Monogram Canvas  # LV
+    - GG Canvas        # Gucci
+
+  # Tokens that stay ALL-CAPS through smart_title()
+  acronyms_uppercase:
+    - CC
+    - LV
+    - GG
+    - GC
+    - DG
+    - YSL
+    - MM
+    - II
+    - III
+    - IV
+    - V
+    - NY
+    - LA
+    - UV
+    - TV
+    - XS
+    - S
+    - M
+    - L
+    - XL
+    - XXL
+    - XXS
+    - MCM
+    - 2WAY
+    - Y2K
+    - USA
+    - US
+    - UK
+    - JP
+    - EU
+    - F40
+    - FW
+    - SS
+    - CM
+    - MM2
+    - OS
+
+# =============================================================================
+# Model → era database  (WIRED)
+# Maps (brand, model_substring) → decade. Match is case-insensitive substring.
+# Used by pricing.lookup_model_era() to fill item.era when brand+model present.
+# =============================================================================
+model_era:
+  Louis Vuitton:
+    Monogram Vernis: "00's"
+    Multicolor: "00's"
+    Murakami: "00's"
+    Denim Speedy: "00's"
+    Pochette Accessoires: "90's"
+    Mini Pochette: "00's"
+    Pochette Metis: "10's"
+  Fendi:
+    Mamma Baguette: "90's"
+    Baguette: "90's"
+    Zucca: "90's"
+    Zucchino: "00's"
+    Peekaboo: "10's"
+  Chanel:
+    Choco Bar: "00's"
+    Cambon: "00's"
+    "2.55": "90's"
+    Boy Bag: "10's"
+  Christian Dior:
+    Saddle: "90's"
+    Trotter: "00's"
+    Lady Dior: "00's"
+  Gucci:
+    Bamboo: "00's"
+    Jackie: "00's"
+    Sherry Line: "00's"
+  Prada:
+    Galleria: "10's"
+    Nylon: "90's"
+  Vivienne Tam:
+    Flower Mesh: "00's"
+    Mesh: "Y2K"
+  Celine:
+    Macadam: "00's"
+    Boogie: "00's"
+
+# =============================================================================
+# Brand archetypes (MIRROR — edit extractors.BRAND_ARCHETYPES too)
+# Defaults applied to (brand, product_type) pairs when extraction returned null.
+# Only fills null fields — explicit extractions always win.
+# =============================================================================
+brand_archetypes:
+  Burberry:
+    Trench Coat: {pattern: Nova Check, material: Cotton, color: Beige}
+    Coat:        {pattern: Nova Check, material: Cotton}
+    Scarf:       {pattern: Nova Check, material: Cashmere}
+  Louis Vuitton:
+    Handbag:      {pattern: Monogram}
+    Pouch:        {pattern: Monogram}
+    Shoulder Bag: {pattern: Monogram}
+    Tote Bag:     {pattern: Monogram}
+    Duffle Bag:   {pattern: Monogram, material: Coated Canvas}
+    Duffel Bag:   {pattern: Monogram, material: Coated Canvas}
+    Travel Bag:   {pattern: Monogram, material: Coated Canvas}
+    Boston Bag:   {pattern: Monogram, material: Coated Canvas}
+    Weekender:    {pattern: Monogram, material: Coated Canvas}
+    Backpack:     {pattern: Monogram}
+    Crossbody Bag: {pattern: Monogram}
+  Chanel:
+    Handbag:      {material: Lambskin}
+    Shoulder Bag: {material: Lambskin}
+  Fendi:
+    Shirt:        {material: Cotton}
+
+# =============================================================================
+# Brand tiers (MIRROR — edit pricing.LUXURY_BRANDS / MID_TIER_BRANDS too)
+# Drives markup curves and band clamps in pricing.py.
+# =============================================================================
+tier_brands:
+  luxury:
+    - Dolce & Gabbana
+    - Yves Saint Laurent
+    - Saint Laurent
+    - Prada
+    - Gucci
+    - Chanel
+    - Louis Vuitton
+    - Burberry
+    - Fendi
+    - Valentino
+    - Versace
+    - Hermès
+    - Dior
+    - Christian Dior
+    - Givenchy
+    - Balenciaga
+    - Bottega Veneta
+    - Celine
+    - Loewe
+    - Salvatore Ferragamo
+    - Moncler
+    - Miu Miu
+    - Roberto Cavalli
+    - Just Cavalli
+    - Cavalli Class
+    - Cavalli Jeans
+    - Moschino
+    # Japanese avant-garde + Belgian/French archive labels
+    - Maison Margiela
+    - Comme des Garçons
+    - Yohji Yamamoto
+    - Junya Watanabe
+    - Vivienne Westwood
+    - Jean Paul Gaultier
+  mid:
+    - Sonia Rykiel
+    - Marella
+    - Missoni
+    - Max Mara
+    - Giorgio Armani
+    - Emporio Armani
+    - Ralph Lauren
+    - Marc Jacobs
+    - Coach
+    - Michael Kors
+    - Emanuel Ungaro
+    - Issey Miyake
+
+# =============================================================================
+# Canonicalization maps (MIRROR — edit pricing._BRAND_ALIASES / _TYPE_ALIASES)
+# Lowercase input → canonical output. Used to normalize LLM output.
+# =============================================================================
+canonicalize:
+  brands:
+    chanel: Chanel
+    gucci: Gucci
+    prada: Prada
+    fendi: Fendi
+    celine: Celine
+    céline: Celine
+    burberry: Burberry
+    louis vuitton: Louis Vuitton
+    lv: Louis Vuitton
+    issey miyake: Issey Miyake
+    # Issey Miyake sub-lines all roll up to the parent brand
+    pleats please: Issey Miyake
+    pleats please issey miyake: Issey Miyake
+    homme plissé: Issey Miyake
+    homme plisse: Issey Miyake
+    bao bao: Issey Miyake
+    bao bao issey miyake: Issey Miyake
+    me issey miyake: Issey Miyake
+    a-poc: Issey Miyake
+    132 5. issey miyake: Issey Miyake
+    # Maison Margiela + sub-lines
+    maison margiela: Maison Margiela
+    margiela: Maison Margiela
+    maison martin margiela: Maison Margiela
+    mm6: Maison Margiela
+    mm6 maison margiela: Maison Margiela
+    # Comme des Garçons + sub-lines (Junya Watanabe kept separate — own market)
+    comme des garçons: Comme des Garçons
+    comme des garcons: Comme des Garçons
+    cdg: Comme des Garçons
+    comme des garçons homme: Comme des Garçons
+    comme des garçons homme plus: Comme des Garçons
+    comme des garçons play: Comme des Garçons
+    play comme des garçons: Comme des Garçons
+    comme des garcons play: Comme des Garçons
+    comme des garçons noir: Comme des Garçons
+    # Yohji Yamamoto + sub-lines (Y's = women's diffusion, Y-3 = Adidas collab)
+    yohji yamamoto: Yohji Yamamoto
+    yohji: Yohji Yamamoto
+    y's: Yohji Yamamoto
+    "y's yohji yamamoto": Yohji Yamamoto
+    y-3: Yohji Yamamoto
+    y3: Yohji Yamamoto
+    # Junya Watanabe — own brand (don't roll up to CdG)
+    junya watanabe: Junya Watanabe
+    junya: Junya Watanabe
+    junya watanabe man: Junya Watanabe
+    junya watanabe comme des garçons: Junya Watanabe
+    # Vivienne Westwood
+    vivienne westwood: Vivienne Westwood
+    westwood: Vivienne Westwood
+    vivienne westwood anglomania: Vivienne Westwood
+    vivienne westwood red label: Vivienne Westwood
+    # Jean Paul Gaultier
+    jean paul gaultier: Jean Paul Gaultier
+    jean-paul gaultier: Jean Paul Gaultier
+    gaultier: Jean Paul Gaultier
+    jpg: Jean Paul Gaultier
+    jean paul gaultier soleil: Jean Paul Gaultier
+    jpg jeans: Jean Paul Gaultier
+    gaultier2: Jean Paul Gaultier
+    dolce & gabbana: Dolce & Gabbana
+    "dolce&gabbana": Dolce & Gabbana
+    "d&g": Dolce & Gabbana
+    dg: Dolce & Gabbana
+    yves saint laurent: Yves Saint Laurent
+    ysl: Yves Saint Laurent
+    saint laurent: Saint Laurent
+    christian dior: Christian Dior
+    dior: Christian Dior
+    valentino: Valentino
+    versace: Versace
+    hermès: Hermès
+    hermes: Hermès
+    givenchy: Givenchy
+    balenciaga: Balenciaga
+    bottega veneta: Bottega Veneta
+    loewe: Loewe
+    salvatore ferragamo: Salvatore Ferragamo
+    ferragamo: Salvatore Ferragamo
+    moncler: Moncler
+    miu miu: Miu Miu
+    sonia rykiel: Sonia Rykiel
+    marella: Marella
+    missoni: Missoni
+    max mara: Max Mara
+    giorgio armani: Giorgio Armani
+    emporio armani: Emporio Armani
+    armani: Giorgio Armani
+    ralph lauren: Ralph Lauren
+    marc jacobs: Marc Jacobs
+    coach: Coach
+    michael kors: Michael Kors
+    emanuel ungaro: Emanuel Ungaro
+  types:
+    handbag: Handbag
+    hand bag: Handbag
+    hand-bag: Handbag
+    shoulder bag: Shoulder Bag
+    shoulderbag: Shoulder Bag
+    clutch bag: Clutch Bag
+    clutch: Clutch
+    tote bag: Tote Bag
+    tote: Tote Bag
+    hobo bag: Hobo Bag
+    hobo: Hobo Bag
+    duffle bag: Duffle Bag
+    duffle: Duffle Bag
+    duffel bag: Duffle Bag
+    duffel: Duffle Bag
+    boston bag: Boston Bag
+    boston: Boston Bag
+    travel bag: Travel Bag
+    weekender: Weekender
+    weekender bag: Weekender
+    keepall: Duffle Bag
+    backpack: Backpack
+    crossbody: Crossbody Bag
+    crossbody bag: Crossbody Bag
+    pouch: Pouch
+    belt bag: Belt Bag
+    waist bag: Belt Bag
+    bag: Bag
+    handbag / pouch: Handbag
+    wallet: Wallet
+    long wallet: Wallet
+    coin purse: Wallet
+    card holder: Card Holder
+    card case: Card Holder
+    key case: Key Holder
+    key holder: Key Holder
+    sunglasses: Sunglasses
+    eyewear: Sunglasses
+    belt: Belt
+    scarf: Scarf
+    shawl: Scarf
+    stole: Scarf
+    coat: Coat
+    trench coat: Trench Coat
+    fur coat: Fur Coat
+    jacket: Jacket
+    leather jacket: Leather Jacket
+    blazer: Blazer
+    dress: Dress
+    one-piece: Dress
+    one piece: Dress
+    top: Top
+    shirt: Shirt
+    blouse: Top
+    t-shirt: T-Shirt
+    tshirt: T-Shirt
+    cardigan: Cardigan
+    sweater: Sweater
+    vest: Vest
+    skirt: Skirt
+    pants: Pants
+    trousers: Pants
+    jeans: Pants
+    ballet flats: Ballet Flats
+    ballerinas: Ballet Flats
+    flats: Flats
+    mules: Mules
+    slides: Slides
+    heels: Heels
+    pumps: Pumps
+    stilettos: Heels
+    boots: Boots
+    ankle boots: Ankle Boots
+    booties: Ankle Boots
+    sneakers: Sneakers
+    trainers: Sneakers
+    sandals: Sandals
+    loafers: Loafers
+    shoes: Shoes
+
+# =============================================================================
+# Regression anchors — known-good titles (snapshot test targets)
+# When a title in this list changes, the user should explicitly approve it.
+# =============================================================================
+regression_anchors:
+  - source_id: o1193898519
+    expected_title: "00's Vivienne Tam Black Flower Mesh Corsage Wrap Top"
+    note: "Nylon dropped 2026-05-11 by deluxe-material gate (Nylon not deluxe). Wrap-last ordering preserved."
+  - source_id: g1139158210
+    expected_title: "00's Vivienne Tam Black Belted V Neck Mesh Long Sleeve Top"
+    note: "Nylon dropped 2026-05-11 by deluxe-material gate. Silhouette-first ordering preserved."
+  - source_id: c1221895009
+    expected_title: "00's Burberry Blue Long Skirt"
+    note: "Denim dropped 2026-05-11 by deluxe-material gate. Era + color from enrichment preserved."
+  - source_id: V26031000017
+    expected_title: "90's Fendi Mamma Baguette Zucca Handbag"
+    note: "Cotton Canvas dropped 2026-05-11 by deluxe-material gate. Zucca pattern preserved."
+  - source_id: V26031300018
+    expected_title: "90's Fendi Zucca Shirt"
+    note: "Cotton dropped 2026-05-11 by deluxe-material gate. Era preserved."
+  - source_id: V26031300030
+    expected_title: "Dolce & Gabbana Blue Vest"
+    note: "Denim dropped 2026-05-11 by deluxe-material gate. Color preserved."
+  - source_id: V26031300028
+    expected_title: "Celine Black Long Sleeve Tailored Button-front Set"
+    note: "Wool dropped 2026-05-11 by deluxe-material gate. Color + style adjectives preserved."
+  - source_id: l1215704505
+    expected_title: "Chanel Ballerina Pink Lambskin Ballet Flats"
+    note: "Lambskin IS deluxe — preserved. User-edited 2026-05-05: stripped 'Ribbon Detail Coco Mark' style adjectives."
+  - source_id: s1207984114
+    expected_title: "Paola Frani Multicolor Long Sleeve Wrap Top"
+    note: "Nylon dropped 2026-05-11 by deluxe-material gate. Pattern 'Floral' dropped earlier."
+  - source_id: w1220200532
+    expected_title: "Vintage Red Button-Up Made in USA Leather Jacket"
+    note: "User-edited 2026-05-05: set override_title to drop 'Long Sleeve' style and 'Hip' length, reorder origin before material."
+
+# =============================================================================
+# Pricing brackets (cost-function pricing)
+#
+# How it works: for each item, classify by (invoice_type, tier, category) →
+# pick the first bracket where landed_cost <= max_cost → multiplier =
+# 1 / (1 - target_margin). That multiplier replaces the legacy lerp curve.
+#
+# Categories:
+#   apparel       — Jacket, Coat, Dress, Pants, Top, Skirt, Shirt, Vest, Set, etc.
+#   bags          — Handbag, Shoulder Bag, Tote, Backpack, Boston, Duffle, etc.
+#   accessories   — Scarf, Belt, Sunglasses, Wallet, Pouch, Card Holder, etc.
+#
+# Tiers come from tier_brands (luxury/mid) — anything not listed = "standard".
+#
+# To tune: edit the target_margin values below and reload the app.
+# Snapshot tests don't check prices, only titles — safe to iterate freely.
+# =============================================================================
+pricing_brackets:
+
+  # ---------------------------------------------------------------------------
+  # VENDOR INVOICES (BrandStreet / DKC / manual entry)
+  # cost = item_price (native) * exchange_rate * 1.2 (handling) * 1.15 (import)
+  # ---------------------------------------------------------------------------
+  vendor_invoice:
+
+    luxury_apparel:
+      - { max_cost:   100, target_margin: 0.75 }   # 4.00×  small/cheap items
+      - { max_cost:   200, target_margin: 0.70 }   # 3.33×
+      - { max_cost:   350, target_margin: 0.65 }   # 2.86×
+      - { max_cost:   600, target_margin: 0.60 }   # 2.50×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×  hero-tier costs
+
+    luxury_bags:
+      - { max_cost:   200, target_margin: 0.65 }   # 2.86×
+      - { max_cost:   500, target_margin: 0.55 }   # 2.22×
+      - { max_cost:   800, target_margin: 0.50 }   # 2.00×
+      - { max_cost: 99999, target_margin: 0.45 }   # 1.82×
+
+    luxury_accessories:                              # scarves/belts/wallets/sunglasses
+      - { max_cost:    50, target_margin: 0.80 }   # 5.00×
+      - { max_cost:   150, target_margin: 0.75 }   # 4.00×
+      - { max_cost:   300, target_margin: 0.65 }   # 2.86×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    mid_apparel:
+      - { max_cost:   100, target_margin: 0.70 }   # 3.33×
+      - { max_cost:   200, target_margin: 0.65 }   # 2.86×
+      - { max_cost:   400, target_margin: 0.60 }   # 2.50×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    mid_bags:
+      - { max_cost:   150, target_margin: 0.60 }   # 2.50×
+      - { max_cost:   400, target_margin: 0.50 }   # 2.00×
+      - { max_cost: 99999, target_margin: 0.45 }   # 1.82×
+
+    mid_accessories:
+      - { max_cost:    75, target_margin: 0.75 }   # 4.00×
+      - { max_cost:   200, target_margin: 0.65 }   # 2.86×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    standard_apparel:
+      - { max_cost:    75, target_margin: 0.70 }   # 3.33×
+      - { max_cost:   200, target_margin: 0.60 }   # 2.50×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    standard_bags:
+      - { max_cost:   150, target_margin: 0.55 }   # 2.22×
+      - { max_cost: 99999, target_margin: 0.45 }   # 1.82×
+
+    standard_accessories:
+      - { max_cost:    50, target_margin: 0.75 }   # 4.00×
+      - { max_cost: 99999, target_margin: 0.60 }   # 2.50×
+
+  # ---------------------------------------------------------------------------
+  # BUYEE INVOICES (Yahoo Auctions purchases — auction risk premium baked in)
+  # cost = bid_price_jpy * exchange_rate * 1.2 (Buyee §10 actual_cost)
+  # ---------------------------------------------------------------------------
+  buyee:
+
+    luxury_apparel:
+      - { max_cost:   100, target_margin: 0.80 }   # 5.00×
+      - { max_cost:   250, target_margin: 0.75 }   # 4.00×
+      - { max_cost:   500, target_margin: 0.65 }   # 2.86×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    luxury_bags:
+      - { max_cost:   200, target_margin: 0.70 }   # 3.33×
+      - { max_cost:   500, target_margin: 0.60 }   # 2.50×
+      - { max_cost: 99999, target_margin: 0.50 }   # 2.00×
+
+    luxury_accessories:
+      - { max_cost:    50, target_margin: 0.85 }   # 6.67×
+      - { max_cost:   150, target_margin: 0.80 }   # 5.00×
+      - { max_cost: 99999, target_margin: 0.65 }   # 2.86×
+
+    mid_apparel:
+      - { max_cost:   100, target_margin: 0.75 }   # 4.00×
+      - { max_cost:   250, target_margin: 0.70 }   # 3.33×
+      - { max_cost: 99999, target_margin: 0.60 }   # 2.50×
+
+    mid_bags:
+      - { max_cost:   150, target_margin: 0.65 }   # 2.86×
+      - { max_cost: 99999, target_margin: 0.55 }   # 2.22×
+
+    mid_accessories:
+      - { max_cost:   100, target_margin: 0.80 }   # 5.00×
+      - { max_cost: 99999, target_margin: 0.65 }   # 2.86×
+
+    standard_apparel:
+      - { max_cost:   100, target_margin: 0.75 }   # 4.00×
+      - { max_cost: 99999, target_margin: 0.60 }   # 2.50×
+
+    standard_bags:
+      - { max_cost:   200, target_margin: 0.60 }   # 2.50×
+      - { max_cost: 99999, target_margin: 0.50 }   # 2.00×
+
+    standard_accessories:
+      - { max_cost:    75, target_margin: 0.80 }   # 5.00×
+      - { max_cost: 99999, target_margin: 0.65 }   # 2.86×
+
+# =============================================================================
+# Pricing floors (cost-relative profit guards, applied AFTER bracket lookup)
+#
+# Two-sided guard: ensure every item makes at least `min_dollar_profit`, and
+# never priced higher than `max_markup_multiple × cost`. Both are applied AFTER
+# the bracket multiplier + market_adjustment + demand pipeline but BEFORE
+# rounding, so the floors/ceilings respect cost realistically and round_price
+# still snaps cleanly to the 25/45/75/95 ladder.
+#
+# Why these guard rails exist:
+#   * `min_dollar_profit` — for cheap items (e.g. $20 cost) a 3× markup yields
+#     only $40 profit, which doesn't cover shop overhead per listing.
+#   * `max_markup_multiple` — for very cheap items (e.g. $5 cost), even a
+#     reasonable margin% pushes the price into "feels-overpriced" territory.
+#     A hard 6× ceiling means a $5 scarf maxes out at $30 — realistic.
+# =============================================================================
+pricing_floors:
+  vendor_invoice:
+    min_dollar_profit: 80      # Never list an item for less than $80 profit.
+    max_markup_multiple: 6.0   # Never price above 6× landed cost.
+  buyee:
+    min_dollar_profit: 60      # Buyee items often have lower base cost.
+    max_markup_multiple: 8.0   # Auction items have wider markup range.

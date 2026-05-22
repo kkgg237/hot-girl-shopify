@@ -1,0 +1,48 @@
+{
+  "shoot_id": "2026-05-11",
+  "source_folder": "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures",
+  "created_at": "2026-05-11T19:03:17+00:00",
+  "bags": [
+    {
+      "sku": "CHA_0042_222",
+      "hero": "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/CHA_0042_222-02.jpg",
+      "shots": [
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/CHA_0042_222-02.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/CHA_0042_222-03.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/CHA_0042_222-04.jpg"
+      ],
+      "flags": [
+        "missing_hero_shot_01"
+      ]
+    },
+    {
+      "sku": "GUC_9999_555",
+      "hero": "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/GUC_9999_555-01.JPG",
+      "shots": [
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/GUC_9999_555-01.JPG",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/GUC_9999_555-02.jpeg"
+      ],
+      "flags": []
+    },
+    {
+      "sku": "LOU_0226_817",
+      "hero": "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-01.jpg",
+      "shots": [
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-01.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-02.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-03.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-04.jpg",
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/LOU_0226_817-05.jpg"
+      ],
+      "flags": []
+    },
+    {
+      "sku": "PRA_0001_001",
+      "hero": "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/PRA_0001_001-01.jpg",
+      "shots": [
+        "/Users/kat/workspace/hot-girl-shopify/bag-pipeline/tests/fixtures/PRA_0001_001-01.jpg"
+      ],
+      "flags": []
+    }
+  ]
+}

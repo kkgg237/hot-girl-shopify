@@ -1,0 +1,23 @@
+{
+  "color": "Black",
+  "era": null,
+  "model_name": null,
+  "model_size": "38",
+  "material": null,
+  "pattern": null,
+  "garment_length": "Knee",
+  "style_adjectives": null,
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "Paola Frani is an Italian luxury fashion brand. The item is described as a knee-length black skirt with scarf, size 38 M. However, no specific era, model name, material composition beyond the scarf feature, or production origin could be determined from search results. The scarf attachment is a distinctive feature but lacks additional context in sourced materials. Generic brand-level information was available but not item-specific production details.",
+  "sources": [
+    "https://poshmark.com/brand/Paola_Frani-Women-Skirts",
+    "https://www.1stdibs.com/buy/paola-frani/",
+    "https://poshmark.com/brand/Paola_Frani"
+  ],
+  "method": "web_search",
+  "input_tokens": 21950,
+  "output_tokens": 477,
+  "cost_usd": 0.0543
+}

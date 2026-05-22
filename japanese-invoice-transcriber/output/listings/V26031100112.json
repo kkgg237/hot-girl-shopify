@@ -1,0 +1,22 @@
+{
+  "color": "Multicolor",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": null,
+  "pattern": "Printed",
+  "garment_length": null,
+  "style_adjectives": null,
+  "origin": "Made in Italy",
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "Unable to locate specific item 11672_0187. Searched results confirm Emilio Pucci produced printed tops and hats across multiple decades (1960s-2000s) made in Italy. Pattern confirmed as 'Printed' per provided description. Multicolor assigned based on typical Pucci signature aesthetic (multiple results reference multicolor prints). Without access to actual product listing or comparable exact match, era, specific material, and other attributes cannot be confirmed. HIGH confidence requires era AND model identification from sources—neither definitively established here.",
+  "sources": [
+    "https://www.1stdibs.com/creators/emilio-pucci/fashion/accessories/hats/",
+    "https://www.1stdibs.com/buy/vintage-pucci-tops/"
+  ],
+  "method": "web_search",
+  "input_tokens": 25892,
+  "output_tokens": 572,
+  "cost_usd": 0.0588
+}

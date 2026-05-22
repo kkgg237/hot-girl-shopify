@@ -1,0 +1,23 @@
+{
+  "color": "Grey",
+  "era": null,
+  "model_name": null,
+  "model_size": null,
+  "material": null,
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": "V-Neck",
+  "origin": null,
+  "condition_summary": null,
+  "title_confidence": "LOW",
+  "notes": "V-Neck blouse style confirmed from description. Generic Issey Miyake blouse; no specific named model found. Era, material, pattern, and other attributes cannot be confirmed from search results. Japanese description 'Vカットブラウス' (V-cut blouse) matches provided English description. Item code 11640_0363 did not return specific product matches.",
+  "sources": [
+    "https://www.therealreal.com/designers/issey-miyake/women/clothing/tops",
+    "https://www.1stdibs.com/creators/issey-miyake/fashion/clothing/blouses/",
+    "https://www.amarcordvintagefashion.com/collections/vintage-issey-miyake"
+  ],
+  "method": "web_search",
+  "input_tokens": 21214,
+  "output_tokens": 626,
+  "cost_usd": 0.0543
+}

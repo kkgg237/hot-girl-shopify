@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/kat/workspace/shop-photo-editor)",
+      "Read(//Users/kat/workspace/**)",
+      "Bash(npx --yes create-next-app@latest . --typescript --tailwind --app --no-src-dir --turbopack --import-alias \"@/*\" --eslint --use-npm --yes)",
+      "Bash(npm install *)"
+    ]
+  }
+}

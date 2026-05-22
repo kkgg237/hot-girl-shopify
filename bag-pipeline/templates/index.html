@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>bag-pipeline</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; line-height: 1.45; }
+    h1 { margin-bottom: 0.25rem; }
+    .sub { color: #666; margin-top: 0; }
+    h2 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; }
+    form#upload-form { display: grid; gap: 0.75rem; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; max-width: 720px; }
+    input[type="text"], input[type="number"], textarea { width: 100%; padding: 0.5rem 0.6rem; font-size: 0.92rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; }
+    textarea { resize: vertical; }
+    button { padding: 0.55rem 1rem; font-size: 0.95rem; border: 0; border-radius: 5px; background: #111; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.small { padding: 0.3rem 0.6rem; font-size: 0.82rem; }
+    button.green { background: #1d7044; }
+    button.red { background: #c0392b; }
+    button.gray { background: #555; }
+    .upload-status { font-size: 0.88rem; color: #444; }
+    .upload-status.error { color: #c0392b; }
+    .bagcount { color: #888; font-weight: 400; }
+    .card { display: flex; gap: 1rem; border: 1px solid #ddd; border-radius: 8px; padding: 0.85rem; margin-bottom: 0.85rem; background: rgba(127,127,127,0.03); }
+    .card .photo { flex: 0 0 220px; }
+    .card .photo img { width: 220px; height: 220px; object-fit: cover; border-radius: 6px; background: #eee; display: block; }
+    .card .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+    .card .sku { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; color: #666; }
+    .card .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .card .placeholder { color: #888; font-style: italic; margin: 1rem 0; }
+    .card .preview { font-size: 0.9rem; }
+    .card .preview h3 { margin: 0.25rem 0; font-size: 1rem; }
+    .card .preview .row { display: flex; gap: 0.6rem; flex-wrap: wrap; font-size: 0.85rem; color: #555; margin: 0.15rem 0; }
+    .conf { padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.7rem; }
+    .conf.high { background: #d4edda; color: #155724; }
+    .conf.medium { background: #fff3cd; color: #856404; }
+    .conf.low { background: #f8d7da; color: #721c24; }
+    .field { display: grid; gap: 0.2rem; }
+    .field label { font-size: 0.8rem; color: #555; font-weight: 600; }
+    .editor { display: grid; gap: 0.6rem; }
+    .editor .two { display: grid; grid-template-columns: 1fr 110px; gap: 0.5rem; }
+    .filepick { padding: 0.6rem; border: 1px dashed #aaa; border-radius: 6px; background: rgba(127,127,127,0.05); }
+    .filepick small { color: #666; display: block; margin-top: 0.3rem; }
+  </style>
+</head>
+<body>
+  <h1>bag-pipeline</h1>
+  <p class="sub">Upload a folder (or files). Each photo becomes a separate bag. Analyze each, edit the description, then push to Shopify.</p>
+
+  <h2>Upload photos</h2>
+  <form id="upload-form">
+    <div class="filepick">
+      <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+        <label style="font-weight:400;"><input type="radio" name="mode" value="files" checked /> Pick files</label>
+        <label style="font-weight:400;"><input type="radio" name="mode" value="folder" /> Pick folder</label>
+      </div>
+      <input id="files" type="file" accept="image/jpeg,image/jpg" multiple required style="margin-top:0.4rem;" />
+      <small>Each jpg becomes its own bag. SKU is taken from the filename.</small>
+      <div class="upload-status" id="filecount"></div>
+    </div>
+    <div>
+      <button type="submit" id="submit">Upload</button>
+    </div>
+  </form>
+  <div class="upload-status" id="upload-status"></div>
+
+  <h2>Bags <span class="bagcount" id="bagcount"></span>
+    <button type="button" id="download-csv" class="small green" style="margin-left:0.5rem;">Download Shopify CSV</button>
+  </h2>
+  <div id="bag-list"></div>
+
+<script>
+const filesInput = document.getElementById('files');
+const filecount = document.getElementById('filecount');
+const form = document.getElementById('upload-form');
+const submit = document.getElementById('submit');
+const uploadStatus = document.getElementById('upload-status');
+const bagList = document.getElementById('bag-list');
+const bagCount = document.getElementById('bagcount');
+
+const SERVER = window.location.origin;
+const safe = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function jpgFiles() {
+  return Array.from(filesInput.files || []).filter(f => /\.jpe?g$/i.test(f.name));
+}
+
+filesInput.addEventListener('change', () => {
+  const total = filesInput.files ? filesInput.files.length : 0;
+  const jpgs = jpgFiles().length;
+  if (!total) { filecount.textContent = ''; return; }
+  filecount.textContent = total === jpgs
+    ? `${jpgs} photo(s) — one bag per photo`
+    : `${total} file(s), ${jpgs} jpg — one bag per jpg, non-jpgs skipped`;
+});
+
+for (const r of document.querySelectorAll('input[name="mode"]')) {
+  r.addEventListener('change', () => {
+    const folderMode = r.value === 'folder' && r.checked;
+    if (folderMode) {
+      filesInput.setAttribute('webkitdirectory', '');
+      filesInput.setAttribute('directory', '');
+    } else {
+      filesInput.removeAttribute('webkitdirectory');
+      filesInput.removeAttribute('directory');
+    }
+    filesInput.value = '';
+    filecount.textContent = '';
+  });
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  submit.disabled = true;
+  uploadStatus.className = 'upload-status';
+  uploadStatus.textContent = 'Uploading…';
+  const photos = jpgFiles().sort((a, b) => a.name.localeCompare(b.name));
+  if (!photos.length) {
+    uploadStatus.className = 'upload-status error';
+    uploadStatus.textContent = 'No jpg files selected.';
+    submit.disabled = false;
+    return;
+  }
+  const fd = new FormData();
+  for (const f of photos) fd.append('files', f, f.name);
+  try {
+    const resp = await fetch(`${SERVER}/api/bags`, { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!resp.ok) {
+      uploadStatus.className = 'upload-status error';
+      uploadStatus.textContent = `Error ${resp.status}: ${data.detail || JSON.stringify(data)}`;
+    } else {
+      const failed = (data.errors || []).length;
+      uploadStatus.textContent = `Created ${data.created.length} bag(s)${failed ? `, ${failed} skipped` : ''}.`;
+      form.reset();
+      filecount.textContent = '';
+      refreshBags();
+    }
+  } catch (err) {
+    uploadStatus.className = 'upload-status error';
+    uploadStatus.textContent = `Network error: ${err}`;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+function confBadge(level) {
+  const lvl = String(level || 'low');
+  return `<span class="conf ${safe(lvl)}">${safe(lvl)}</span>`;
+}
+
+function renderPreview(data) {
+  const bullets = (data.details_bullets || []).map(b => `<li>${safe(b)}</li>`).join('');
+  return `
+    <div class="preview">
+      <h3>${safe(data.title)}</h3>
+      <div class="row">
+        <span><strong>Brand:</strong> ${safe(data.brand)} ${confBadge(data.brand_confidence)}</span>
+        <span><strong>Model:</strong> ${safe(data.model)} ${confBadge(data.model_confidence)}</span>
+        <span><strong>Era:</strong> ${safe(data.era)}</span>
+        <span><strong>Color:</strong> ${safe(data.colorway)}</span>
+      </div>
+      <div class="row"><strong>Dimensions:</strong> ${safe(data.dimensions || '[measure in hand]')}</div>
+      <ul style="margin: 0.3rem 0;">${bullets}</ul>
+      <div class="row"><strong>Material:</strong> ${safe(data.material_line)}</div>
+      <div class="row"><strong>Condition:</strong> ${safe(data.condition_grade)}/10</div>
+      <div style="white-space:pre-wrap; font-size:0.88rem;">${safe(data.condition_text)}</div>
+    </div>`;
+}
+
+function renderEditor(data, sku) {
+  const bullets = (data.details_bullets || []).join('\n');
+  const unverif = (data.condition_unverifiable || []).join(', ');
+  const candidates = (data.model_candidates || []).join(', ');
+  return `
+    <div class="editor" data-sku="${safe(sku)}">
+      <div class="field"><label>Title</label><input data-k="title" type="text" value="${safe(data.title)}" /></div>
+      <div class="field"><label>Dimensions (measure in hand)</label><input data-k="dimensions" type="text" placeholder="10&quot; L x 2&quot; W x 6&quot; H" value="${safe(data.dimensions || '[measure in hand]')}" /></div>
+      <div class="two">
+        <div class="field"><label>Brand</label><input data-k="brand" type="text" value="${safe(data.brand)}" /></div>
+        <div class="field"><label>Brand conf</label><input data-k="brand_confidence" type="text" value="${safe(data.brand_confidence)}" /></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Model</label><input data-k="model" type="text" value="${safe(data.model)}" /></div>
+        <div class="field"><label>Model conf</label><input data-k="model_confidence" type="text" value="${safe(data.model_confidence)}" /></div>
+      </div>
+      <div class="field"><label>Model candidates (comma-sep)</label><input data-k="model_candidates" type="text" value="${safe(candidates)}" /></div>
+      <div class="two">
+        <div class="field"><label>Era</label><input data-k="era" type="text" value="${safe(data.era)}" /></div>
+        <div class="field"><label>Silhouette</label><input data-k="silhouette" type="text" value="${safe(data.silhouette)}" /></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Colorway</label><input data-k="colorway" type="text" value="${safe(data.colorway)}" /></div>
+        <div class="field"><label>Material (primary)</label><input data-k="material_primary" type="text" value="${safe(data.material_primary)}" /></div>
+      </div>
+      <div class="field"><label>Details bullets (one per line, 3-4)</label><textarea data-k="details_bullets" rows="4">${safe(bullets)}</textarea></div>
+      <div class="field"><label>Material line</label><input data-k="material_line" type="text" value="${safe(data.material_line)}" /></div>
+      <div class="two">
+        <div class="field"><label>Condition grade (1-10)</label><input data-k="condition_grade" type="number" step="0.5" min="1" max="10" value="${safe(data.condition_grade)}" /></div>
+      </div>
+      <div class="field"><label>Condition - exterior</label><input data-k="cn_exterior" type="text" value="${safe(data.condition_notes?.exterior)}" /></div>
+      <div class="field"><label>Condition - hardware</label><input data-k="cn_hardware" type="text" value="${safe(data.condition_notes?.hardware)}" /></div>
+      <div class="field"><label>Condition - stitching</label><input data-k="cn_stitching" type="text" value="${safe(data.condition_notes?.stitching)}" /></div>
+      <div class="field"><label>Condition - strap</label><input data-k="cn_strap" type="text" value="${safe(data.condition_notes?.strap)}" /></div>
+      <div class="field"><label>Condition unverifiable (comma-sep)</label><input data-k="condition_unverifiable" type="text" value="${safe(unverif)}" /></div>
+      <div class="field"><label>Condition text</label><textarea data-k="condition_text" rows="4">${safe(data.condition_text)}</textarea></div>
+      <div class="actions">
+        <button type="button" class="small green" data-action="save">Save</button>
+        <button type="button" class="small gray" data-action="cancel">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function collectEditor(editorEl) {
+  const get = (k) => editorEl.querySelector(`[data-k="${k}"]`).value;
+  const splitCsv = (s) => s.split(',').map(x => x.trim()).filter(Boolean);
+  const splitLines = (s) => s.split('\n').map(x => x.trim()).filter(Boolean);
+  return {
+    title: get('title'),
+    brand: get('brand'),
+    brand_confidence: get('brand_confidence'),
+    model: get('model'),
+    model_confidence: get('model_confidence'),
+    model_candidates: splitCsv(get('model_candidates')),
+    era: get('era'),
+    silhouette: get('silhouette'),
+    colorway: get('colorway'),
+    material_primary: get('material_primary'),
+    dimensions: get('dimensions'),
+    details_bullets: splitLines(get('details_bullets')),
+    material_line: get('material_line'),
+    condition_grade: parseFloat(get('condition_grade')),
+    condition_notes: {
+      exterior: get('cn_exterior'),
+      hardware: get('cn_hardware'),
+      stitching: get('cn_stitching'),
+      strap: get('cn_strap'),
+    },
+    condition_unverifiable: splitCsv(get('condition_unverifiable')),
+    condition_text: get('condition_text'),
+  };
+}
+
+async function analyzeBag(sku, cardEl) {
+  const btn = cardEl.querySelector('[data-action="analyze"]');
+  btn.disabled = true; btn.textContent = 'analyzing…';
+  const body = cardEl.querySelector('.card-body');
+  try {
+    const resp = await fetch(`${SERVER}/api/bags/${encodeURIComponent(sku)}/analyze`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) {
+      body.innerHTML = `<div class="placeholder" style="color:#c0392b;">Analyze failed: ${safe(data.detail || JSON.stringify(data))}</div>` + body.innerHTML;
+    } else {
+      renderCardBody(cardEl, sku, data, false);
+    }
+  } catch (err) {
+    body.innerHTML = `<div class="placeholder" style="color:#c0392b;">Network error: ${err}</div>` + body.innerHTML;
+  } finally {
+    btn.disabled = false; btn.textContent = 'analyze';
+  }
+}
+
+async function saveListing(sku, cardEl) {
+  const editorEl = cardEl.querySelector('.editor');
+  const saveBtn = editorEl.querySelector('[data-action="save"]');
+  saveBtn.disabled = true; saveBtn.textContent = 'saving…';
+  try {
+    const payload = collectEditor(editorEl);
+    const resp = await fetch(`${SERVER}/api/bags/${encodeURIComponent(sku)}/listing`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert(`Save failed: ${data.detail || JSON.stringify(data)}`);
+    } else {
+      renderCardBody(cardEl, sku, data, false);
+    }
+  } catch (err) {
+    alert(`Network error: ${err}`);
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Save';
+  }
+}
+
+async function renderCardBody(cardEl, sku, listing, editing) {
+  const body = cardEl.querySelector('.card-body');
+  const actions = cardEl.querySelector('.actions');
+  if (!listing) {
+    body.innerHTML = '<div class="placeholder">Not analyzed yet.</div>';
+    actions.innerHTML = `
+      <button type="button" class="small green" data-action="analyze">analyze</button>
+      <button type="button" class="small red" data-action="discard">discard</button>`;
+  } else if (editing) {
+    body.innerHTML = renderEditor(listing, sku);
+    actions.innerHTML = `
+      <button type="button" class="small red" data-action="discard">discard</button>`;
+  } else {
+    body.innerHTML = renderPreview(listing);
+    actions.innerHTML = `
+      <button type="button" class="small green" data-action="edit">edit</button>
+      <button type="button" class="small gray" data-action="reanalyze">re-analyze</button>
+      <button type="button" class="small red" data-action="discard">discard</button>`;
+  }
+  cardEl._listing = listing;
+}
+
+async function fetchListing(sku) {
+  try {
+    const resp = await fetch(`${SERVER}/api/bags/${encodeURIComponent(sku)}/listing`);
+    return resp.ok ? await resp.json() : null;
+  } catch { return null; }
+}
+
+async function refreshBags() {
+  const resp = await fetch(`${SERVER}/api/bags`);
+  if (!resp.ok) return;
+  const { bags } = await resp.json();
+  bagCount.textContent = bags.length ? `(${bags.length})` : '';
+  bagList.innerHTML = '';
+
+  for (const b of bags) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.sku = b.sku;
+    card.innerHTML = `
+      <div class="photo"><img src="${SERVER}/api/bags/${encodeURIComponent(b.sku)}/photo" alt="${safe(b.sku)}" /></div>
+      <div class="content">
+        <div class="sku">${safe(b.sku)}</div>
+        <div class="card-body"></div>
+        <div class="actions"></div>
+      </div>`;
+    bagList.appendChild(card);
+
+    const listing = b.analyzed ? await fetchListing(b.sku) : null;
+    renderCardBody(card, b.sku, listing, false);
+  }
+}
+
+document.getElementById('download-csv').addEventListener('click', async () => {
+  try {
+    const resp = await fetch(`${SERVER}/api/export.csv`);
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      alert(`CSV export failed: ${data.detail || resp.status}`);
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'shopify-products.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Network error: ${err}`);
+  }
+});
+
+bagList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const card = btn.closest('.card');
+  const sku = card.dataset.sku;
+  const action = btn.dataset.action;
+
+  if (action === 'analyze' || action === 'reanalyze') {
+    analyzeBag(sku, card);
+  } else if (action === 'edit') {
+    renderCardBody(card, sku, card._listing, true);
+  } else if (action === 'cancel') {
+    renderCardBody(card, sku, card._listing, false);
+  } else if (action === 'save') {
+    saveListing(sku, card);
+  } else if (action === 'discard') {
+    if (!confirm(`Discard bag "${sku}"?`)) return;
+    await fetch(`${SERVER}/api/bags/${encodeURIComponent(sku)}`, { method: 'DELETE' });
+    refreshBags();
+  }
+});
+
+refreshBags();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "color": "Black",
+  "era": "00's",
+  "model_name": null,
+  "model_size": null,
+  "material": "Nylon",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": "Belted V-Neck Mesh Long Sleeve",
+  "origin": "Made in Hong Kong",
+  "condition_summary": null,
+  "title_confidence": "HIGH",
+  "notes": "Power net mesh is a signature Vivienne Tam fabrication from the Y2K era (late 90s/early 2000s). The 'belted' detail and V-neckline align with documented Vivienne Tam silhouettes from this period. Material confirmed as nylon via comparable pieces and Japanese resale market listings. Hong Kong production typical of Vivienne Tam 2000s pieces. No specific named model found in archive sources.",
+  "sources": [
+    "https://poshmark.com/brand/Vivienne_Tam-Women-Tops-Blouses",
+    "https://joysauce.com/vivienne-tam/",
+    "https://arcadeshops.com/products/vivienne-tam-mesh-buddha-long-sleeve-top"
+  ],
+  "method": "web_search",
+  "input_tokens": 37925,
+  "output_tokens": 551,
+  "cost_usd": 0.0707
+}

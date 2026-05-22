@@ -1,0 +1,50 @@
+{
+  "B014-2": {
+    "handle": "burberry-london-beige-skirt-bur-2605-142",
+    "product_id": 10215610351892,
+    "pushed_at": "2026-05-11T16:20:04",
+    "sku": "BUR_2605_142"
+  },
+  "B014-4": {
+    "handle": "burberry-blue-label-pink-skirt-bur-2605-144",
+    "product_id": 10215610319124,
+    "pushed_at": "2026-05-11T16:20:02",
+    "sku": "BUR_2605_144"
+  },
+  "B019-2": {
+    "handle": "burberry-beige-nova-check-long-trench-coat-bur-2605-192",
+    "product_id": 10215610122516,
+    "pushed_at": "2026-05-11T16:19:57",
+    "sku": "BUR_2605_192"
+  },
+  "B031-8": {
+    "handle": "burberry-beige-skirt-bur-2605-318",
+    "product_id": 10215610384660,
+    "pushed_at": "2026-05-11T16:20:06",
+    "sku": "BUR_2605_318"
+  },
+  "B034-4": {
+    "handle": "gucci-black-knit-sweater-guc-2605-344",
+    "product_id": 10215610155284,
+    "pushed_at": "2026-05-11T16:19:59",
+    "sku": "GUC_2605_344"
+  },
+  "B035-5": {
+    "handle": "gucci-black-shirt-guc-2605-355",
+    "product_id": 10215610253588,
+    "pushed_at": "2026-05-11T16:20:00",
+    "sku": "GUC_2605_355"
+  },
+  "B035-7": {
+    "handle": "gucci-pink-top-guc-2605-357",
+    "product_id": 10215610417428,
+    "pushed_at": "2026-05-11T16:20:07",
+    "sku": "GUC_2605_357"
+  },
+  "B046-9": {
+    "handle": "ermanno-scervino-black-pants-erm-2605-469",
+    "product_id": 10215610286356,
+    "pushed_at": "2026-05-11T16:20:01",
+    "sku": "ERM_2605_469"
+  }
+}

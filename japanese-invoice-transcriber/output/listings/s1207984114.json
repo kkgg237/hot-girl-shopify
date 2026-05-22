@@ -1,0 +1,21 @@
+{
+  "color": "Multicolor",
+  "era": null,
+  "model_name": null,
+  "model_size": "44",
+  "material": "Nylon",
+  "pattern": null,
+  "garment_length": null,
+  "style_adjectives": "Wrap",
+  "origin": null,
+  "condition_summary": "Used, storage odor and neck tape degradation",
+  "title_confidence": "MED",
+  "notes": "Cache-coeur is a wrap-style blouse with overlapping front panels. Japanese source listing shows product #527501, manufactured by Aoi Corp. Multicolor confirmed (grey/off-white/black). Material verified as nylon. Size 44 corresponds to Italian sizing. No specific era determined from search results.",
+  "sources": [
+    "https://fril.jp/brand/1716"
+  ],
+  "method": "web_search",
+  "input_tokens": 25622,
+  "output_tokens": 440,
+  "cost_usd": 0.0578
+}
