@@ -20,12 +20,31 @@ import { renderStoryPng, renderCoverPng } from './render.js'
 import { uploadStoryImage } from './upload.js'
 import { postStoryFromUrl } from './instagram.js'
 import { brand } from './brand.js'
+import { categorize, getLookSettings, type Category } from './look-settings.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 const OUT_DIR = path.join(ROOT, 'out')
+const THUMB_DIR = path.join(OUT_DIR, 'thumbs')
+// Card thumbnails are tiny next to the 1080×1920 IG export — render at this
+// size for the review UI so the browser doesn't decode 3 MB PNGs to display
+// them at ~218 px wide. Big perceived speedup.
+const THUMB_WIDTH = 540
+const THUMB_HEIGHT = 960
 
 const TEMPLATE = 'story_grid_4'
+
+export function thumbPathFor(handle: string): string {
+  return path.join(THUMB_DIR, `${handle}-1.jpg`)
+}
+
+async function ensureThumbJpeg(srcPng: string, dest: string): Promise<void> {
+  mkdirSync(THUMB_DIR, { recursive: true })
+  await sharp(srcPng)
+    .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover' })
+    .jpeg({ quality: 82, progressive: true })
+    .toFile(dest)
+}
 
 function formatPrice(raw: string | null | undefined): string {
   if (!raw) return ''
@@ -56,6 +75,12 @@ export interface ResolvedConfig {
   frames: Frame[]
   imageStart: number
   imageCount: number
+  productType: string | null
+  // The raw Shopify title — used as a fallback signal for category detection
+  // when product_type is empty (which it is for ~half the catalog).
+  rawTitle: string
+  // Manual per-product override from the edit modal. NULL = use auto-detect.
+  lookCategoryOverride: Category | null
 }
 
 export function resolveConfig(handle: string): ResolvedConfig {
@@ -116,10 +141,18 @@ export function resolveConfig(handle: string): ResolvedConfig {
       frames,
       imageStart,
       imageCount,
+      productType: bundle.product.product_type,
+      rawTitle: bundle.product.title,
+      lookCategoryOverride: draft?.look_category ?? null,
     }
   } finally {
     db.close()
   }
+}
+
+// Pick the look category for this product: explicit override wins, else auto.
+function resolveCategory(cfg: { productType: string | null; rawTitle: string; lookCategoryOverride: Category | null }): Category {
+  return cfg.lookCategoryOverride ?? categorize(cfg.productType, cfg.rawTitle)
 }
 
 function cleanStaleFrames(handle: string, keep: Set<string>): void {
@@ -136,27 +169,100 @@ function cleanStaleFrames(handle: string, keep: Set<string>): void {
   }
 }
 
-export async function renderForHandle(handle: string): Promise<string[]> {
+export async function renderForHandle(
+  handle: string,
+  opts: { force?: boolean } = {},
+): Promise<string[]> {
   mkdirSync(OUT_DIR, { recursive: true })
   const cfg = resolveConfig(handle)
+  // Fast path: if every expected frame is already on disk and the caller
+  // didn't ask us to re-render, reuse the cached PNGs. Cache invalidation
+  // (draft save, look save) deletes these files so we naturally re-render
+  // next time. This turns a page-load full of cards from 227 satori+resvg
+  // jobs into 227 disk reads.
+  const expected = cfg.frames.map((f) => path.join(OUT_DIR, `${f.outName}.png`))
+  if (!opts.force && expected.every((p) => existsSync(p))) {
+    return expected
+  }
+  const look = getLookSettings(resolveCategory(cfg))
   const outPaths: string[] = []
   const keep = new Set<string>()
-  for (const frame of cfg.frames) {
+  for (let i = 0; i < cfg.frames.length; i++) {
+    const frame = cfg.frames[i]
     const png = await renderStoryPng({
       brand: cfg.brand,
       name: cfg.name,
       price: cfg.price,
       imagePaths: frame.imagePaths,
       layout: cfg.layout,
+      look,
     })
     const fileName = `${frame.outName}.png`
     const outPath = path.join(OUT_DIR, fileName)
     writeFileSync(outPath, png)
     outPaths.push(outPath)
     keep.add(fileName)
+    // Produce the small JPEG for the review-UI thumb at the same time —
+    // it's only the first frame that's used for cards.
+    if (i === 0) {
+      try { await ensureThumbJpeg(outPath, thumbPathFor(handle)) } catch { /* ignore */ }
+    }
   }
   cleanStaleFrames(handle, keep)
   return outPaths
+}
+
+// Fast path for the review-UI card thumb. Avoids loading/serving the 3 MB
+// full-resolution PNG when we just need a 50 KB JPEG at display size.
+// Returns the path to the JPEG on disk; renders on demand if needed.
+export async function renderThumbForHandle(handle: string): Promise<string> {
+  const thumbPath = thumbPathFor(handle)
+  if (existsSync(thumbPath)) return thumbPath
+  // No thumb yet — generate the full PNG (which also writes the thumb).
+  await renderForHandle(handle)
+  if (existsSync(thumbPath)) return thumbPath
+  // Belt-and-suspenders: if the full render somehow skipped the thumb step
+  // (e.g. cached PNG existed but thumb didn't), build it from the PNG now.
+  const cfg = resolveConfig(handle)
+  const firstPng = path.join(OUT_DIR, `${cfg.frames[0].outName}.png`)
+  if (existsSync(firstPng)) await ensureThumbJpeg(firstPng, thumbPath)
+  return thumbPath
+}
+
+// Invalidate cached PNGs for one product. Called after draft saves so the
+// thumb reflects the new caption/start/count next time it's requested.
+export function invalidateRenderedFrames(handle: string): void {
+  const prefix = `${handle}-`
+  if (existsSync(OUT_DIR)) {
+    for (const f of readdirSync(OUT_DIR)) {
+      if (!f.startsWith(prefix) || !f.endsWith('.png')) continue
+      try { unlinkSync(path.join(OUT_DIR, f)) } catch { /* ignore */ }
+    }
+  }
+  if (existsSync(THUMB_DIR)) {
+    for (const f of readdirSync(THUMB_DIR)) {
+      if (!f.startsWith(prefix) || !f.endsWith('.jpg')) continue
+      try { unlinkSync(path.join(THUMB_DIR, f)) } catch { /* ignore */ }
+    }
+  }
+}
+
+// Invalidate every cached product PNG. Called after look-settings changes,
+// which affect all thumbs. Drop frames live in OUT_DIR/drops and are left
+// alone here; they have their own lifecycle.
+export function invalidateAllRenderedFrames(): void {
+  if (existsSync(OUT_DIR)) {
+    for (const f of readdirSync(OUT_DIR)) {
+      if (!f.endsWith('.png')) continue
+      try { unlinkSync(path.join(OUT_DIR, f)) } catch { /* ignore */ }
+    }
+  }
+  if (existsSync(THUMB_DIR)) {
+    for (const f of readdirSync(THUMB_DIR)) {
+      if (!f.endsWith('.jpg')) continue
+      try { unlinkSync(path.join(THUMB_DIR, f)) } catch { /* ignore */ }
+    }
+  }
 }
 
 export function firstFramePath(handle: string): string {
@@ -189,7 +295,7 @@ export async function publishHandle(handle: string): Promise<PublishResult> {
 
     try {
       const cfg = resolveConfig(handle)
-      const outPaths = await renderForHandle(handle)
+      const outPaths = await renderForHandle(handle, { force: true })
       const readFile = await import('node:fs/promises').then((m) => m.readFile)
       const stamp = Date.now()
 
@@ -244,6 +350,7 @@ export interface ReviewItem {
   title: string
   brand: string
   price: string
+  inventory_quantity: number
   image_count: number
   status: Post['status'] | 'unposted'
   published_at: string | null
@@ -254,13 +361,22 @@ export interface ReviewItem {
 export function listReviewItems(): ReviewItem[] {
   const db = openDb()
   try {
+    // Pick the first in-stock variant (by position) for both price and qty.
+    // online_store_url IS NOT NULL excludes POS-only products and drafted listings
+    // (a product not published to the Online Store sales channel has no public URL).
     const rows = db
       .prepare(
         `SELECT p.handle, p.title, p.vendor,
-                (SELECT v.price FROM variants v WHERE v.product_id = p.id ORDER BY v.position LIMIT 1) AS price,
+                v.price, v.inventory_quantity,
                 (SELECT COUNT(*) FROM media m WHERE m.product_id = p.id AND m.local_path IS NOT NULL) AS image_count
          FROM products p
-         WHERE p.status = 'ACTIVE' AND p.total_inventory > 0
+         JOIN variants v ON v.id = (
+           SELECT id FROM variants
+           WHERE product_id = p.id AND inventory_quantity > 0
+           ORDER BY position LIMIT 1
+         )
+         WHERE p.status = 'ACTIVE'
+           AND p.online_store_url IS NOT NULL
            AND (SELECT COUNT(*) FROM media m WHERE m.product_id = p.id AND m.local_path IS NOT NULL) >= 1
          ORDER BY p.title`,
       )
@@ -269,6 +385,7 @@ export function listReviewItems(): ReviewItem[] {
         title: string
         vendor: string | null
         price: string | null
+        inventory_quantity: number | null
         image_count: number
       }>
 
@@ -286,6 +403,7 @@ export function listReviewItems(): ReviewItem[] {
         title: stripBrandPrefix(r.title, brand),
         brand,
         price: formatPrice(r.price),
+        inventory_quantity: r.inventory_quantity ?? 0,
         image_count: r.image_count,
         status: latest?.status ?? 'unposted',
         published_at: latest?.published_at ?? null,
@@ -305,6 +423,9 @@ export interface ProductDraftInfo {
   defaults: { brand: string; name: string; price: string; link: string }
   draft: Draft | null
   images: Array<{ position: number; path: string }>
+  // What the auto-categorizer would pick for this product. The UI shows this
+  // next to the "Auto" option so users see what they're keeping or overriding.
+  auto_category: Category
 }
 
 export function getProductDraftInfo(handle: string): ProductDraftInfo | null {
@@ -326,6 +447,7 @@ export function getProductDraftInfo(handle: string): ProductDraftInfo | null {
       },
       draft,
       images: bundle.media.map((m, i) => ({ position: m.position ?? i, path: m.local_path })),
+      auto_category: categorize(bundle.product.product_type, bundle.product.title),
     }
   } finally {
     db.close()
@@ -359,6 +481,9 @@ export interface DropProductFrame {
   price: string
   imagePath: string
   linkUrl: string | null // IG link sticker URL for this story
+  productType: string | null
+  rawTitle: string
+  lookCategoryOverride: Category | null
 }
 
 export interface DropCoverFrame {
@@ -411,6 +536,7 @@ export function resolveDrop(dropId: number): ResolvedDrop {
       const name = stripBrandPrefix(bundle.product.title, vendor)
       const price = formatPrice(bundle.variant?.price)
       const productUrl = brand.productUrlTemplate(item.handle)
+      const itemDraft = getDraft(db, item.handle)
       for (let i = 0; i < count; i++) {
         frames.push({
           kind: 'product',
@@ -421,6 +547,9 @@ export function resolveDrop(dropId: number): ResolvedDrop {
           price,
           imagePath: bundle.media[start + i].local_path,
           linkUrl: productUrl,
+          productType: bundle.product.product_type,
+          rawTitle: bundle.product.title,
+          lookCategoryOverride: itemDraft?.look_category ?? null,
         })
         frameIdx++
       }
@@ -458,6 +587,7 @@ export async function renderDropFramePng(frame: DropFrame): Promise<Buffer> {
     price: frame.price,
     imagePaths: [frame.imagePath],
     layout: '1up',
+    look: getLookSettings(frame.lookCategoryOverride ?? categorize(frame.productType, frame.rawTitle)),
   })
 }
 

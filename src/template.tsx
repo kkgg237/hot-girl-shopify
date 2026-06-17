@@ -1,5 +1,6 @@
 import React from 'react'
 import { brand } from './brand.js'
+import { DEFAULTS as LOOK_DEFAULTS, type LookSettings } from './look-settings.js'
 
 export type Layout = '1up' | '2up' | '4up'
 
@@ -124,6 +125,7 @@ export interface StoryProps {
   name: string
   price: string
   layout?: Layout
+  look?: LookSettings
 }
 
 const CANVAS = { width: 1080, height: 1920 } as const
@@ -144,12 +146,14 @@ function fitFontSize(text: string, maxWidth: number, maxSize: number, minSize: n
 
 function ImageGrid({ images, layout }: { images: string[]; layout: Layout }) {
   if (layout === '1up') {
+    // Full-bleed: the image fills the entire canvas. The caption floats over
+    // it via absolute positioning in Story(), so no reserved strip is needed.
     return (
       <img
         src={images[0]}
         style={{
           width: 1080,
-          height: 1720,
+          height: 1920,
           objectFit: 'cover',
           display: 'flex',
           alignSelf: 'center',
@@ -195,21 +199,29 @@ function ImageGrid({ images, layout }: { images: string[]; layout: Layout }) {
   )
 }
 
-export function Story({ images, brand: brandLabel, name, price, layout = '4up' }: StoryProps) {
+export function Story({ images, brand: brandLabel, name, price, layout = '4up', look }: StoryProps) {
   const needed = layout === '1up' ? 1 : layout === '2up' ? 2 : 4
   const cells = images.slice(0, needed)
-  const t = brand.type
   const c = brand.colors
-  const maxW = brand.storyLayout.captionMaxWidth
 
-  const brandSize = brandLabel ? fitFontSize(brandLabel, maxW, t.storyBrand.sizePx, 16, t.storyBrand.fontWeight === 500 ? 400 : 700) : t.storyBrand.sizePx
-  const nameSize = fitFontSize(name, maxW, t.storyName.sizePx, 22, 700)
-  const priceSize = price ? fitFontSize(price, maxW, t.storyPrice.sizePx, 18, 400) : t.storyPrice.sizePx
+  const L: LookSettings = look ?? LOOK_DEFAULTS
+  const priceStr = L.showDollar ? (price.startsWith('$') ? price : `$${price}`) : price.replace(/^\$/, '')
 
-  const oneLine = {
-    whiteSpace: 'nowrap' as const,
-    overflow: 'hidden' as const,
-  }
+  // Percent → pixel for satori. xPct is "distance from the active edge"
+  // (left edge when align=left, right edge when align=right), yPct is
+  // "distance from the top". align=center ignores xPct.
+  const xPx = Math.round((L.xPct / 100) * CANVAS.width)
+  const yPx = Math.round((L.yPct / 100) * CANVAS.height)
+  const captionPosition: React.CSSProperties =
+    L.align === 'center'
+      ? { left: 0, right: 0, top: yPx, alignItems: 'center', textAlign: 'center' }
+      : L.align === 'right'
+      ? { right: xPx, top: yPx, alignItems: 'flex-end', textAlign: 'right' }
+      : { left: xPx, top: yPx, alignItems: 'flex-start', textAlign: 'left' }
+
+  // Fixed sensible gap between caption lines; was a control before, but it
+  // was rarely worth tuning compared to font sizes themselves.
+  const LINE_GAP = 12
 
   return (
     <div
@@ -218,64 +230,63 @@ export function Story({ images, brand: brandLabel, name, price, layout = '4up' }
         height: CANVAS.height,
         backgroundColor: c.storyBg,
         display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
       }}
     >
-      <ImageGrid images={cells} layout={layout} />
+      <div style={{ position: 'absolute', top: 0, left: 0, width: CANVAS.width, height: CANVAS.height, display: 'flex', flexDirection: 'column' }}>
+        <ImageGrid images={cells} layout={layout} />
+      </div>
 
-      {/* Bottom-left caption */}
       <div
         style={{
+          position: 'absolute',
           display: 'flex',
           flexDirection: 'column',
-          marginTop: 'auto',
-          marginLeft: brand.storyLayout.captionMarginLeft,
-          marginBottom: brand.storyLayout.captionMarginBottom,
-          color: c.accent,
+          color: L.color,
+          ...captionPosition,
         }}
       >
-        {brandLabel && (
+        {L.showBrand && brandLabel && (
           <span
             style={{
-              fontFamily: t.storyBrand.fontFamily,
-              fontWeight: t.storyBrand.fontWeight,
-              fontSize: brandSize,
+              fontFamily: 'Red Hat Text',
+              fontWeight: 700,
+              fontSize: L.brandSize,
               lineHeight: 1.0,
               textTransform: 'uppercase',
-              letterSpacing: 1.5,
-              ...oneLine,
+              whiteSpace: 'nowrap',
             }}
           >
             {brandLabel}
           </span>
         )}
-        <span
-          style={{
-            fontFamily: t.storyName.fontFamily,
-            fontWeight: t.storyName.fontWeight,
-            fontSize: nameSize,
-            lineHeight: 1.05,
-            marginTop: 8,
-            letterSpacing: t.storyName.tracking,
-            textTransform: 'uppercase',
-            ...oneLine,
-          }}
-        >
-          {name}
-        </span>
-        {price && (
+        {L.showName && name && (
           <span
             style={{
-              fontFamily: t.storyPrice.fontFamily,
-              fontWeight: t.storyPrice.fontWeight,
-              fontSize: priceSize,
-              lineHeight: 1.0,
-              marginTop: 8,
+              fontFamily: 'Red Hat Text',
+              fontWeight: 700,
+              fontSize: L.nameSize,
+              lineHeight: 1.1,
+              marginTop: L.showBrand ? LINE_GAP : 0,
               textTransform: 'uppercase',
-              ...oneLine,
+              maxWidth: 920,
             }}
           >
-            {price}
+            {name}
+          </span>
+        )}
+        {L.showPrice && price && (
+          <span
+            style={{
+              fontFamily: 'Red Hat Text',
+              fontWeight: 400,
+              fontSize: L.priceSize,
+              lineHeight: 1.0,
+              marginTop: L.showBrand || L.showName ? LINE_GAP : 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {priceStr}
           </span>
         )}
       </div>

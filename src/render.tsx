@@ -6,6 +6,7 @@ import { Resvg } from '@resvg/resvg-js'
 import { Story, CoverCard, type StoryProps, type Layout, type CoverCardProps } from './template.js'
 import { brand, wordmarkImagePath } from './brand.js'
 import { existsSync } from 'node:fs'
+import { getLookSettings } from './look-settings.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -39,7 +40,8 @@ export async function renderStoryPng(
   const layout = props.layout ?? '4up'
   const needed = layout === '1up' ? 1 : layout === '2up' ? 2 : 4
   const images = props.imagePaths.slice(0, needed).map(imageToDataUri)
-  const element = Story({ images, brand: props.brand, name: props.name, price: props.price, layout })
+  const look = props.look ?? getLookSettings()
+  const element = Story({ images, brand: props.brand, name: props.name, price: props.price, layout, look })
 
   const svg = await satori(element, {
     width: 1080,

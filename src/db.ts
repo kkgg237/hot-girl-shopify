@@ -10,6 +10,7 @@ export interface Product {
   handle: string
   title: string
   vendor: string | null
+  product_type: string | null
   total_inventory: number | null
 }
 
@@ -96,6 +97,11 @@ export function openDb() {
   if (!draftCols.some((c) => c.name === 'image_count')) {
     db.exec(`ALTER TABLE drafts ADD COLUMN image_count INTEGER NOT NULL DEFAULT 4`)
   }
+  // Per-product override for which Look preset to use when rendering this
+  // product's story. NULL = let categorize() decide from product_type + title.
+  if (!draftCols.some((c) => c.name === 'look_category')) {
+    db.exec(`ALTER TABLE drafts ADD COLUMN look_category TEXT`)
+  }
   const postCols = db.prepare(`PRAGMA table_info(posts)`).all() as Array<{ name: string }>
   if (!postCols.some((c) => c.name === 'ig_media_ids')) {
     db.exec(`ALTER TABLE posts ADD COLUMN ig_media_ids TEXT`)
@@ -121,6 +127,9 @@ export interface Draft {
   name: string | null
   price: string | null
   link: string | null
+  // Per-product override of the Look preset used at render time.
+  // NULL = auto (categorize from product_type + title). 'clothing' or 'bags' = force.
+  look_category: 'clothing' | 'bags' | null
   updated_at: string
 }
 
@@ -136,6 +145,12 @@ export function upsertDraft(
   patch: Partial<Omit<Draft, 'handle' | 'updated_at'>>,
 ): Draft {
   const existing = getDraft(db, handle)
+  // `look_category` accepts an explicit null in the patch to clear back to auto,
+  // so use `in patch` checks rather than `??` for that field.
+  const look_category =
+    'look_category' in patch
+      ? (patch.look_category ?? null)
+      : (existing?.look_category ?? null)
   const merged: Draft = {
     handle,
     layout: patch.layout ?? existing?.layout ?? '1up',
@@ -145,11 +160,12 @@ export function upsertDraft(
     name: patch.name ?? existing?.name ?? null,
     price: patch.price ?? existing?.price ?? null,
     link: patch.link ?? existing?.link ?? null,
+    look_category,
     updated_at: new Date().toISOString(),
   }
   db.prepare(
-    `INSERT INTO drafts (handle, layout, image_start, image_count, brand, name, price, link, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO drafts (handle, layout, image_start, image_count, brand, name, price, link, look_category, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(handle) DO UPDATE SET
        layout = excluded.layout,
        image_start = excluded.image_start,
@@ -158,6 +174,7 @@ export function upsertDraft(
        name = excluded.name,
        price = excluded.price,
        link = excluded.link,
+       look_category = excluded.look_category,
        updated_at = excluded.updated_at`,
   ).run(
     merged.handle,
@@ -168,6 +185,7 @@ export function upsertDraft(
     merged.name,
     merged.price,
     merged.link,
+    merged.look_category,
     merged.updated_at,
   )
   return merged
@@ -384,7 +402,7 @@ export function getLatestPost(db: Database.Database, handle: string, template: s
 export function getProductByHandle(db: Database.Database, handle: string): ProductBundle | null {
   const product = db
     .prepare(
-      `SELECT id, handle, title, vendor, total_inventory
+      `SELECT id, handle, title, vendor, product_type, total_inventory
        FROM products WHERE handle = ?`,
     )
     .get(handle) as Product | undefined
