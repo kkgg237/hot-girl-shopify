@@ -47,6 +47,9 @@ templates:
   applies_to_categories:
   - Shirts & Tops
   - Tops
+  - T-Shirts
+  - T-Shirts & Tank Tops
+  - Tees
   required_sections:
   - 'TAGGED SIZE:'
   - 'MEASUREMENTS:'

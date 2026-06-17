@@ -292,7 +292,7 @@ class MeasurementRow:
 def extract_row(row: dict, cm: ColumnMap) -> MeasurementRow:
     """Pull a MeasurementRow out of a raw CSV dict using the column map."""
     def _g(col: Optional[str]) -> str:
-        if not col:
+        if col is None:
             return ""
         return (row.get(col) or "").strip()
 
@@ -334,10 +334,10 @@ def _fmt_value(value: str, unit: str) -> str:
     """Append the unit to a bare numeric measurement (e.g. 18 -> 18\")."""
     v = value.strip()
     if not v or not unit:
-        return _html.escape(v)
+        return _html.escape(v, quote=False)
     if re.fullmatch(r"\d+(\.\d+)?", v):
-        return _html.escape(f"{v}{unit}")
-    return _html.escape(v)
+        return _html.escape(f"{v}{unit}", quote=False)
+    return _html.escape(v, quote=False)
 
 
 def render_template(
@@ -359,7 +359,7 @@ def render_template(
     if tagged_size:
         body = re.sub(
             r"(<strong>\s*TAGGED SIZE:\s*</strong>)\s*</p>",
-            lambda m: f"{m.group(1)} {_html.escape(tagged_size.strip())}</p>",
+            lambda m: f"{m.group(1)} {_html.escape(tagged_size.strip(), quote=False)}</p>",
             body, count=1,
         )
 
@@ -377,7 +377,7 @@ def render_template(
     if notes:
         body = re.sub(
             r"(<strong>\s*CONDITION NOTES:\s*</strong>)\s*</p>",
-            lambda m: f"{m.group(1)} {_html.escape(notes.strip())}</p>",
+            lambda m: f"{m.group(1)} {_html.escape(notes.strip(), quote=False)}</p>",
             body, count=1,
         )
 
@@ -552,6 +552,7 @@ def plan_rows(
     templates: Optional[list[DescriptionTemplate]] = None,
     unit: str = '"',
     overwrite_existing: bool = False,
+    ignore_audit: bool = False,
     lookup_fn=find_product,
 ) -> list[RowPlan]:
     """Resolve every row into a RowPlan (match + template + rendered body + action).
@@ -581,7 +582,15 @@ def plan_rows(
                 unit=unit,
             )
 
-        action, reason = _decide_action(lk, tpl, overwrite_existing)
+        # Verify the rendered copy actually conforms to the template's contract
+        # (required sections present, no banned phrases, length bounds) before
+        # we'd ever push it. audit_description is the same checker the Shopify
+        # audit tab uses, so the two never drift.
+        audit = _h.audit_description(body_html, tpl) if tpl is not None else None
+
+        action, reason = _decide_action(
+            lk, tpl, overwrite_existing, audit, ignore_audit
+        )
         plans.append(RowPlan(
             row_index=i,
             title=mr.title or lk.title,
@@ -600,7 +609,11 @@ def plan_rows(
 
 
 def _decide_action(
-    lk: ProductLookup, tpl: Optional[DescriptionTemplate], overwrite_existing: bool
+    lk: ProductLookup,
+    tpl: Optional[DescriptionTemplate],
+    overwrite_existing: bool,
+    audit: Optional[dict] = None,
+    ignore_audit: bool = False,
 ) -> tuple[str, str]:
     if not lk.found:
         return "skip-not-found", (lk.error or "no product with this barcode/SKU")
@@ -610,4 +623,6 @@ def _decide_action(
         return "skip-no-template", "could not route to a description template"
     if lk.has_description and not overwrite_existing:
         return "skip-has-desc", "listing already has a description"
+    if audit is not None and not audit.get("passed", True) and not ignore_audit:
+        return "skip-failed-audit", "; ".join(audit.get("findings") or [])
     return "write", ""

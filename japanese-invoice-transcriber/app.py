@@ -5379,6 +5379,335 @@ def render_pricing_tab() -> None:
     )
 
 
+def render_bulk_measurements_tab() -> None:
+    """Upload a measurements CSV → match products by barcode/SKU → fill the
+    garment's copy template → write the rendered description to the live listing.
+
+    Pure logic lives in bulk_measurements.py; this is just the Streamlit shell:
+    parse → map columns → dry-run preview → explicit push (snapshotted for Undo).
+    """
+    import bulk_measurements as bm
+    from heuristics.loader import load_description_templates
+    from shopify_inventory import is_configured
+
+    st.subheader("Shopify bulk editor — measurements → descriptions")
+    st.caption(
+        "Upload a measurements sheet keyed by **barcode**. Each row is matched to "
+        "a live product, its numbers are dropped into the matching copy template, "
+        "and the rendered description is written to the listing. Listings are "
+        "expected to have **empty** descriptions — existing ones are skipped "
+        "unless you allow overwrite."
+    )
+
+    if not is_configured():
+        st.warning(
+            "Shopify isn't configured. Connect it in the **Shopify audit** tab first."
+        )
+        return
+
+    up = st.file_uploader("Measurements CSV", type=["csv"], key="bm_csv")
+    if up is None:
+        return
+    name = up.name
+
+    try:
+        headers, rows = bm.parse_measurement_csv(up.getvalue())
+    except Exception as e:  # noqa: BLE001 — surface any parse failure to the UI
+        st.error(f"Couldn't parse CSV: {e}")
+        return
+    if not rows:
+        st.info("No data rows found in the CSV.")
+        return
+
+    st.markdown(
+        f"**{len(rows)} rows** · columns: "
+        + ", ".join((repr(h) if h == "" else f"`{h}`") for h in headers)
+    )
+
+    # ── Column mapping ────────────────────────────────────────────────────
+    use_claude = st.checkbox(
+        "Use Claude (Haiku) to map columns", value=False,
+        help="Off = deterministic alias matching (works offline). On = one Haiku "
+             "call to handle unusual headers. You can override either way below.",
+    )
+    map_key = f"bm_map::{name}::{use_claude}"
+    if map_key not in st.session_state:
+        with st.spinner("Resolving columns…"):
+            st.session_state[map_key] = bm.map_columns(
+                headers, rows[:3], use_claude=use_claude
+            )
+    cm = st.session_state[map_key]
+
+    opts = ["—"] + list(headers)
+
+    def _fmt(h: str) -> str:
+        if h == "—":
+            return "(none)"
+        return "(unnamed col)" if h == "" else h
+
+    def _sel(label: str, current) -> Optional[str]:
+        cur = current if (current is not None and current in opts) else "—"
+        choice = st.selectbox(
+            label, opts, index=opts.index(cur),
+            key=f"bm_sel::{label}::{name}", format_func=_fmt,
+        )
+        return None if choice == "—" else choice
+
+    with st.expander("Column mapping", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            cm.title_col = _sel("Title", cm.title_col)
+            cm.barcode_col = _sel("Barcode", cm.barcode_col)
+            cm.sku_col = _sel("SKU (fallback)", cm.sku_col)
+        with c2:
+            cm.tagged_size_col = _sel("Tagged size", cm.tagged_size_col)
+            cm.notes_col = _sel("Condition notes", cm.notes_col)
+        if cm.measurement_map:
+            st.caption("Measurement columns → template fields:")
+            st.dataframe(
+                pd.DataFrame(
+                    [{"CSV column": k, "Field": v} for k, v in cm.measurement_map.items()]
+                ),
+                hide_index=True, width="stretch",
+            )
+        else:
+            st.warning("No measurement columns detected.")
+
+    ok, reason = cm.is_usable()
+    if not ok:
+        st.error(f"Can't proceed: {reason}.")
+        return
+
+    o1, o2 = st.columns([1, 2])
+    with o1:
+        unit_label = st.selectbox(
+            "Measurement unit", ['inches (")', "in", "cm", "(none)"], index=0,
+            help="Appended to bare numeric measurements. Non-numeric values are left as-is.",
+        )
+        unit = {'inches (")': '"', "in": " in", "cm": " cm", "(none)": ""}[unit_label]
+    with o2:
+        overwrite = st.checkbox(
+            "Overwrite listings that already have a description", value=False,
+            help="Off (default) skips any product whose description isn't empty.",
+        )
+        ignore_audit = st.checkbox(
+            "Push rows that fail the template audit", value=False,
+            help="Off (default) blocks any rendered description that's missing a "
+                 "required section, trips a banned phrase, or is out of length "
+                 "bounds. The reason shows in the preview's “Why” column.",
+        )
+
+    plans_key = f"bm_plans::{name}"
+
+    if st.button("Match & preview (dry run)", type="primary", width="stretch"):
+        templates = load_description_templates()
+        progress = st.progress(0.0, text="Matching products…")
+        plans: list = []
+
+        # plan_rows does the lookups; run it row-by-row here so we can show
+        # progress over a 100+ row sheet rather than a silent 30s spinner.
+        for i, raw in enumerate(rows):
+            sub = bm.plan_rows(
+                headers, [raw], cm, templates=templates,
+                unit=unit, overwrite_existing=overwrite, ignore_audit=ignore_audit,
+            )
+            plans.extend(sub)
+            progress.progress((i + 1) / len(rows), text=f"Matched {i+1}/{len(rows)}")
+        progress.empty()
+        st.session_state[plans_key] = plans
+
+    plans = st.session_state.get(plans_key)
+    if not plans:
+        return
+
+    # ── Dry-run preview ───────────────────────────────────────────────────
+    from collections import Counter
+    counts = Counter(p.action for p in plans)
+    writeable = [p for p in plans if p.will_write]
+
+    st.markdown("### Preview")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Will write", counts.get("write", 0))
+    m2.metric("Not found", counts.get("skip-not-found", 0))
+    m3.metric("Has description", counts.get("skip-has-desc", 0))
+    m4.metric("Failed audit / other", counts.get("skip-failed-audit", 0)
+              + counts.get("skip-no-template", 0)
+              + counts.get("skip-collision", 0))
+
+    preview_df = pd.DataFrame([
+        {
+            "Row": p.row_index + 1,
+            "Title": p.title,
+            "Barcode": p.barcode,
+            "Status": "matched" if p.lookup.found else "not found",
+            "Template": p.template_name or "—",
+            "Measurements": ", ".join(f"{k} {v}" for k, v in p.measurements.items()) or "—",
+            "Action": p.action,
+            "Why": p.reason,
+        }
+        for p in plans
+    ])
+    st.dataframe(preview_df, hide_index=True, width="stretch")
+
+    # ── Needs manual attention: not-found + failed-audit ──────────────────
+    # Always shown (even when nothing is writeable) so the user has a worklist
+    # to fix by hand. Matched-but-skipped rows get a deep link into the admin.
+    followup = [
+        p for p in plans
+        if p.action in ("skip-not-found", "skip-failed-audit",
+                        "skip-no-template", "skip-collision")
+    ]
+    if followup:
+        from shopify_inventory import get_shop
+        shop = get_shop() or ""
+        st.markdown("### Needs manual attention")
+        st.caption(
+            "Not written — go in by hand. **failed-audit** rendered a description "
+            "that tripped the template contract; **not-found** had no barcode/SKU "
+            "match; **no-template** couldn't be routed to a garment type."
+        )
+        followup_df = pd.DataFrame([
+            {
+                "Row": p.row_index + 1,
+                "Title": p.title,
+                "Barcode": p.barcode,
+                "Issue": p.action.replace("skip-", ""),
+                "Why": p.reason,
+                "Admin": (f"https://{shop}/admin/products/{p.lookup.product_id}"
+                          if (shop and p.lookup.found and p.lookup.product_id) else ""),
+            }
+            for p in followup
+        ])
+        st.dataframe(
+            followup_df, hide_index=True, width="stretch",
+            column_config={
+                "Admin": st.column_config.LinkColumn("Admin", display_text="open"),
+            },
+        )
+
+    # ── Push ──────────────────────────────────────────────────────────────
+    if not writeable:
+        st.info("Nothing to write with the current settings.")
+        return
+
+    # ── Review, edit & delete before pushing ──────────────────────────────
+    # Only body_html is ever written — the Shopify title is left untouched, and
+    # the CSV title is internal (routing + display) only. "Before" pulls each
+    # listing's current description so collisions can be debugged inline;
+    # "After (HTML)" is editable; untick "Keep" to drop a row from the push.
+    st.markdown("### Rows to write")
+    st.caption(
+        "Edit the rendered HTML inline, or untick **Keep** to skip a row. The "
+        "Shopify **title is preserved** — only the description is written."
+    )
+    editor_df = pd.DataFrame([
+        {
+            "Keep": True,
+            "Row": p.row_index + 1,
+            "Shopify title": p.lookup.title or "(kept as-is)",
+            "Barcode": p.barcode,
+            "Template": p.template_name or "—",
+            "Before": bm._strip_html(p.lookup.description_html).strip() or "(empty)",
+            "After (HTML)": p.body_html,
+        }
+        for p in writeable
+    ])
+    edited = st.data_editor(
+        editor_df, hide_index=True, width="stretch", key=f"bm_edit::{name}",
+        column_config={
+            "Keep": st.column_config.CheckboxColumn(
+                "Keep", help="Untick to skip this row on push", default=True),
+            "Row": st.column_config.NumberColumn("Row", disabled=True),
+            "Shopify title": st.column_config.TextColumn(
+                "Shopify title", disabled=True,
+                help="Left unchanged — only the description is written"),
+            "Barcode": st.column_config.TextColumn("Barcode", disabled=True),
+            "Template": st.column_config.TextColumn("Template", disabled=True),
+            "Before": st.column_config.TextColumn(
+                "Before (current desc)", disabled=True, width="medium"),
+            "After (HTML)": st.column_config.TextColumn(
+                "After (HTML — editable)", width="large"),
+        },
+    )
+    # Fold inline edits + deletions back onto the plans, in row order.
+    kept: list = []
+    for p, (_, erow) in zip(writeable, edited.iterrows()):
+        if not bool(erow["Keep"]):
+            continue
+        p.body_html = str(erow["After (HTML)"])
+        kept.append(p)
+    writeable = kept
+
+    if writeable:
+        with st.expander(f"Rendered preview ({len(writeable)})"):
+            for p in writeable[:50]:
+                st.markdown(
+                    f"**{p.lookup.title or p.title}** · {p.template_name} "
+                    f"· barcode {p.barcode}"
+                )
+                if p.lookup.description_html.strip():
+                    bcol, acol = st.columns(2)
+                    with bcol:
+                        st.caption("Before")
+                        st.html(p.lookup.description_html)
+                    with acol:
+                        st.caption("After")
+                        st.html(p.body_html)
+                else:
+                    try:
+                        st.html(p.body_html)
+                    except Exception:
+                        st.markdown(p.body_html, unsafe_allow_html=True)
+                st.divider()
+
+    if not writeable:
+        st.info("All rows unticked — nothing to push.")
+        return
+
+    st.divider()
+    st.warning(
+        f"This writes **{len(writeable)}** descriptions to the **live** Shopify "
+        "catalogue. A snapshot is taken first so you can Undo."
+    )
+    if st.button(f"Push {len(writeable)} description(s) to Shopify",
+                 type="primary", width="stretch", key="bm_push"):
+        from shopify_push import update_product_body_html
+        import snapshots as _snap
+
+        pids = [p.lookup.product_id for p in writeable]
+        with st.spinner(f"Snapshotting {len(pids)} products for Undo…"):
+            sc, sp = _snap.create_snapshot(
+                pids, label="bulk_measurements", kind="pre_apply"
+            )
+        if sc > 0:
+            st.session_state["undo_snapshot_path"] = str(sp)
+
+        succeeded = 0
+        failed: list[tuple[str, int, dict]] = []
+        progress = st.progress(0.0, text=f"Writing {len(writeable)}…")
+        for i, p in enumerate(writeable):
+            status, resp = update_product_body_html(p.lookup.product_id, p.body_html)
+            if status == 200:
+                succeeded += 1
+            else:
+                failed.append((p.title, status, resp))
+            progress.progress((i + 1) / len(writeable), text=f"{i+1}/{len(writeable)} done")
+        progress.empty()
+
+        if succeeded:
+            st.success(f"Updated {succeeded} listing(s).")
+            # Drop applied rows from the cached preview so they don't re-show.
+            done_ids = {p.lookup.product_id for p in writeable
+                        if p.title not in {t for t, _, _ in failed}}
+            st.session_state[plans_key] = [
+                pl for pl in plans if pl.lookup.product_id not in done_ids
+            ]
+        if failed:
+            st.error(f"{len(failed)} failure(s):")
+            for title, status, resp in failed[:10]:
+                st.markdown(f"- **{title}** — HTTP {status} — `{resp}`")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -5388,9 +5717,10 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, catalogue_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, catalogue_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
     "Shopify audit",
+    "Shopify bulk editor",
     "Copy formats",
     "Pricing",
     "Notes & rules",
@@ -5398,6 +5728,9 @@ home_tab, catalogue_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
 
 with catalogue_tab:
     render_shopify_catalogue_tab()
+
+with bulk_tab:
+    render_bulk_measurements_tab()
 
 with copy_tab:
     render_copy_formats_tab()
