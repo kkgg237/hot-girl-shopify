@@ -227,3 +227,21 @@
     (D&G vest: color via photo), V26031300028 (Celine set: color+style via photo). 4 anchors updated,
     snapshots regenerated, 11 tests pass. Cost ~$0.07/item.'
   related_rules: []
+- id: fb-2026-06-01-001
+  date: '2026-06-01'
+  topic: general
+  status: pending
+  quote: I want to see preview of item. it can be found via link thru Buyee when the invoice is scraped.
+    Save the HTML of the auction listing. No need to save the pics, but make it clickable if i'm curious
+    about what something looks like.
+  resolution: null
+  related_rules: []
+  last_reminded_at: null
+- id: fb-2026-06-01-002
+  date: '2026-06-01'
+  topic: general
+  status: pending
+  quote: Add a 'Tag' to each of the uploads. Make it in the format of the date of upload in 'YYYY_MM_DD'
+  resolution: null
+  related_rules: []
+  last_reminded_at: null

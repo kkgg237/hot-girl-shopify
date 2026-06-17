@@ -1,0 +1,24 @@
+{
+  "invoice": "/Users/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/buyee_W2603199548.json",
+  "stats": {
+    "total_items": 23,
+    "eligible": 11,
+    "downloaded": 9,
+    "skipped_existing": 0,
+    "skipped_ineligible": 12,
+    "errors": 2
+  },
+  "log": [
+    "b1221334014: ERROR no image found on page",
+    "q1220882046: ERROR navigate failed: Page.goto: net::ERR_ABORTED at https://buyee.jp/item/jdirectitems/auction/q1220882046\nCall log:\n  - navigating to \"https://buyee.jp/item/jdirectitems/auction/q1220882046\", waiting until \"domcontentloaded\"\n",
+    "w1220200532: 1200x900 → 200x150, 3.0 KB",
+    "d1211803410: 1024x1024 → 200x200, 3.8 KB",
+    "s1207984114: 1024x1024 → 200x200, 3.5 KB",
+    "r1199211485: 1200x900 → 200x150, 4.0 KB",
+    "l1215704505: 1024x1024 → 200x200, 3.0 KB",
+    "c1221895009: 1200x1200 → 200x200, 3.4 KB",
+    "n1221881698: 1200x1200 → 200x200, 4.6 KB",
+    "g1139158210: 1200x1200 → 200x200, 3.6 KB",
+    "o1193898519: 1200x1200 → 200x200, 3.4 KB"
+  ]
+}

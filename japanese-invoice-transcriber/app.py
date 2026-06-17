@@ -50,9 +50,14 @@ from transcribe import transcribe as transcribe_pdf
 from heuristics import (
     RULES_PATH,
     FEEDBACK_PATH,
+    DESCRIPTION_TEMPLATES_PATH,
+    DescriptionTemplate,
     append_feedback,
+    audit_description,
+    load_description_templates,
     load_feedback,
     load_rules,
+    save_description_templates,
     update_feedback_status,
 )
 
@@ -141,6 +146,38 @@ h1, h2, h3, h4, h5, h6, .display, .display-num {
 .items-heading h3 { font-family: 'Arial Nova', Arial, Helvetica, sans-serif; font-size: 1.35rem;
                     font-weight: 500; margin: 0; letter-spacing: -0.01em; }
 .items-count { font-size: 0.85rem; color: #777; }
+
+/* Global heading unifier — Streamlit's default markdown headings ship with
+   Source Sans Pro, but the rest of the app (hero metrics, item-card details,
+   inline .items-heading h3) is Arial Nova. Without this rule, every `###`
+   markdown header in a tab renders in a visibly different typeface from the
+   inline-HTML headers next to it. This pulls all Streamlit-rendered h1-h5
+   into the Arial Nova family so the audit, pricing, notes, and copy-formats
+   tabs all match. */
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4,
+[data-testid="stMarkdownContainer"] h5,
+[data-testid="stMarkdownContainer"] h6 {
+    font-family: 'Arial Nova', Arial, Helvetica, sans-serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+/* Button text compactor — Streamlit buttons default to ~1rem (16px) which
+   wraps to two lines once the label gets past ~12 chars in a narrow column
+   (the audit-tab action buttons sit at 20% row width). Shrinking to 0.82rem
+   + tighter letter-spacing keeps labels like "Run description audit" and
+   "Scan for duplicates" on one line at the standardized 20% width without
+   needing per-button label compromises. Padding is trimmed proportionally
+   so the button height tracks the new text size cleanly. */
+.stButton > button {
+    font-size: 0.82rem;
+    letter-spacing: -0.005em;
+    padding: 0.35rem 0.6rem;
+    white-space: nowrap;
+}
 
 /* Item card */
 .item-card { background: #fff; border: 1px solid #e5e5e5; padding: 1rem 1.25rem;
@@ -454,14 +491,40 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 
 @st.cache_data(show_spinner=False)
-def cached_transcribe(pdf_bytes: bytes, filename: str) -> dict:
+def cached_transcribe(
+    file_bytes: bytes, filename: str, skip_indices_tuple: tuple = (),
+) -> dict:
+    """Ingest a PDF or CSV into the same Invoice dict shape.
+
+    PDF goes through the Claude-vision transcriber (transcribe.transcribe).
+    CSV goes through csv_ingest.extract_from_csv — each row becomes a
+    LineItem unless its row_index is in `skip_indices_tuple` (the user's
+    preview-step exclusions, passed as a frozen tuple so st.cache_data
+    can hash it).
+    """
     tmp = INPUTS / filename
-    tmp.write_bytes(pdf_bytes)
-    client = anthropic.Anthropic(timeout=180.0, max_retries=2)
-    invoice = transcribe_pdf(tmp, client)
-    out = OUTPUT / f"{tmp.stem}.json"
-    out.write_text(invoice.model_dump_json(indent=2), encoding="utf-8")
-    return invoice.model_dump()
+    tmp.write_bytes(file_bytes)
+    ext = Path(filename).suffix.lower()
+    if ext == ".csv":
+        from csv_ingest import extract_from_csv
+        invoice = extract_from_csv(tmp, skip_indices=set(skip_indices_tuple))
+        data = invoice.model_dump()
+        # CSV cost is treated as already-landed USD — no handling/import
+        # uplift. Seed the rate-control widgets (the existing `_bot_*` hint
+        # pattern) so the Cost Review tab starts at 0/0 instead of the PDF
+        # defaults (10% / 15%). User can still nudge them upward in the UI.
+        data["_bot_handling_rate"] = 0.0
+        data["_bot_import_tax_rate"] = 0.0
+        out = OUTPUT / f"{tmp.stem}.json"
+        out.write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                       encoding="utf-8")
+        return data
+    else:
+        client = anthropic.Anthropic(timeout=180.0, max_retries=2)
+        invoice = transcribe_pdf(tmp, client)
+        out = OUTPUT / f"{tmp.stem}.json"
+        out.write_text(invoice.model_dump_json(indent=2), encoding="utf-8")
+        return invoice.model_dump()
 
 
 def list_transcribed() -> list[Path]:
@@ -474,8 +537,35 @@ def list_transcribed() -> list[Path]:
     files = sorted(OUTPUT.glob("*.json"))
     edited = [f for f in files if f.name.startswith("edited_")]
     originals = [f for f in files if not f.name.startswith("edited_")]
-    # Edited at top, originals below — sorted by name within each group
     return edited + originals
+
+
+@st.cache_data(show_spinner=False, ttl=60)
+def _invoice_searchable_meta(path_str: str, mtime_ns: int) -> tuple[str, str, str]:
+    """Pull (vendor, invoice_date, item_titles_blob) for picker search.
+
+    Cached on (path, mtime_ns) so re-saves invalidate automatically and
+    cache hits cost ~nothing on keystroke-triggered reruns. Item-titles
+    are smashed into one blob so a search like "burberry trench" matches
+    against any item's title even when the vendor is "Past Studies".
+
+    Returns ("", "", "") on any read error — picker still shows the file,
+    just won't match content searches.
+    """
+    try:
+        data = json.loads(Path(path_str).read_text(encoding="utf-8"))
+        vendor = (data.get("vendor_name") or "").strip()
+        date = (data.get("invoice_date") or "").strip()
+        items = data.get("items") or []
+        titles = " ".join(
+            (it.get("override_title")
+             or it.get("description_english")
+             or it.get("description_original")
+             or "") for it in items[:50]  # cap to avoid huge blobs
+        )
+        return (vendor, date, titles)
+    except Exception:
+        return ("", "", "")
 
 
 EDITED_PREFIX = "edited_"
@@ -494,6 +584,31 @@ def edited_path_for(source_file: str) -> str:
     if source_file.startswith(EDITED_PREFIX):
         return source_file
     return EDITED_PREFIX + source_file
+
+
+def _overlay_edits_from_disk(invoice_data: dict) -> dict:
+    """If an `edited_<stem>.json` sibling exists, prefer it over the in-memory dict.
+
+    `cached_transcribe` returns a frozen snapshot of the original LLM/CSV
+    output. User mutations (override_price, override_title, etc.) land in
+    `edited_<stem>.json` via `persist_invoice`, NOT back into the cache.
+    Without this overlay, every `st.rerun()` after a Save reads the cached
+    original again — so hero metrics (Expected Revenue, Gross Margin)
+    silently roll back to the pre-edit numbers even though the file on disk
+    has the new prices. The user sees stale totals despite a "Saved" toast.
+
+    Idempotent: if `__source_file` already points at the edited file, the
+    overlay is a no-op (we just re-read the same JSON).
+    """
+    src = invoice_data.get("__source_file")
+    if not src:
+        return invoice_data
+    edited_file = OUTPUT / edited_path_for(src)
+    if not edited_file.exists():
+        return invoice_data
+    on_disk = json.loads(edited_file.read_text(encoding="utf-8"))
+    on_disk["__source_file"] = edited_file.name
+    return on_disk
 
 
 def persist_invoice(invoice_data: dict) -> Path:
@@ -550,40 +665,74 @@ def _str_edit(new_val, old_val):
     return None
 
 
-def apply_cost_edits(invoice_data: dict, edited_df) -> int:
+def apply_cost_edits(invoice_data: dict, edited_df, input_df=None) -> dict:
     """Diff the Cost-tab DataFrame back onto invoice_data['items'] by source_id.
-    Returns count of items changed."""
-    by_sid = {row["source_id"]: row for _, row in edited_df.iterrows()}
-    changed = 0
+
+    Returns a per-field counts dict for the Save toast.
+
+    Critical: edit-detection compares the EDITED DataFrame against the INPUT
+    DataFrame (what was rendered into the data_editor in the first place),
+    NOT against `compose_title(item)` or the item's current fields. Why:
+    `compose_title` respects an existing override_title, so its output can
+    coincidentally equal the user's typed value and silently suppress the
+    save. The data_editor knows what it gave the user — we trust that
+    snapshot. Pass `input_df` to enable this safe path; if omitted, falls
+    back to the legacy compose-title comparison (which has the bug, but
+    keeps the function callable by any older test harness).
+    """
+    by_sid_edit = {row["source_id"]: row for _, row in edited_df.iterrows()}
+    by_sid_orig = (
+        {row["source_id"]: row for _, row in input_df.iterrows()}
+        if input_df is not None else {}
+    )
+    counts = {"title": 0, "brand": 0, "structured": 0, "qty": 0,
+              "total": 0, "matched_rows": 0}
     for item in invoice_data["items"]:
-        new = by_sid.get(item["source_id"])
+        new = by_sid_edit.get(item["source_id"])
         if new is None:
             continue
+        counts["matched_rows"] += 1
+        orig = by_sid_orig.get(item["source_id"])  # may be None on legacy path
         dirty = False
 
         # brand (treat "Vintage" as "clear it")
         new_brand = (new.get("brand") or "").strip()
         cur_brand = (item.get("detected_brand") or "").strip()
         if new_brand == "Vintage" and cur_brand:
-            item["detected_brand"] = None; dirty = True
+            item["detected_brand"] = None; dirty = True; counts["brand"] += 1
         elif new_brand and new_brand != "Vintage" and new_brand != cur_brand:
-            item["detected_brand"] = new_brand; dirty = True
+            item["detected_brand"] = new_brand; dirty = True; counts["brand"] += 1
 
-        # proposed title — becomes override_title if it differs from baseline
+        # Proposed title → override_title. Compare to the INPUT DataFrame's
+        # value for this row — if it changed in the data_editor, save it.
+        # No compose_title round-trip (which was eating edits whenever
+        # compose's output coincided with the user's typed string).
         new_title = (new.get("proposed title") or "").strip()
-        if new_title:
+        orig_title = (
+            (orig.get("proposed title") or "").strip() if orig is not None else ""
+        )
+        title_changed = (new_title != orig_title) if orig is not None else False
+        # Legacy fallback (input_df not provided): use compose_title and
+        # accept the original ambiguity — better than silent failure.
+        if orig is None and new_title:
+            title_changed = (new_title != compose_title_safe(item))
+
+        if title_changed and new_title:
             from costs import LineItem as _LI
             from pricing import compose_title as _ct
             tmp = {k: v for k, v in item.items() if k in _LI.model_fields.keys()}
             tmp["override_title"] = None
             baseline = _ct(_LI(**tmp))
-            if new_title != baseline:
-                if new_title != item.get("override_title"):
-                    item["override_title"] = new_title; dirty = True
-                    log_title_correction(item, baseline, new_title,
-                                          invoice_data.get("__source_file", "unknown"))
-            elif item.get("override_title"):
-                item["override_title"] = None; dirty = True
+            item["override_title"] = new_title
+            dirty = True
+            counts["title"] += 1
+            log_title_correction(item, baseline, new_title,
+                                  invoice_data.get("__source_file", "unknown"))
+        elif title_changed and not new_title and item.get("override_title"):
+            # Cell cleared → drop the override and let compose_title rebuild
+            item["override_title"] = None
+            dirty = True
+            counts["title"] += 1
 
         for k, field in [("qty", "quantity"), ("product_type", "product_type"),
                          ("material", "material"), ("garment_length", "garment_length"),
@@ -595,25 +744,84 @@ def apply_cost_edits(invoice_data: dict, edited_df) -> int:
                 if field == "quantity":
                     v = int(new[k]) if new[k] else 1
                     if v != item.get("quantity", 1):
-                        item["quantity"] = v; dirty = True
+                        item["quantity"] = v; dirty = True; counts["qty"] += 1
                 else:
                     changed_field = _str_edit(new[k], item.get(field))
                     if changed_field is not None or (not new[k] and item.get(field)):
                         item[field] = (new[k] or None) if isinstance(new[k], str) else new[k]
-                        dirty = True
+                        dirty = True; counts["structured"] += 1
         if dirty:
-            changed += 1
-    return changed
+            counts["total"] += 1
+    return counts
 
 
-def apply_pricing_edits(invoice_data: dict, edited_df) -> int:
-    """Apply edits from the Pricing-tab DataFrame."""
+def compose_title_safe(item_dict: dict) -> str:
+    """compose_title that takes a raw item dict (as stored in invoice_data)
+    and safely constructs a LineItem for it. Returns "" on any error."""
+    try:
+        from costs import LineItem as _LI
+        from pricing import compose_title as _ct
+        fields = {k: v for k, v in item_dict.items() if k in _LI.model_fields.keys()}
+        return _ct(_LI(**fields))
+    except Exception:
+        return ""
+
+
+def _coerce_price_int(raw) -> int | None:
+    """Parse a Variant Price cell into a positive int, or None if unparseable.
+
+    Streamlit's data_editor (NumberColumn with format="$%d") returns int-like
+    values for clean edits, but in practice you also see:
+      - pandas NaN for cleared cells (int(nan) raises ValueError)
+      - numpy.float64(150.0) — int() works, but isnan check needs care
+      - strings like "$150" or "150.00" if Streamlit ever leaks the format
+    Earlier the price-edit branch silently swallowed all of these as "no
+    change", which is the user-facing "saved nothing" symptom. This helper
+    consolidates the coercion so price/cost edits always survive a round-trip.
+    """
+    if raw is None:
+        return None
+    try:
+        import math
+        if isinstance(raw, float) and math.isnan(raw):
+            return None
+    except Exception:
+        pass
+    # pandas NaN / numpy NaN: catch via pd.isna without forcing pandas import
+    try:
+        import pandas as _pd
+        if _pd.isna(raw):
+            return None
+    except Exception:
+        pass
+    if isinstance(raw, str):
+        raw = raw.replace("$", "").replace(",", "").strip()
+        if not raw:
+            return None
+    try:
+        n = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def apply_pricing_edits(invoice_data: dict, edited_df) -> dict:
+    """Apply edits from the Pricing-tab DataFrame.
+
+    Returns a per-field breakdown so the Save toast can show exactly what
+    was detected — e.g. `{"price": 3, "title": 0, "vendor": 1, "type": 0,
+    "total": 4}`. Earlier this returned just an int, which hid the case
+    where a user thought they were editing prices but the price-detection
+    branch silently swallowed the input (NaN, leading $, etc.).
+    """
     by_sid = {row["Source ID"]: row for _, row in edited_df.iterrows()}
-    changed = 0
+    counts = {"price": 0, "title": 0, "vendor": 0, "type": 0, "total": 0,
+              "matched_rows": 0}
     for item in invoice_data["items"]:
         new = by_sid.get(item["source_id"])
         if new is None:
             continue
+        counts["matched_rows"] += 1
         dirty = False
 
         # Title override
@@ -627,10 +835,12 @@ def apply_pricing_edits(invoice_data: dict, edited_df) -> int:
             if new_title != baseline:
                 if new_title != item.get("override_title"):
                     item["override_title"] = new_title; dirty = True
+                    counts["title"] += 1
                     log_title_correction(item, baseline, new_title,
                                           invoice_data.get("__source_file", "unknown"))
             elif item.get("override_title"):
                 item["override_title"] = None; dirty = True
+                counts["title"] += 1
 
         # Vendor override
         new_vendor = (new.get("Vendor") or "").strip()
@@ -638,28 +848,29 @@ def apply_pricing_edits(invoice_data: dict, edited_df) -> int:
         if new_vendor == "Vintage":
             if item.get("override_vendor"):
                 item["override_vendor"] = None; dirty = True
+                counts["vendor"] += 1
         elif new_vendor and new_vendor != default_vendor:
             if new_vendor != (item.get("override_vendor") or ""):
                 item["override_vendor"] = new_vendor; dirty = True
+                counts["vendor"] += 1
         elif new_vendor == default_vendor and item.get("override_vendor"):
             item["override_vendor"] = None; dirty = True
+            counts["vendor"] += 1
 
         # Product type
         new_type = (new.get("Type") or "").strip()
         if new_type != (item.get("product_type") or "").strip():
             item["product_type"] = new_type or None; dirty = True
+            counts["type"] += 1
 
-        # Price override
-        new_price = new.get("Variant Price")
-        try:
-            np_int = int(new_price) if new_price is not None else None
-        except (TypeError, ValueError):
-            np_int = None
-        if np_int and np_int > 0 and np_int != (item.get("override_price") or 0):
+        # Price override (uses _coerce_price_int to survive NaN / "$" / floats)
+        np_int = _coerce_price_int(new.get("Variant Price"))
+        if np_int is not None and np_int != (item.get("override_price") or 0):
             item["override_price"] = np_int; dirty = True
+            counts["price"] += 1
         if dirty:
-            changed += 1
-    return changed
+            counts["total"] += 1
+    return counts
 
 
 def compute_rows(
@@ -753,6 +964,22 @@ def build_shopify_csv(
     used_handles: set[str] = set()
     collision_log: list[dict] = []
     all_rows: list[dict] = []
+
+    # Load once per export — both lookups are batched against every item.
+    # Catch ImportError so a broken heuristics/taxonomy file doesn't break
+    # the legacy CSV export path.
+    _templates = _taxonomy = None
+    try:
+        from heuristics import load_description_templates
+        _templates = load_description_templates()
+    except Exception:
+        pass
+    try:
+        from shopify_taxonomy import load_taxonomy
+        _taxonomy = load_taxonomy()
+    except Exception:
+        pass
+
     for item in priced["items"]:
         all_rows.extend(item_to_rows(
             item, priced, priced["__source_file"], used_skus,
@@ -760,6 +987,8 @@ def build_shopify_csv(
             existing_skus=existing_skus,
             existing_handles=existing_handles,
             collision_log=collision_log,
+            templates=_templates,
+            taxonomy=_taxonomy,
         ))
 
     buf = io.StringIO()
@@ -847,23 +1076,25 @@ def render_buyee_sync_panel():
         badge_parts.append("Telegram bot configured")
     badge = " · " + " · ".join(badge_parts) if badge_parts else ""
 
-    with st.expander(f"📦  Sync invoices from Buyee{badge}", expanded=False):
+    with st.expander(f"Sync invoices from Buyee{badge}", expanded=False):
         if not SESSION_PATH.exists():
             st.warning(
-                "**No Buyee session saved.** First time? Run this in a terminal "
-                "to log in once:\n\n"
-                "```\nuv run --with playwright --with pydantic python -m buyee login\n```\n\n"
-                "A browser will open. Log in (including any 2FA), navigate to "
-                "https://buyee.jp/mybaggages/shipped/1, then return to the terminal "
-                "and press Enter. Your session cookies will be saved locally."
+                "**No Buyee session saved.** Run in a terminal once: "
+                "`uv run --with playwright --with pydantic python -m buyee login` "
+                "→ log in (incl. 2FA) → return to terminal → press Enter."
             )
             return
 
+        # Action row: sync + session-check + pages-to-scan in one line.
+        # Recent-orders list dropped — duplicates the Incoming PDFs panel
+        # below. Inline photo-scraper dropped — was a mixed concern (about
+        # the currently loaded invoice, not about Buyee sync) and auto-
+        # photo-fetch already runs in the transcribe path.
         c1, c2, c3 = st.columns([1, 1, 2])
         with c1:
-            sync_clicked = st.button("🔄 Sync now", type="primary", use_container_width=True)
+            sync_clicked = st.button("Sync now", type="primary", width="stretch")
         with c2:
-            check_clicked = st.button("Check session", use_container_width=True)
+            check_clicked = st.button("Check session", width="stretch")
         with c3:
             max_pages = st.number_input("Max pages", min_value=1, max_value=50,
                                         value=5, label_visibility="collapsed",
@@ -874,10 +1105,7 @@ def render_buyee_sync_panel():
                 ok, msg = is_session_valid()
             (st.success if ok else st.error)(msg)
             if not ok:
-                st.info(
-                    "Run `uv run --with playwright --with pydantic python -m buyee login` "
-                    "to refresh your session."
-                )
+                st.caption("Refresh: `uv run --with playwright --with pydantic python -m buyee login`")
 
         if sync_clicked:
             with st.spinner(f"Scanning {max_pages} page(s) of shipped baggages…"):
@@ -888,108 +1116,40 @@ def render_buyee_sync_panel():
                     return
                 except Exception as e:
                     st.error(f"Sync failed: {e}")
-                    st.caption("If this is a session issue, re-run `python -m buyee login` "
-                               "in your terminal.")
+                    st.caption("If session-related, re-run `python -m buyee login` in your terminal.")
                     return
 
             ok = stats["errors"] == 0
             (st.success if ok else st.warning)(
                 f"Pages: {stats['pages_visited']} · "
-                f"Seen: {stats['seen']} · "
-                f"New: {stats['new']} · "
-                f"Downloaded: {stats['downloaded']} · "
-                f"Errors: {stats['errors']}"
+                f"Seen: {stats['seen']} · New: {stats['new']} · "
+                f"Downloaded: {stats['downloaded']} · Errors: {stats['errors']}"
             )
             if stats["downloaded"]:
-                st.info(
-                    f"{stats['downloaded']} new invoice(s) saved to `inputs/buyee/`. "
-                    f"Use the file uploader below or pick from the transcribed list "
-                    f"after running transcription."
+                st.caption(
+                    f"{stats['downloaded']} new invoice(s) → `inputs/buyee/`. "
+                    f"They'll appear in the Incoming PDFs panel below."
                 )
             if stats["seen"] == 0:
                 st.warning(
-                    "No orders parsed from the page. The selectors in "
-                    "`buyee/scraper.py` may need refinement — see "
-                    "`buyee/state/raw_html/shipped_1.html` for what was actually returned."
+                    "No orders parsed. Selectors in `buyee/scraper.py` may need "
+                    "refinement — see `buyee/state/raw_html/shipped_1.html`."
                 )
 
-        # Recent index summary
-        if total > 0:
-            recent = idx.all()[:5]
-            st.markdown("**Recent orders**")
-            for o in recent:
-                status = "✓" if o.is_downloaded else "·"
-                bits = [f"`{o.order_id}`"]
-                if o.shipped_at:
-                    bits.append(o.shipped_at)
-                if o.pdf_path:
-                    bits.append(f"→ `{o.pdf_path}`")
-                st.markdown(f"  {status} {' · '.join(bits)}")
-
-        # ------------------------------------------------------------------
-        # Photo scraper — small, only relevant for Buyee invoices currently
-        # loaded. Surfaces directly here so user doesn't have to drop to CLI.
-        # ------------------------------------------------------------------
-        try:
-            current_invoice = st.session_state.get("__current_invoice_path")
-            if current_invoice:
-                from buyee.photo_scraper import fetch_invoice_photos, is_eligible
-                from pathlib import Path as _P
-                inv_path = _P(current_invoice)
-                if inv_path.exists():
-                    inv_data = json.loads(inv_path.read_text(encoding="utf-8"))
-                    eligible = sum(
-                        1 for it in inv_data.get("items", [])
-                        if is_eligible(it.get("source_id"))
-                    )
-                    if eligible:
-                        st.markdown("---")
-                        c1, c2 = st.columns([3, 1])
-                        with c1:
-                            st.markdown(
-                                f"**📷 Photo thumbnails** — "
-                                f"{eligible} of {len(inv_data.get('items', []))} items have "
-                                f"Buyee auction pages with photos."
-                            )
-                            st.caption("~3-5 sec per item, free. Cached after first fetch.")
-                        with c2:
-                            if st.button("Fetch photos", key="fetch_photos", use_container_width=True):
-                                with st.spinner(f"Fetching {eligible} photo(s)..."):
-                                    stats = fetch_invoice_photos(inv_path)
-                                if stats["errors"] == 0:
-                                    st.success(
-                                        f"✓ {stats['downloaded']} new, "
-                                        f"{stats['skipped_existing']} cached, "
-                                        f"{stats['skipped_ineligible']} ineligible"
-                                    )
-                                else:
-                                    st.warning(
-                                        f"{stats['downloaded']} downloaded, {stats['errors']} errors"
-                                    )
-                                st.rerun()
-        except Exception:
-            pass  # photo panel is bonus; don't block on errors
-
-        st.markdown("---")
-        st.markdown("**📱 Trigger sync from your phone (Telegram)**")
+        # Telegram footer — collapses to one line when configured; the long
+        # 4-step setup wall only appears for first-time setup (which the user
+        # does once, then never sees again).
+        st.divider()
         if cfg.telegram_configured:
-            st.success(
-                "Telegram bot configured. Send `sync` to your bot from any phone "
-                "to trigger a sync remotely."
-            )
-            st.caption(
-                "Listener must be running. Start it with `python -m buyee listen` "
-                "or install as a background service via "
-                "`bash buyee/launchd/install.sh` (macOS)."
-            )
+            st.caption("Configured — send `sync` to your bot to trigger remotely.")
         else:
-            st.info(
-                "**Not configured.** To trigger syncs by sending a Telegram message:\n\n"
-                "1. Run in a terminal: `uv run --with playwright --with pydantic python -m buyee setup`\n"
-                "2. Follow the wizard — creates a bot via @BotFather, authorizes your phone\n"
-                "3. Run `uv run --with playwright --with pydantic python -m buyee listen` to start receiving messages\n"
-                "4. (Optional) `bash buyee/launchd/install.sh` to keep listener running automatically"
-            )
+            with st.expander("Set up Telegram triggering (optional)", expanded=False):
+                st.markdown(
+                    "Sync from your phone by sending a message:\n"
+                    "1. `uv run --with playwright --with pydantic python -m buyee setup` — wizard creates a bot via @BotFather, authorizes your phone\n"
+                    "2. `uv run --with playwright --with pydantic python -m buyee listen` — start receiving messages\n"
+                    "3. *(optional)* `bash buyee/launchd/install.sh` — keep listener running across reboots"
+                )
 
 
 def render_incoming_panel():
@@ -1031,7 +1191,7 @@ def render_incoming_panel():
     elif pdfs:
         badge = f" · all {len(pdfs)} processed"
 
-    with st.expander(f"📥  Incoming PDFs{badge}", expanded=bool(pending)):
+    with st.expander(f"Incoming PDFs{badge}", expanded=False):
         st.caption(
             "PDFs found in `inputs/` and `samples/`. Pending items don't have a "
             "matching JSON in `output/` yet — they may be mid-transcription, "
@@ -1054,7 +1214,7 @@ def render_incoming_panel():
                     st.markdown(f"`{rel}`  ·  {size_kb} KB  ·  {age_str}")
                 with col2:
                     if st.button("Transcribe", key=f"trx_{pdf.name}",
-                                  use_container_width=True):
+                                  width="stretch"):
                         with st.spinner(f"Transcribing {pdf.name}…"):
                             try:
                                 client = anthropic.Anthropic(timeout=180.0, max_retries=2)
@@ -1065,7 +1225,7 @@ def render_incoming_panel():
                                                ensure_ascii=False, indent=2) + "\n",
                                     encoding="utf-8",
                                 )
-                                msg = f"✓ Transcribed → `output/{out.name}`."
+                                msg = f"Transcribed → `output/{out.name}`."
                                 # Auto-fetch photos (first one each) for eligible items.
                                 # Single-shot — same as the Telegram doc flow.
                                 try:
@@ -1083,13 +1243,23 @@ def render_incoming_panel():
                                     pass  # photos are best-effort; never block transcribe
                                 st.success(msg + " Refresh and pick from the dropdown.")
                             except Exception as e:
-                                st.error(f"✗ Transcribe failed: {e}")
+                                st.error(f"Transcribe failed: {e}")
 
         if processed:
-            with st.expander(f"✓ Processed ({len(processed)})", expanded=False):
-                for pdf in processed[:30]:
-                    rel = pdf.relative_to(BASE)
-                    st.markdown(f"  ✓ `{rel}` → `output/{pdf.stem}.json`")
+            # Was a nested expander — Streamlit doesn't officially support
+            # nested expanders and the list is redundant anyway since every
+            # processed PDF is in the picker dropdown below. Replaced with
+            # a single caption + show-on-demand toggle.
+            if pending:
+                st.caption(
+                    f"{len(processed)} also processed — pick from the "
+                    f"transcribed dropdown below."
+                )
+            else:
+                st.success(
+                    f"All {len(processed)} discovered PDF(s) transcribed. "
+                    f"Pick one from the dropdown below to edit, or upload a new file."
+                )
 
 
 def render_source_picker():
@@ -1097,36 +1267,135 @@ def render_source_picker():
     render_incoming_panel()
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        uploaded = st.file_uploader("Upload invoice PDF", type=["pdf"])
+        uploaded = st.file_uploader(
+            "Upload invoice PDF or inventory CSV",
+            type=["pdf", "csv"],
+            help=(
+                "PDF: Buyee auction or vendor invoice — extracted via Claude vision. "
+                "CSV: Shopify-shaped product list (Title / Vendor / Cost per Item / Qty). "
+                "If your CSV costs are already landed, drop Handling/Import rates to 0 "
+                "in the Cost controls after upload."
+            ),
+        )
     with col_b:
         existing = list_transcribed()
         # Group: edited variants first (your working copies), then originals
         # (raw transcriptions). Visual prefix in the labels makes the
         # distinction obvious without committing to grouped <optgroup>
         # which Streamlit's selectbox doesn't support.
+        #
+        # Each labelled entry is (filename, display_label, search_haystack).
+        # The haystack folds in the vendor + invoice date + item titles
+        # pulled via the cached _invoice_searchable_meta helper, so the
+        # search box matches on substance ("burberry trench") not just
+        # filename ("260425-DKC-Past Studies_Second hand__INVOICE.json").
         labelled = []
         for p in existing:
+            try:
+                mtime_ns = p.stat().st_mtime_ns
+            except OSError:
+                mtime_ns = 0
+            vendor, date, titles = _invoice_searchable_meta(str(p), mtime_ns)
             if p.name.startswith("edited_"):
-                labelled.append((p.name, f"✎  {p.name[len('edited_'):]}"))
+                label = f"✎  {p.name[len('edited_'):]}"
             else:
-                labelled.append((p.name, f"○  {p.name}  (original)"))
-        options = ["— pick transcribed —"] + [label for _, label in labelled]
-        value_for_label = {label: name for name, label in labelled}
+                label = f"○  {p.name}  (original)"
+            haystack = f"{p.name} {vendor} {date} {titles}".lower()
+            labelled.append((p.name, label, haystack))
+
+        # Search box — case-insensitive substring across filename, vendor,
+        # invoice date, and item titles. Placed above the selectbox so
+        # filtering the dropdown's options list is a single keystroke away.
+        search = st.text_input(
+            "Search transcribed invoices",
+            placeholder=f"Search {len(labelled)} invoices by name, vendor, date, or item…",
+            key="picker_search",
+            label_visibility="collapsed",
+        ).strip().lower()
+
+        if search:
+            filtered = [t for t in labelled if search in t[2]]
+        else:
+            filtered = labelled
+
+        options = ["— pick transcribed —"] + [label for _, label, _ in filtered]
+        value_for_label = {label: name for name, label, _ in filtered}
         value_for_label["— pick transcribed —"] = None
 
         # URL ?source=<filename.json> deep-links to a transcribed invoice
         preselected = st.query_params.get("source")
         default_idx = 0
         if preselected:
-            for i, (name, _) in enumerate(labelled, start=1):
+            for i, (name, _, _) in enumerate(filtered, start=1):
                 if name == preselected:
                     default_idx = i
                     break
-        picked_label = st.selectbox(
-            "Or pick a transcribed invoice", options, index=default_idx,
-            help="✎ = edited (your working copy) · ○ = original (raw transcription, kept for audit)",
-        )
-        picked = value_for_label.get(picked_label)
+
+        if search and len(filtered) == 0:
+            # Better feedback than an empty dropdown — caption + skip the
+            # selectbox altogether when there are zero matches.
+            st.caption(f"No matches for **{search}** across {len(labelled)} invoices.")
+            picked = None
+        else:
+            select_label = (
+                f"Or pick a transcribed invoice  ·  showing {len(filtered)} of {len(labelled)}"
+                if search else "Or pick a transcribed invoice"
+            )
+            picked_label = st.selectbox(
+                select_label, options, index=default_idx,
+                help="✎ = edited (your working copy) · ○ = original (raw transcription, kept for audit)",
+            )
+            picked = value_for_label.get(picked_label)
+
+        # Delete-the-picked-invoice control. Two-click confirm so a stray
+        # click doesn't nuke a working copy. Clearing st.cache_data on
+        # cached_transcribe forces a fresh ingest if the same CSV/PDF is
+        # re-uploaded right after.
+        if picked:
+            confirm_key = f"_confirm_delete::{picked}"
+            confirmed = st.session_state.get(confirm_key, False)
+            del_cols = st.columns([3, 2])
+            with del_cols[0]:
+                if not confirmed:
+                    if st.button(
+                        "Delete this transcription",
+                        key=f"del_btn::{picked}",
+                        width="stretch",
+                        help="Removes the JSON file from output/ and clears the "
+                             "ingest cache so re-uploading the same source "
+                             "produces a fresh result.",
+                    ):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+            with del_cols[1] if not confirmed else del_cols[0]:
+                if confirmed:
+                    if st.button(
+                        f"Confirm delete {picked}",
+                        key=f"del_confirm::{picked}",
+                        type="primary",
+                        width="stretch",
+                    ):
+                        target = OUTPUT / picked
+                        try:
+                            if target.exists():
+                                target.unlink()
+                        except OSError as e:
+                            st.error(f"Couldn't delete: {e}")
+                        else:
+                            # Also wipe the in-memory ingest cache so a
+                            # re-upload doesn't return the deleted bytes.
+                            try:
+                                cached_transcribe.clear()
+                            except Exception:
+                                pass
+                            st.session_state.pop(confirm_key, None)
+                            st.success(f"Deleted {picked}.")
+                            st.rerun()
+            if confirmed:
+                if st.button("Cancel", key=f"del_cancel::{picked}",
+                             type="tertiary", width="content"):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
     return uploaded, picked
 
 
@@ -1141,11 +1410,67 @@ def render_meta(invoice_data: dict):
     spans = "".join(f'<span><span class="k">{k}</span><span class="v">{v}</span></span>' for k, v in bits)
     st.markdown(f'<div class="meta-row">{spans}</div>', unsafe_allow_html=True)
 
+    # Photo-fetch trigger — moved here from the Buyee sync panel (which was
+    # the wrong place; it's about THIS invoice, not Buyee scraping). Renders
+    # ONLY when there are Buyee-eligible items whose photo isn't cached yet,
+    # so it's invisible noise on non-Buyee invoices or fully-cached ones.
+    # Auto-fetch runs at transcribe-time; this button covers older invoices
+    # transcribed before auto-fetch existed, or where the fetch was skipped.
+    try:
+        from buyee.photo_scraper import (
+            fetch_invoice_photos, is_eligible, photo_for as _photo_for,
+        )
+        items = invoice_data.get("items", []) or []
+        source_file = invoice_data.get("__source_file", "")
+        if not source_file:
+            return
+        stem = Path(source_file).stem
+        if stem.startswith("edited_"):
+            stem = stem[len("edited_"):]
+        eligible_ids = [it.get("source_id") for it in items
+                        if it.get("source_id") and is_eligible(it.get("source_id"))]
+        if not eligible_ids:
+            return
+        missing = [sid for sid in eligible_ids if not _photo_for(stem, sid)]
+        if not missing:
+            return
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.caption(
+                f"{len(missing)} of {len(eligible_ids)} Buyee items "
+                f"missing cached photos · ~3-5 sec/item, free."
+            )
+        with c2:
+            if st.button("Fetch photos", key=f"fetch_photos_{stem}",
+                         width="stretch", type="secondary"):
+                inv_path = OUTPUT / source_file
+                with st.spinner(f"Fetching {len(missing)} photo(s)…"):
+                    pstats = fetch_invoice_photos(inv_path)
+                if pstats["errors"] == 0:
+                    st.success(
+                        f"{pstats['downloaded']} new, "
+                        f"{pstats['skipped_existing']} cached"
+                    )
+                else:
+                    st.warning(
+                        f"{pstats['downloaded']} downloaded, {pstats['errors']} errors"
+                    )
+                st.rerun()
+    except Exception:
+        pass  # photo trigger is opportunistic — never block the page
+
 
 def render_hero(recon: dict, total_price: int, items: list, currency: str):
     landed = recon["landed_usd_sum"]
     margin = total_price - landed
-    margin_pct = (margin / landed * 100) if landed else 0
+    # Gross margin = margin / revenue (NOT margin / cost). The latter is
+    # markup — same dollar margin, different denominator, and it makes the
+    # hero number look ~20pp better than the per-item "Margin %" column
+    # (which correctly divides by price). Keeping them consistent matters:
+    # the user spot-checks the hero against the row %s and rightly notices
+    # when they don't agree.
+    gm_pct = (margin / total_price * 100) if total_price else 0
+    markup_pct = (margin / landed * 100) if landed else 0
     # Effective markup: rounded_price / unit_cost_usd. This respects manual
     # price overrides (where p.markup is stale — it's the algorithm's
     # intended markup, not what actually got applied).
@@ -1172,7 +1497,7 @@ def render_hero(recon: dict, total_price: int, items: list, currency: str):
       <div class="hero-cell">
         <div class="hero-label">Gross margin</div>
         <div class="hero-value">{fmt_usd(margin)}</div>
-        <div class="hero-sub">+{margin_pct:.0f}% over cost · avg effective markup {avg_markup:.2f}×{f' · {overrides} override(s)' if overrides else ''}</div>
+        <div class="hero-sub">{gm_pct:.0f}% of revenue · {markup_pct:.0f}% markup · avg {avg_markup:.2f}×{f' · {overrides} override(s)' if overrides else ''}</div>
       </div>
       <div class="hero-cell">
         <div class="hero-label">Invoice total</div>
@@ -1487,7 +1812,7 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
 
     edited = st.data_editor(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=col_config,
         disabled=disabled_cols,
@@ -1501,16 +1826,63 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
         if not edited.equals(df):
             st.caption("✎ Unsaved edits — click Save to write back to the JSON.")
     with sc2:
-        if st.button("Save edits", key="save_cost", type="primary", use_container_width=True):
-            changes = apply_cost_edits(inv_data_ref, edited)
-            if changes:
+        if st.button("Save edits", key="save_cost", type="primary", width="stretch"):
+            # Pass the INPUT df too so edit-detection compares edited-vs-input
+            # rather than edited-vs-compose_title(item). The compose path was
+            # silently dropping edits whenever compose's output coincided
+            # with the user's typed string.
+            counts = apply_cost_edits(inv_data_ref, edited, input_df=df)
+            if counts["total"]:
                 path = persist_invoice(inv_data_ref)
-                st.success(f"Saved {changes} item(s) → {path.name}.")
-                # Auto-recompute everything (margins, hero totals, etc.)
-                # without requiring the user to manually reload.
+                bits = [
+                    f"{counts[k]} {k}" for k in ("title", "brand", "structured", "qty")
+                    if counts[k]
+                ]
+                detail = ", ".join(bits) or "no field changes detected"
+                st.success(f"Saved {counts['total']} item(s) ({detail}) → {path.name}.")
                 st.rerun()
+            elif counts["matched_rows"] == 0:
+                st.error(
+                    "Couldn't match any rows back to invoice items by source_id. "
+                    "Refresh the page; if it persists, the source_id column may "
+                    "have been renamed upstream."
+                )
             else:
-                st.info("No changes to save.")
+                # DEBUG dump — if apply_cost_edits matched all rows but
+                # found zero changes, surface a side-by-side of the input
+                # df vs the edited df for the title column so we can SEE
+                # whether the data_editor actually captured anything.
+                # Either the user clicked Save without blurring the cell
+                # (Streamlit quirk) OR the data_editor is silently dropping
+                # edits to the "proposed title" column.
+                st.warning("No changes detected — diagnostic dump below.")
+                with st.expander("🔬 Title column: before-edit vs after-edit", expanded=True):
+                    try:
+                        cmp_rows = []
+                        for i in range(min(len(df), len(edited))):
+                            before = df.iloc[i].get("proposed title", "")
+                            after = edited.iloc[i].get("proposed title", "")
+                            cmp_rows.append({
+                                "row": i + 1,
+                                "source_id": df.iloc[i].get("source_id", ""),
+                                "input → editor": before,
+                                "← returned by editor": after,
+                                "differ?": "YES" if before != after else "—",
+                            })
+                        st.dataframe(
+                            pd.DataFrame(cmp_rows), hide_index=True,
+                            width="stretch",
+                        )
+                        st.caption(
+                            "If every row's `differ?` says '—' even after you typed "
+                            "in a cell, the cell-commit-on-blur quirk is the cause: "
+                            "click outside the edited cell (Tab or click any non-cell "
+                            "area) BEFORE clicking Save. If one or more rows say "
+                            "YES but apply_cost_edits still reported 0 changes, "
+                            "screenshot this and send it — there's a deeper bug."
+                        )
+                    except Exception as _diag_err:
+                        st.caption(f"(Diagnostic dump failed: {_diag_err})")
 
     # 6. Totals strip below the table
     sum_price = sum(r[f"item price ({ccy})"] for r in rows)
@@ -1656,7 +2028,7 @@ def render_shopify_inventory_panel():
     cached = load_cached_inventory()
 
     with st.expander(
-        f"🛍️  Shopify inventory check"
+        f"Shopify inventory check"
         + (f"  ·  {cached.product_count} products cached, last refreshed {cached.humanize_age()}"
            if cached and cached.is_loaded else "  ·  not configured" if not is_configured() else "  ·  not yet fetched"),
         expanded=False,
@@ -1722,15 +2094,15 @@ def render_shopify_inventory_panel():
             else:
                 st.info("No inventory cached yet. Click Refresh to fetch.")
         with c2:
-            if st.button("🔄 Refresh", key="shopify_refresh", use_container_width=True):
+            if st.button("Refresh", key="shopify_refresh", width="stretch"):
                 with st.spinner("Fetching from Shopify..."):
                     fresh = fetch_inventory_live()
                 if fresh.error:
-                    st.error(f"✗ {fresh.error}")
+                    st.error(f"{fresh.error}")
                 else:
                     save_inventory_cache(fresh)
                     st.success(
-                        f"✓ Fetched {fresh.product_count} products, "
+                        f"Fetched {fresh.product_count} products, "
                         f"{len(fresh.skus)} SKUs."
                     )
                     st.rerun()
@@ -1765,8 +2137,12 @@ def render_shopify_catalogue_tab() -> None:
     cached = load_cached_inventory()
 
     # ----- 1. Connection / cache status -----------------------------------
+    # Column ratio [4, 1] puts the Refresh-cache button at 1/5 of row width —
+    # matches the Scan-now, Scan-for-duplicates, and Run-description-audit
+    # buttons below so all four primary actions on this tab render the same
+    # size regardless of how many controls share their row.
     st.markdown("### Connection")
-    c1, c2 = st.columns([3, 1])
+    c1, c2 = st.columns([4, 1])
     with c1:
         st.markdown(f"**Shop:** `{get_shop()}`")
         if cached and cached.is_loaded:
@@ -1781,16 +2157,16 @@ def render_shopify_catalogue_tab() -> None:
                 "and doesn't depend on the cache."
             )
     with c2:
-        if st.button("🔄 Refresh cache", key="catalogue_refresh_cache",
-                     use_container_width=True):
+        if st.button("Refresh cache", key="catalogue_refresh_cache",
+                     width="stretch"):
             with st.spinner("Fetching from Shopify..."):
                 fresh = fetch_inventory_live()
             if fresh.error:
-                st.error(f"✗ {fresh.error}")
+                st.error(f"{fresh.error}")
             else:
                 save_inventory_cache(fresh)
                 st.success(
-                    f"✓ Refreshed: {fresh.product_count} products, "
+                    f"Refreshed: {fresh.product_count} products, "
                     f"{len(fresh.skus)} SKUs."
                 )
                 st.rerun()
@@ -1834,8 +2210,8 @@ def render_shopify_catalogue_tab() -> None:
         )
     with sc3:
         scan_clicked = st.button(
-            "🔍 Scan now", key="catalogue_scan_btn",
-            use_container_width=True, type="primary",
+            "Scan now", key="catalogue_scan_btn",
+            width="stretch", type="primary",
         )
 
     if scan_clicked:
@@ -1899,7 +2275,7 @@ def render_shopify_catalogue_tab() -> None:
 
         if result["no_photos"]:
             with st.expander(
-                f"📷 {len(result['no_photos'])} products with NO PHOTOS",
+                f"No photos · {len(result['no_photos'])} products",
                 expanded=True,
             ):
                 # Bulk "Move to draft" action — only acts on products that are
@@ -1934,9 +2310,9 @@ def render_shopify_catalogue_tab() -> None:
                         )
                     with np_c2:
                         unpublish_clicked = st.button(
-                            f"🛡️ Move {len(live_no_photos)} to draft",
+                            f"Move {len(live_no_photos)} to draft",
                             key="catalogue_unpublish_no_photo_btn",
-                            use_container_width=True,
+                            width="stretch",
                             type="primary",
                             disabled=not confirm_unpublish,
                         )
@@ -1961,7 +2337,7 @@ def render_shopify_catalogue_tab() -> None:
                         progress.empty()
                         if ok_count == len(live_no_photos):
                             st.success(
-                                f"✓ Un-published {ok_count} no-photo product(s) "
+                                f"Un-published {ok_count} no-photo product(s) "
                                 f"from Online Store (status → draft)."
                             )
                         else:
@@ -1993,7 +2369,7 @@ def render_shopify_catalogue_tab() -> None:
                     for r in result["no_photos"]
                 ])
                 st.dataframe(
-                    df, hide_index=True, use_container_width=True,
+                    df, hide_index=True, width="stretch",
                     column_config={
                         "Edit": st.column_config.LinkColumn(
                             "Edit", display_text="🔗 admin",
@@ -2003,7 +2379,7 @@ def render_shopify_catalogue_tab() -> None:
 
         if result["wrong_vendor"]:
             with st.expander(
-                f"🏷️ {len(result['wrong_vendor'])} products with WRONG VENDOR",
+                f"Wrong vendor · {len(result['wrong_vendor'])} products",
                 expanded=True,
             ):
                 # Split rows into "we detected a brand" vs "we didn't" — the
@@ -2037,7 +2413,7 @@ def render_shopify_catalogue_tab() -> None:
                 edited = st.data_editor(
                     edit_df,
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                     key="catalogue_wrong_vendor_editor",
                     column_config={
                         "Apply": st.column_config.TextColumn(
@@ -2089,9 +2465,9 @@ def render_shopify_catalogue_tab() -> None:
                     )
                 with bc2:
                     fix_clicked = st.button(
-                        f"🔧 Apply to {len(plan)} products",
+                        f"Apply to {len(plan)} products",
                         key="catalogue_fix_vendor_btn",
-                        use_container_width=True,
+                        width="stretch",
                         type="primary",
                         disabled=len(plan) == 0,
                     )
@@ -2114,7 +2490,7 @@ def render_shopify_catalogue_tab() -> None:
                     progress.empty()
                     if ok_count == len(plan):
                         st.success(
-                            f"✓ Updated vendor on {ok_count} products using "
+                            f"Updated vendor on {ok_count} products using "
                             f"per-product detected brands."
                         )
                     else:
@@ -2126,25 +2502,30 @@ def render_shopify_catalogue_tab() -> None:
                     st.rerun()
 
         with st.expander(
-            f"📊 Vendor frequency ({len(result['by_vendor'])} unique vendors)",
+            f"Vendor frequency ({len(result['by_vendor'])} unique vendors)",
             expanded=False,
         ):
             st.caption("Quick sanity check — anything weird in the top of this list?")
             df = pd.DataFrame(
                 [{"Vendor": v, "Products": n} for v, n in result["by_vendor"].items()]
             )
-            st.dataframe(df, hide_index=True, use_container_width=True, height=400)
+            st.dataframe(df, hide_index=True, width="stretch", height=400)
 
     st.markdown("---")
 
-    # ----- 3. Duplicate finder --------------------------------------------
+    # ----- 3. Description audit -------------------------------------------
+    render_description_audit_section()
+
+    st.markdown("---")
+
+    # ----- 4. Duplicate finder --------------------------------------------
     st.markdown("### Duplicate finder")
     st.caption(
         "Useful after an accidental double-publish. Scans the live store for "
         "products sharing the same handle or SKU and lists them so you can delete "
         "the extras."
     )
-    dc1, dc2 = st.columns([2, 1])
+    dc1, dc2 = st.columns([4, 1])  # button at 1/5 row width — matches other audit-tab actions
     with dc1:
         sku_prefix = st.text_input(
             "Filter by SKU prefix (optional)",
@@ -2154,8 +2535,8 @@ def render_shopify_catalogue_tab() -> None:
         )
     with dc2:
         dupe_clicked = st.button(
-            "🧹 Scan for duplicates", key="catalogue_dupe_btn",
-            use_container_width=True,
+            "Scan for duplicates", key="catalogue_dupe_btn",
+            width="stretch",
         )
 
     if dupe_clicked:
@@ -2191,7 +2572,7 @@ def render_shopify_catalogue_tab() -> None:
                             ),
                         })
                 st.dataframe(
-                    pd.DataFrame(rows), hide_index=True, use_container_width=True,
+                    pd.DataFrame(rows), hide_index=True, width="stretch",
                     column_config={
                         "delete_url": st.column_config.LinkColumn(
                             "delete_url", display_text="🔗 open",
@@ -2209,9 +2590,9 @@ def render_shopify_catalogue_tab() -> None:
                             "title": v["product_title"],
                             "created_at": (v.get("created_at") or "")[:19],
                         })
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
             if not n_handle_dupes and not n_sku_dupes:
-                st.success("✓ No duplicates found.")
+                st.success("No duplicates found.")
 
 
 def render_assumed_rates_controls(invoice_currency: str = "JPY") -> tuple[float, float, float, float]:
@@ -2284,7 +2665,12 @@ def render_pricing_controls():
     with c2:
         sort_by = st.selectbox(
             "Sort by",
-            ["Risk first", "Price (high → low)", "Price (low → high)", "Cost (high → low)", "Brand"],
+            # "Invoice order" is the default so this table aligns row-for-row
+            # with the Cost-review tab (which always shows natural invoice
+            # order). Switching to a different sort is opt-in; the Cost tab
+            # is unaffected.
+            ["Invoice order", "Risk first", "Price (high → low)",
+             "Price (low → high)", "Cost (high → low)", "Brand"],
         )
     with c3:
         filt = st.selectbox(
@@ -2448,6 +2834,12 @@ FILTERS = {
 
 
 def sort_key(sort_by: str):
+    # "Invoice order" and the catch-all both return a constant — Python's
+    # sorted() is stable, so a constant key preserves the input list's
+    # natural order. This is what makes the Pricing tab match the Cost
+    # tab row-for-row when neither user-chosen sort is active.
+    if sort_by == "Invoice order":
+        return lambda x: 0
     if sort_by == "Risk first":
         # Warnings first (more = higher), then no-brand, then by price desc
         return lambda x: (
@@ -2552,6 +2944,32 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
         search_seed = (getattr(item, "override_title", None) or composed_title).strip()
         gem_url = f"https://gem.app/search?terms={_urlparse.quote_plus(search_seed)}"
 
+        # Buyee deep-link with two paths:
+        #   1. Yahoo Auctions (lowercase prefix) — URL is DETERMINISTIC from
+        #      the source_id, so construct it inline (no scraper dependency).
+        #   2. LuxeWholesale (V-prefix) — URL is OPAQUE (Buyee assigns the
+        #      15-digit btob ID independently), so we look it up in the
+        #      cache populated by `buyee.scraper.scrape_item_urls()`. Cache
+        #      MISS → empty link (column renders blank for that row); user
+        #      can populate by running `python -m buyee scrape-urls` (or
+        #      sending `scrape urls` to the Telegram bot once we wire it).
+        auction_url = ""
+        sid = item.source_id or ""
+        try:
+            from buyee.photo_scraper import AUCTION_PATTERN as _AUCT
+            if _AUCT.match(sid):
+                auction_url = f"https://buyee.jp/item/jdirectitems/auction/{sid}"
+            else:
+                # Cache lookup — covers V-prefix items AND any Yahoo IDs
+                # where the cached URL might be more canonical (e.g. has
+                # tracking params Buyee uses internally).
+                from buyee.scraper import get_item_url as _gu
+                cached = _gu(sid)
+                if cached:
+                    auction_url = cached
+        except Exception:
+            pass
+
         # Margin % — visibility into the per-item gross margin. When the YAML
         # bracket priced this item, also show the target margin from the
         # bracket so the user can compare "intended" vs "actual" (they diverge
@@ -2578,7 +2996,8 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
             "Margin": round(margin, 2),
             "Margin %": margin_pct_display,
             "Source ID": item.source_id,
-            "🔍 Gem": gem_url,
+            "Auction": auction_url,
+            "Comps": gem_url,
             # --- Shopify CSV columns (right, black) ---
             "Title": composed_title,
             "Vendor": vendor,
@@ -2595,11 +3014,11 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
     if not has_any_photo and "Photo" in df.columns:
         df = df.drop(columns=["Photo"])
 
-    qa_cols = ["⚠", "Markup", "Band", "Margin", "Margin %", "Source ID", "🔍 Gem"]
+    qa_cols = ["⚠", "Markup", "Band", "Margin", "Margin %", "Source ID", "Auction", "Comps"]
     shopify_cols = ["Title", "Vendor", "Product Category", "Type", "Cost per Item", "Variant Price", "SKU"]
 
     col_config = {
-        "Photo": st.column_config.ImageColumn("📷", width="small",
+        "Photo": st.column_config.ImageColumn("Photo", width="small",
                                                 help="First photo from Buyee auction listing. Click to enlarge."),
         # QA (left, narrow)
         "⚠": st.column_config.TextColumn("⚠", width="small",
@@ -2618,8 +3037,17 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
                                                       "override_price."),
         "Source ID": st.column_config.TextColumn("Source ID", width="small",
                                                   help="QA — the auction/auth code from the invoice (join key)"),
-        "🔍 Gem": st.column_config.LinkColumn(
-            "🔍 Gem", width="small", display_text="search ↗",
+        "Auction": st.column_config.LinkColumn(
+            "Auction", width="small", display_text="buyee ↗",
+            help="Open the Buyee item page for this listing — original seller "
+                 "photos, full description, condition notes. Covers both "
+                 "Yahoo Auctions (lowercase + digits) and LuxeWholesale "
+                 "(V-prefix). Blank for CSV-imported rows. Note: Yahoo "
+                 "Auction pages expire some weeks after the auction ends; "
+                 "expired links redirect to a search page.",
+        ),
+        "Comps": st.column_config.LinkColumn(
+            "Comps", width="small", display_text="search ↗",
             help="Open Gem.app cross-resale search in a new tab, pre-filled with this "
                  "item's title. Aggregates eBay, Grailed, Vestiaire, The RealReal, "
                  "Fashionphile, Etsy, Poshmark, Farfetch, LiveAuctioneers + others. "
@@ -2649,7 +3077,7 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
     pricing_key = f"pricing_editor_{inv_data_ref.get('__source_file', 'none')}" if inv_data_ref else "pricing_editor"
     edited = st.data_editor(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=col_config,
         disabled=disabled_cols,
@@ -2663,14 +3091,29 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
         if not edited.equals(df):
             st.caption("✎ Unsaved edits — click Save to write back and recompute totals.")
     with sc2:
-        if inv_data_ref is not None and st.button("Save edits", key="save_pricing", type="primary", use_container_width=True):
-            changes = apply_pricing_edits(inv_data_ref, edited)
-            if changes:
+        if inv_data_ref is not None and st.button("Save edits", key="save_pricing", type="primary", width="stretch"):
+            counts = apply_pricing_edits(inv_data_ref, edited)
+            if counts["total"]:
                 path = persist_invoice(inv_data_ref)
-                st.success(f"Saved {changes} item(s) → {path.name}.")
-                # Auto-recompute hero totals, per-item margins, and effective
-                # markup so the new override_price is reflected immediately.
+                # Per-field breakdown — surfaces silent-swallow bugs (e.g.
+                # title edit detected but price edit lost because the cell
+                # came back as NaN). Earlier this was a bare item-count and
+                # there was no way to tell from the UI why prices weren't
+                # sticking.
+                bits = [f"{counts[k]} {k}" for k in ("price", "title", "vendor", "type") if counts[k]]
+                detail = ", ".join(bits) or "no field changes detected"
+                st.success(f"Saved {counts['total']} item(s) ({detail}) → {path.name}.")
                 st.rerun()
+            elif counts["matched_rows"] == 0:
+                # Source-ID join collapsed: every invoice item failed to match
+                # a row in the data_editor. Usually means the Source ID column
+                # was renamed or filtered out — surface it instead of a silent
+                # "no changes to save."
+                st.error(
+                    "Couldn't match any rows back to invoice items by Source ID. "
+                    "Refresh the page; if it persists, the Source ID column may "
+                    "have been hidden upstream."
+                )
             else:
                 st.info("No changes to save.")
 
@@ -2692,108 +3135,1794 @@ def render_items_table(items: list, sort_by: str, filt: str, currency: str,
 # ---------------------------------------------------------------------------
 
 TOPIC_OPTIONS = ["general", "titles", "costs", "aesthetic", "data_quality", "scope"]
+# Each entry: (glyph, color). Glyph kept empty in the streamlined UI so the
+# colored pill carries all the signal; the status word + pill color are
+# enough to scan a feedback log without an extra symbol. Color hex values
+# are still used as the pill background by _badge_html.
 STATUS_BADGES = {
-    "pending":  ("⧗", "#a47200"),
-    "applied":  ("✓", "#2e7d32"),
-    "rejected": ("✗", "#9c1c1c"),
-    "deferred": ("⏸", "#555"),
+    "pending":  ("", "#a47200"),
+    "applied":  ("", "#2e7d32"),
+    "rejected": ("", "#9c1c1c"),
+    "deferred": ("", "#555"),
 }
 
 
-def render_inline_note_capture(context_hint: str = "") -> None:
-    """In-page note capture — works regardless of sidebar state.
+def render_quick_note_form() -> None:
+    """Compact, always-visible capture form for the Rules & Notes tab.
 
-    Renders as an expander so it's present but not loud. Opens into a compact
-    form that lands a `pending` note in feedback.yaml. Use `context_hint` to
-    pre-fill context like the current invoice filename.
+    Replaces the old `render_inline_note_capture` expander (which hid the
+    form on the tab whose entire purpose is note management — a discoverability
+    bug) and the old `render_sidebar_notes` (which duplicated this form on
+    every tab, eating screen width). Now: one form, in the place a user goes
+    to deal with notes.
     """
-    notes = load_feedback()
-    pending = sum(1 for n in notes if n.status == "pending")
-    pending_tag = f" · {pending} pending" if pending else ""
-
-    with st.expander(
-        f"📝  Add a note / capture feedback{pending_tag}",
-        expanded=False,
-    ):
-        st.caption(
-            "Drops a `pending` entry into `heuristics/feedback.yaml`. "
-            "Address it later in the Rules & Notes tab, or via "
-            "`uv run python -m heuristics feedback --status pending`."
-        )
-        with st.form("inline_note", clear_on_submit=True, border=False):
-            default = f"[{context_hint}] " if context_hint else ""
+    with st.container(border=True):
+        st.markdown("**📝 Add a note**")
+        with st.form("quick_note", clear_on_submit=True, border=False):
             text = st.text_area(
                 "What did you notice?",
-                value=default,
-                key="inline_note_text",
+                key="quick_note_text",
                 placeholder="e.g. Margiela items come back without era — default to 00's",
-                height=90,
+                height=80,
+                label_visibility="collapsed",
             )
             c1, c2 = st.columns([3, 1])
             with c1:
                 topic = st.selectbox(
-                    "Topic", TOPIC_OPTIONS, index=0, key="inline_note_topic",
+                    "Topic", TOPIC_OPTIONS, index=0, key="quick_note_topic",
                     label_visibility="collapsed",
                 )
             with c2:
                 submitted = st.form_submit_button(
-                    "Save note", type="primary", use_container_width=True,
+                    "Save note", type="primary", width="stretch",
                 )
-            if submitted:
-                if text and text.strip() and text.strip() != default.strip():
-                    n = append_feedback(text.strip(), topic=topic)
-                    st.success(f"Saved {n.id} — view in the Rules & Notes tab.")
-                else:
-                    st.warning("Please enter some text first.")
-
-
-def render_sidebar_notes() -> None:
-    """Always-available sidebar: quick-add note + recent feedback list.
-
-    Designed for the moment a user notices something while reviewing an invoice
-    and wants to capture it without leaving the current tab.
-    """
-    with st.sidebar:
-        st.markdown("### 📝 Add a note")
-        st.caption("Captures feedback as a `pending` entry in feedback.yaml. "
-                   "Address it later via the Rules & Notes tab.")
-        with st.form("sidebar_note", clear_on_submit=True, border=False):
-            text = st.text_area("What did you notice?", key="sidebar_note_text",
-                                placeholder="e.g. Margiela items are missing era — default to 00's",
-                                height=100, label_visibility="collapsed")
-            topic = st.selectbox("Topic", TOPIC_OPTIONS, index=0, key="sidebar_note_topic")
-            submitted = st.form_submit_button("Save note", type="primary",
-                                              use_container_width=True)
             if submitted:
                 if text and text.strip():
                     n = append_feedback(text.strip(), topic=topic)
-                    st.success(f"Saved as {n.id}")
+                    st.success(f"Saved {n.id}.")
+                    st.rerun()  # refresh list below so the new note appears
                 else:
                     st.warning("Please enter some text first.")
 
-        st.markdown("---")
-        st.markdown("### Recent notes")
-        notes = list(reversed(load_feedback()))[:5]
-        if not notes:
-            st.caption("No notes yet.")
-            return
-        for n in notes:
-            badge, color = STATUS_BADGES.get(n.status, ("?", "#999"))
-            st.markdown(
-                f"<div style='font-size:0.85em; margin-bottom:0.5rem;'>"
-                f"<span style='color:{color}; font-weight:bold;'>{badge}</span> "
-                f"<span style='color:#666;'>{n.date} · {n.topic}</span><br/>"
-                f"{n.quote[:120]}{'...' if len(n.quote) > 120 else ''}"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+
+# render_sidebar_notes was removed 2026-06: it duplicated the quick-add form
+# and "recent notes" list already present in the Rules & Notes tab, and ate
+# screen width on every other tab. The capture form now lives inline at the
+# top of render_rules_tab so it's visible without an expander click whenever
+# the user is on the notes-management tab.
 
 
 def _badge_html(status: str) -> str:
-    badge, color = STATUS_BADGES.get(status, ("?", "#999"))
+    badge, color = STATUS_BADGES.get(status, ("", "#999"))
+    label = f"{badge} {status.upper()}".strip()  # strip handles empty-badge case
     return (f"<span style='background:{color};color:white;padding:2px 8px;"
             f"border-radius:3px;font-size:0.75em;font-weight:bold;'>"
-            f"{badge} {status.upper()}</span>")
+            f"{label}</span>")
+
+
+_NEW_TEMPLATE_SENTINEL = "+ New category…"
+
+
+def _split_lines(text: str) -> list[str]:
+    """Split a multi-line textarea into stripped, non-empty lines."""
+    return [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+
+
+def _render_snapshots_panel() -> None:
+    """Manual snapshot + rollback for bulk Shopify edits. Captures the
+    current state of products in the cached scan result so a botched Apply
+    can be replayed back. 7-day retention, auto-pruned on render."""
+    import snapshots as _snap
+
+    with st.expander("Snapshots & rollback", expanded=False):
+        st.caption(
+            "Three kinds of snapshots: **weekly** baselines of the live catalog "
+            "(kept ~3 months), **pre_apply** auto-snapshots taken before every "
+            "bulk Apply (kept 30 minutes — drives the ↩️ Undo button), and "
+            "**manual** ad-hoc snapshots of the current audit-scope products "
+            "(7-day retention). Restore PUTs every captured product's "
+            "`body_html` + `category` back to Shopify."
+        )
+
+        # Weekly status — show last weekly's age, plus a button to run one now
+        wstatus_cols = st.columns([4, 2])
+        with wstatus_cols[0]:
+            if _snap.is_weekly_due():
+                st.warning(
+                    "No weekly snapshot for the current ISO week yet. "
+                    "Run `weekly_snapshot.py` (or click the button) to "
+                    "capture the live catalog baseline."
+                )
+            else:
+                last_weekly = next(
+                    (s for s in _snap.list_snapshots() if s["kind"] == "weekly"),
+                    None,
+                )
+                if last_weekly:
+                    st.caption(
+                        f"Latest weekly: **{last_weekly['ts_iso']}** · "
+                        f"{last_weekly['count']:,} products · "
+                        f"`{last_weekly['name']}`"
+                    )
+        with wstatus_cols[1]:
+            if st.button("Run weekly now",
+                         key="snap_run_weekly_btn",
+                         width="stretch",
+                         help="Fetches every live product's current state — "
+                              "~30s for a few thousand products."):
+                from weekly_snapshot import _list_live_product_ids
+                with st.spinner("Listing live products via GraphQL…"):
+                    ids, err = _list_live_product_ids()
+                if err and not ids:
+                    st.error(f"List failed: {err}")
+                else:
+                    with st.spinner(f"Snapshotting {len(ids):,} products…"):
+                        c, p = _snap.create_snapshot(
+                            ids, label="catalog_baseline", kind="weekly",
+                        )
+                    if c > 0:
+                        st.success(f"Weekly snapshot: {c:,} products.")
+                        st.rerun()
+                    else:
+                        st.error(f"Snapshot failed: {p}")
+
+        st.markdown("---")
+
+        result = st.session_state.get("desc_audit_result") or {}
+        scoped_ids: list[int] = []
+        for r in (result.get("category_issues") or []):
+            if r.get("id"):
+                scoped_ids.append(int(r["id"]))
+        for r in (result.get("description_failures") or []):
+            if r.get("id"):
+                scoped_ids.append(int(r["id"]))
+        scoped_ids = sorted(set(scoped_ids))
+
+        sc1, sc2 = st.columns([3, 2])
+        with sc1:
+            label = st.text_input(
+                "Snapshot label",
+                value=st.session_state.get("snap_label", ""),
+                placeholder="e.g. before-category-bulk-fix",
+                key="snap_label",
+                help="Short tag baked into the filename — slugified to lowercase letters / numbers / dashes.",
+            )
+        with sc2:
+            st.metric("Products in audit", f"{len(scoped_ids):,}")
+        if st.button(
+            f"Snapshot now ({len(scoped_ids)} products)",
+            key="snap_create_btn",
+            disabled=(len(scoped_ids) == 0),
+            type="primary",
+            width="stretch",
+            help=("Captures current Shopify state for every product in the "
+                  "latest audit result." if scoped_ids
+                  else "Run the audit first to populate the snapshot scope."),
+        ):
+            with st.spinner(f"Fetching current Shopify state for {len(scoped_ids)} products…"):
+                count, result_or_err = _snap.create_snapshot(
+                    scoped_ids, label=label or "manual"
+                )
+            if count > 0:
+                st.success(f"Snapshotted {count} products → `{Path(result_or_err).name}`")
+            else:
+                st.error(f"Snapshot failed: {result_or_err}")
+
+        # ---- Existing snapshots --------------------------------------------
+        snaps = _snap.list_snapshots()
+        if not snaps:
+            st.caption("_No snapshots yet._")
+            return
+
+        st.markdown(f"##### {len(snaps)} snapshot(s)")
+        # Per-snapshot row: label + View + (Restore | Confirm | Cancel).
+        # Previously used 4 columns ([4,1,1,1]) where the 4th was empty
+        # unless the user had hit Restore — created uneven visible button
+        # widths between confirm and non-confirm states. Now: 3 fixed
+        # columns, the Restore button morphs in place into Confirm during
+        # the two-click flow, and a Cancel link sits inline as a secondary
+        # under the Confirm button instead of stealing its own column.
+        for s in snaps:
+            with st.container(border=True):
+                cols = st.columns([5, 1, 1], vertical_alignment="center")
+                with cols[0]:
+                    st.markdown(f"**{s['label']}**  ·  {s['count']} products")
+                    st.caption(
+                        f"{s['ts_iso']}  ·  "
+                        f"{s['size_bytes']/1024:.1f} KB  ·  "
+                        f"`{s['name']}`"
+                    )
+                view_key = f"snap_view_{s['name']}"
+                with cols[1]:
+                    if st.button("View   ", key=f"snap_view_btn_{s['name']}",
+                                 width="stretch"):
+                        st.session_state[view_key] = not st.session_state.get(view_key, False)
+                confirm_key = f"snap_confirm_{s['name']}"
+                with cols[2]:
+                    if not st.session_state.get(confirm_key):
+                        if st.button("Restore", key=f"snap_restore_btn_{s['name']}",
+                                     width="stretch"):
+                            st.session_state[confirm_key] = True
+                            st.rerun()
+                    else:
+                        if st.button("Confirm",
+                                     key=f"snap_confirm_btn_{s['name']}",
+                                     type="primary",
+                                     width="stretch"):
+                            snap = _snap.load_snapshot(s["path"])
+                            with st.spinner(
+                                f"Restoring {snap.get('count', 0)} products to snapshotted state…"
+                            ):
+                                stats = _snap.restore_snapshot(snap)
+                            st.session_state.pop(confirm_key, None)
+                            st.success(
+                                f"Restored body_html: {stats['body_html_ok']} ok, "
+                                f"{stats['body_html_fail']} failed.  "
+                                f"Category: {stats['category_ok']} ok, "
+                                f"{stats['category_fail']} failed, "
+                                f"{stats['category_skipped']} skipped (none captured)."
+                            )
+                            if stats["failures"]:
+                                with st.expander(
+                                    f"{len(stats['failures'])} failure(s)",
+                                    expanded=True,
+                                ):
+                                    for f in stats["failures"][:20]:
+                                        st.markdown(
+                                            f"- **{f.get('title')}**  ·  "
+                                            f"`{f.get('field')}`  ·  "
+                                            f"HTTP {f.get('status')}  ·  "
+                                            f"`{f.get('response')}`"
+                                        )
+                            # Clear cached scan so the next audit pull reflects
+                            # the restored values
+                            st.session_state.pop("desc_audit_result", None)
+                        # Cancel as a tiny inline secondary right under the
+                        # Confirm button — no longer steals its own column.
+                        if st.button("Cancel", key=f"snap_cancel_btn_{s['name']}",
+                                     width="stretch", type="tertiary"):
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+
+                if st.session_state.get(view_key):
+                    snap = _snap.load_snapshot(s["path"])
+                    prods = snap.get("products") or []
+                    st.caption(f"Showing first 50 of {len(prods)} products:")
+                    df = pd.DataFrame([
+                        {
+                            "ID": p.get("id"),
+                            "Title": p.get("title"),
+                            "Vendor": p.get("vendor") or "(none)",
+                            "Category": p.get("category_full_name") or "(none)",
+                            "Body chars": len(p.get("body_html") or ""),
+                        }
+                        for p in prods[:50]
+                    ])
+                    st.dataframe(df, hide_index=True, width="stretch")
+
+
+def render_description_audit_section() -> None:
+    """Description-format audit section for the Shopify audit tab.
+
+    Walks every product in the chosen scope, routes each one to its category
+    template (description_templates.yaml → applies_to_categories), runs
+    the audit, and surfaces failing listings + products with no matching
+    template.
+    """
+    st.markdown("### Description audit")
+    st.caption(
+        "Routes every product to its category template (from Copy formats) "
+        "using Shopify's **Standard Product Category** field, then flags "
+        "listings whose `body_html` is missing required sections, contains "
+        "banned phrases, or falls outside the length window. Products whose "
+        "category doesn't match any template (or has no category set in "
+        "Shopify) are listed separately so you can fix coverage."
+    )
+
+    # Snapshot + rollback control — shown above the audit run controls so
+    # users have a clear "save current state" affordance before bulk Apply.
+    _render_snapshots_panel()
+
+    dc1, dc2, dc3 = st.columns([2, 2, 1])  # button at 1/5 row width — matches other audit-tab actions
+    with dc1:
+        desc_scope = st.radio(
+            "Scope",
+            ["Live on website", "All active", "All products (incl. drafts)"],
+            index=0,
+            key="desc_audit_scope_choice",
+            horizontal=True,
+        )
+    with dc2:
+        in_stock_only = st.checkbox(
+            "Only in stock (qty > 0)",
+            value=st.session_state.get("desc_audit_in_stock_only", True),
+            key="desc_audit_in_stock_only",
+            help=(
+                "Hide products whose tracked variants all have inventory_quantity == 0. "
+                "Products that don't track inventory at all are always included."
+            ),
+        )
+    with dc3:
+        desc_clicked = st.button(
+            "Run description audit", key="desc_audit_btn",
+            width="stretch", type="primary",
+        )
+
+    scope_map = {
+        "Live on website": "live",
+        "All active": "active",
+        "All products (incl. drafts)": "all",
+    }
+
+    if desc_clicked:
+        from shopify_push import scan_description_issues
+        try:
+            with st.spinner("Walking the catalogue + running audit — usually 10-60s…"):
+                result = scan_description_issues(
+                    scope=scope_map[desc_scope],
+                    in_stock_only=in_stock_only,
+                )
+        except Exception as e:
+            st.error(f"Audit crashed: {type(e).__name__}: {e}")
+            return
+        st.session_state["desc_audit_result"] = result
+
+    # Persistent banner from the last category-apply action. Lives in session
+    # state so it survives the st.rerun() that follows an apply, otherwise
+    # the success message gets blanked before the user can see it.
+    import time as _time
+    outcome = st.session_state.get("cat_fix_last_outcome")
+    if outcome and (_time.time() - outcome.get("ts", 0)) < 300:
+        s = outcome.get("succeeded_count", 0)
+        f = outcome.get("failed_count", 0)
+        if s:
+            st.success(
+                f"{s} category write(s) applied. The corrected rows have "
+                f"been dropped from the table below. Hit **Run description "
+                f"audit** any time for a fresh read from Shopify."
+            )
+        if f:
+            with st.expander(f"{f} category write(s) failed", expanded=True):
+                for title, status, resp in (outcome.get("failed_details") or []):
+                    st.markdown(f"- **{title}** — HTTP `{status}` — `{resp}`")
+        # Always-on debug payload: raw Shopify response for the first up-to-5
+        # mutations. Paste this back to me if rows still aren't dropping.
+        raw_samples = outcome.get("raw_samples") or []
+        if raw_samples:
+            import json as _json
+            with st.expander(
+                "🔬 Debug — raw Shopify mutation responses (paste this if stuck)",
+                expanded=False,
+            ):
+                st.code(
+                    _json.dumps(raw_samples, indent=2, default=str),
+                    language="json",
+                )
+        col_dismiss = st.columns([6, 1])[1]
+        with col_dismiss:
+            if st.button("Dismiss", key="cat_fix_outcome_dismiss",
+                         type="tertiary", width="stretch"):
+                st.session_state.pop("cat_fix_last_outcome", None)
+                st.rerun()
+
+    # Undo: visible whenever a pre_apply snapshot still exists and is fresh
+    # (within the 30-min retention window). One click → full restore of that
+    # snapshot's products to their pre-write state.
+    import snapshots as _snap
+    undo_path_str = st.session_state.get("undo_snapshot_path")
+    undo_path = Path(undo_path_str) if undo_path_str else None
+    if undo_path and undo_path.exists():
+        try:
+            mtime = undo_path.stat().st_mtime
+        except OSError:
+            mtime = 0
+        age_sec = _time.time() - mtime
+        if age_sec <= _snap.PRE_APPLY_RETENTION_MINUTES * 60:
+            mins_left = max(0, int(_snap.PRE_APPLY_RETENTION_MINUTES - age_sec / 60))
+            ucols = st.columns([5, 2])
+            with ucols[0]:
+                st.info(
+                    f"**Undo available** — last bulk Apply can be rolled "
+                    f"back for **{mins_left} more minute(s)**. After that the "
+                    f"snapshot is auto-deleted."
+                )
+            with ucols[1]:
+                if st.button(
+                    "Undo last change",
+                    key="undo_last_change_btn",
+                    type="primary",
+                    width="stretch",
+                ):
+                    snap = _snap.load_snapshot(undo_path)
+                    with st.spinner(
+                        f"Restoring {snap.get('count', 0)} products from pre-apply snapshot…"
+                    ):
+                        stats = _snap.restore_snapshot(snap)
+                    st.session_state.pop("undo_snapshot_path", None)
+                    st.session_state.pop("desc_audit_result", None)
+                    st.success(
+                        f"Undo complete: {stats['body_html_ok']} body_html + "
+                        f"{stats['category_ok']} category restored. "
+                        f"{stats['body_html_fail'] + stats['category_fail']} failure(s). "
+                        f"Re-run the audit to see the rolled-back state."
+                    )
+                    if stats["failures"]:
+                        with st.expander(
+                            f"{len(stats['failures'])} restore failure(s)",
+                            expanded=True,
+                        ):
+                            for f in stats["failures"][:20]:
+                                st.markdown(
+                                    f"- **{f.get('title')}** · `{f.get('field')}` · "
+                                    f"HTTP {f.get('status')} · `{f.get('response')}`"
+                                )
+                    st.rerun()
+        else:
+            # Past the 30-min window — clear the stale reference
+            st.session_state.pop("undo_snapshot_path", None)
+
+    result = st.session_state.get("desc_audit_result")
+    if not result:
+        st.info("Click **Run description audit** to scan the live catalogue.")
+        return
+
+    if result.get("error"):
+        st.error(f"{result['error']}")
+        return
+
+    scanned = result.get("scanned", 0)
+    passing = result.get("passing", 0)
+    category_issues = result.get("category_issues") or []
+    desc_failures = result.get("description_failures") or []
+
+    # KPI strip — left half is Step 1, right half is Step 2, so the visual
+    # ordering matches the workflow.
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Scanned", f"{scanned:,}")
+    m2.metric("Step 1 — categories to fix", f"{len(category_issues):,}")
+    m3.metric("Step 2 — descriptions to fix", f"{len(desc_failures):,}")
+    m4.metric("Fully passing", f"{passing:,}")
+
+    if result.get("partial_error"):
+        st.warning(result["partial_error"])
+
+    # Sequential workflow callout
+    step1_done = len(category_issues) == 0
+    if not step1_done:
+        st.info(
+            "**Workflow:**  Step 1 → fix product categories on the items first. "
+            "Once that's done, every product will route to the right description "
+            "template, and Step 2 (descriptions) will reflect the correct buckets. "
+            "Step 2 is shown below for reference but you should address Step 1 first."
+        )
+    else:
+        st.info(
+            "**Workflow:**  Step 1 (categories) is clear. ✓  Moving on to Step 2 — "
+            "products are now routed to the right templates by category, so the "
+            "description failures below reflect the real state."
+        )
+
+    # ----- Step 1: Fix product categories --------------------------------
+    st.markdown("#### Step 1 — Fix product categories")
+    st.caption(
+        "First, make sure every product has the right Shopify Standard Product "
+        "Category. `missing` = no category set; `unmapped` = set but doesn't "
+        "route to any template; `mismatched` = routes to template A but title "
+        "suggests template B (advisory). Use the auto-populate table to write "
+        "categories back in bulk."
+    )
+
+    if not category_issues:
+        if scanned > 0:
+            st.success("✨ Every scanned product has a sensible, routed category.")
+    else:
+        _render_category_issues(category_issues)
+
+    # ----- Step 2: Fix descriptions ---------------------------------------
+    st.markdown("---")
+    st.markdown("#### Step 2 — Fix descriptions (template matches by category)")
+    st.caption(
+        "After Step 1, each product's category routes it to its description "
+        "template. This step checks `body_html` against that template: required "
+        "sections present, no banned phrases, length window OK. Auto-populate "
+        "below pre-fills failing listings with the template body so you only "
+        "make corrections."
+    )
+    if not step1_done:
+        st.warning(
+            f"Step 1 still has {len(category_issues)} issue(s). Numbers below "
+            f"will shift once those are fixed and the audit is re-run, because "
+            f"products will route to different templates."
+        )
+
+    # Per-template breakdown
+    by_template = result.get("by_template") or {}
+    if by_template:
+        with st.expander(
+            f"By template ({len(by_template)} templates matched)",
+            expanded=False,
+        ):
+            df = pd.DataFrame([
+                {
+                    "Template": name,
+                    "Passing": stats.get("passing", 0),
+                    "Failing": stats.get("failing", 0),
+                    "Total": stats.get("passing", 0) + stats.get("failing", 0),
+                }
+                for name, stats in by_template.items()
+            ])
+            st.dataframe(df, hide_index=True, width="stretch")
+
+    if not desc_failures:
+        if any(stats.get("passing", 0) for stats in by_template.values()):
+            st.success("✨ Every templated product passes its description audit.")
+        else:
+            st.info("No products routed to a template — fix Phase 1 first.")
+        return
+
+    # Combined failure / auto-populate / preview view — one row per product
+    # with header metadata, editable body_html, and rendered HTML preview.
+    _render_combined_description_failures(desc_failures)
+
+
+_TEMPLATE_SECTION_LABELS = [
+    "TAGGED SIZE",
+    "DIMENSIONS",
+    "MEASUREMENTS",
+    "DETAILS",
+    "MATERIAL",
+    "CONDITION NOTES",
+    "CONDITION",
+]
+# CONDITION and CONDITION NOTES are aliased — if either appears in existing,
+# don't append the other (avoids duplicate condition sections).
+_SECTION_ALIASES = {
+    "CONDITION NOTES": {"condition notes", "condition"},
+    "CONDITION":       {"condition notes", "condition"},
+}
+
+
+def _section_present(body: str, label: str) -> bool:
+    """Case-insensitive presence check. Allows arbitrary attributes on the
+    <strong> opening tag (e.g. data-start="..." from rich-text editors) so
+    a Shopify body with editor metadata still gets detected."""
+    import re as _re
+    aliases = _SECTION_ALIASES.get(label.upper(), {label.lower()})
+    for alias in aliases:
+        if _re.search(
+            rf'<strong\b[^>]*>\s*{_re.escape(alias)}\s*:\s*</strong>',
+            body or "",
+            _re.IGNORECASE,
+        ):
+            return True
+    return False
+
+
+def _extract_template_section(template: str, label: str) -> str:
+    """Extract the chunk for `label` from the template — starts at the
+    <p><strong>LABEL:</strong> opening and runs up to the next section
+    header or end of template."""
+    import re as _re
+    start_m = _re.search(
+        rf'<p[^>]*><strong>\s*{_re.escape(label)}\s*:</strong>',
+        template,
+        _re.IGNORECASE,
+    )
+    if not start_m:
+        return ""
+    next_m = _re.search(
+        r'<p[^>]*><strong>\s*[A-Z][A-Z ]*?:</strong>',
+        template[start_m.end():],
+    )
+    end = (start_m.end() + next_m.start()) if next_m else len(template)
+    return template[start_m.start():end].rstrip() + "\n"
+
+
+def _blank_section(chunk: str) -> str:
+    """Strip every example/placeholder value from a section chunk."""
+    import re as _re
+    out = chunk
+    out = _re.sub(
+        r'(<strong>[A-Z][A-Z &]*?</strong>\s*</td>\s*<td[^>]*?>)[^<]*(</td>)',
+        r'\1\2', out,
+    )
+    out = _re.sub(
+        r'(<strong>TAGGED SIZE:</strong>\s*)[^<]*?(</p>)',
+        r'\1\2', out, flags=_re.IGNORECASE,
+    )
+    out = _re.sub(
+        r'(<strong>[A-Z][A-Z &]*?:</strong>\s*<br[^>]*>\s*)[^<]*?(</p>)',
+        r'\1\2', out,
+    )
+    out = _re.sub(
+        r'(<strong>CONDITION(?:\s*NOTES)?:</strong>\s*)[^<]*?(</p>)',
+        r'\1\2', out, flags=_re.IGNORECASE,
+    )
+    out = _re.sub(r'(<li[^>]*>)[^<]*?(</li>)', r'\1\2', out)
+    return out
+
+
+# Measurement-label normalization: existing bodies use various spellings
+# ("Hip" vs "Hips", "Bust" vs "Chest"). Map every variant to the canonical
+# template label so values land in the right column.
+_MEASUREMENT_ALIAS = {
+    "HIP": "HIPS", "HIPS": "HIPS",
+    "WAIST": "WAIST", "WAISTS": "WAIST",
+    "INSEAM": "INSEAM", "INSEAMS": "INSEAM",
+    "RISE": "RISE", "RISES": "RISE",
+    "LENGTH": "LENGTH", "LENGTHS": "LENGTH",
+    "CHEST": "CHEST", "BUST": "CHEST",
+    "SHOULDER": "SHOULDER", "SHOULDERS": "SHOULDER",
+    "SLEEVE": "SLEEVE", "SLEEVES": "SLEEVE",
+    "TOP LENGTH": "TOP LENGTH",
+    "BOTTOM LENGTH": "BOTTOM LENGTH",
+}
+
+
+def _parse_existing_body(body: str) -> dict:
+    """Pull section values out of an existing body_html so we can re-emit
+    them in the template's canonical structure.
+
+    Tolerant to: rich-text editor attributes on every tag, <span> wrappers
+    instead of <strong>, plain-text labels (no wrapper at all), lowercase /
+    mixed-case labels, singular/plural variations ("Hip" → "HIPS"), and
+    Pages/Word-export class noise like class="p1"/"s1"/"td1".
+
+    Returns:
+        {"TAGGED SIZE": "34X34",
+         "DIMENSIONS":  "...",
+         "MATERIAL":    "...",
+         "CONDITION":   "...",
+         "MEASUREMENTS": {"WAIST": "34\"", "HIPS": "42\"", ...},
+         "DETAILS":     ["...", ...]}
+    """
+    import re as _re
+    out: dict = {}
+    if not body:
+        return out
+
+    # 1. Inline sections — locate "LABEL:" anywhere (any wrapper, any case)
+    # and grab the value up to the next tag or newline. Works for
+    # <strong>LABEL:</strong> value</p>, <span>LABEL: value</span>,
+    # and bare "LABEL: value" text.
+    #
+    # Each entry: (canonical-section-name, [phrase aliases to look for]).
+    # The first matching alias wins per section.
+    SECTION_PROBES = [
+        ("TAGGED SIZE", ["TAGGED SIZE", "TAG SIZE", "Size"]),
+        ("DIMENSIONS",  ["DIMENSIONS", "Dimensions"]),
+        ("MATERIAL",    ["MATERIAL", "Material"]),
+        ("CONDITION NOTES", ["CONDITION NOTES"]),
+        ("CONDITION",   ["CONDITION"]),
+    ]
+    for canonical, aliases in SECTION_PROBES:
+        if canonical in out:
+            continue
+        for alias in aliases:
+            m = _re.search(
+                rf'\b{_re.escape(alias)}\b\s*:\s*'
+                rf'(?:</[^>]+>\s*)*'
+                rf'(?:<[^/>][^>]*>\s*)*'
+                rf'([^<\n]+?)'
+                rf'\s*(?=<|\n|$)',
+                body, _re.IGNORECASE,
+            )
+            if m:
+                v = m.group(1).strip()
+                if v:
+                    out[canonical] = v
+                    break
+
+    # 2. MEASUREMENTS table — pairs of (label, value), case-insensitive,
+    # any wrapper. Captures the first text inside each <td>.
+    rows = _re.findall(
+        r'<tr\b[^>]*>\s*'
+        r'<td\b[^>]*>\s*'
+        r'(?:<[^/>][^>]*>\s*)*'                  # any opening tags
+        r'([A-Za-z][A-Za-z\s&]*?)'               # the label
+        r'\s*:?\s*'                              # optional colon
+        r'(?:</[^>]+>\s*)*'                      # any closing tags
+        r'</td>\s*'
+        r'<td\b[^>]*>\s*'
+        r'(?:<[^/>][^>]*>\s*)*'                  # any opening tags
+        r'([^<]*?)'                              # the value
+        r'\s*(?:</[^>]+>\s*)*'                   # any closing tags
+        r'</td>',
+        body, _re.IGNORECASE | _re.DOTALL,
+    )
+    if rows:
+        meas: dict = {}
+        for raw_label, raw_val in rows:
+            norm = _MEASUREMENT_ALIAS.get(
+                raw_label.strip().rstrip(":").upper(),
+                raw_label.strip().rstrip(":").upper(),
+            )
+            val = raw_val.strip().replace("\xa0", " ")
+            if norm and val:
+                meas[norm] = val
+        if meas:
+            out["MEASUREMENTS"] = meas
+
+    # 2b. Inline measurement labels — for bodies that use
+    # "<p>CHEST: 36"</p>" instead of a <table>. Fills any keys not already
+    # discovered via the table pass above.
+    INLINE_MEASUREMENTS = (
+        "CHEST", "LENGTH", "WAIST", "HIPS", "HIP",
+        "INSEAM", "RISE", "SHOULDER", "SLEEVE",
+        "BUST", "TOP LENGTH", "BOTTOM LENGTH",
+    )
+    existing_meas = out.get("MEASUREMENTS") or {}
+    for label in INLINE_MEASUREMENTS:
+        m = _re.search(
+            rf'\b{_re.escape(label)}\b\s*:\s*'
+            rf'(?:</[^>]+>\s*)*'
+            rf'(?:<[^/>][^>]*>\s*)*'
+            rf'([^<\n]+?)'
+            rf'\s*(?=<|\n|$)',
+            body, _re.IGNORECASE,
+        )
+        if not m:
+            continue
+        v = m.group(1).strip().replace("\xa0", " ")
+        if not v:
+            continue
+        norm = _MEASUREMENT_ALIAS.get(label.upper(), label.upper())
+        # Only fill if not already set by the table-row pass
+        if norm not in existing_meas:
+            existing_meas[norm] = v
+    if existing_meas:
+        out["MEASUREMENTS"] = existing_meas
+
+    # 3. DETAILS bullets — find the DETAILS section, grab the chunk between
+    # the header and the next bold-labeled section, then extract <li> contents.
+    dm = _re.search(
+        r'\bDETAILS\b\s*:\s*'                    # DETAILS: anywhere
+        r'(?:</[^>]+>\s*)*'                      # optional closing tags after the colon
+        r'(.*?)'                                 # the chunk content
+        r'(?=<p\b[^>]*>\s*(?:<[^/>][^>]*>\s*)*<strong\b|\Z)',  # next bold-labeled section
+        body, _re.IGNORECASE | _re.DOTALL,
+    )
+    if dm:
+        chunk = dm.group(1)
+        # 3a. Standard <ul><li>...</li></ul> format
+        bullets = _re.findall(
+            r'<li\b[^>]*>\s*'
+            r'(?:<[^/>][^>]*>\s*)*'
+            r'([^<]*?)'
+            r'\s*(?:</[^>]+>\s*)*'
+            r'</li>',
+            chunk, _re.IGNORECASE | _re.DOTALL,
+        )
+        # 3b. Fallback: <br>-separated text with bullet markers (•, ·, -, *)
+        # inside a <p>. Strip remaining HTML, split on <br>, strip the bullet
+        # char from each line.
+        if not bullets:
+            # Find the largest <p>...</p> in the DETAILS chunk
+            p_blocks = _re.findall(r'<p\b[^>]*>(.*?)</p>', chunk, _re.IGNORECASE | _re.DOTALL)
+            for p_inner in p_blocks:
+                lines = _re.split(r'<br\b[^>]*/?>', p_inner, flags=_re.IGNORECASE)
+                for line in lines:
+                    text = _re.sub(r'<[^>]+>', '', line).strip()
+                    # Strip leading bullet markers + any whitespace
+                    text = _re.sub(r'^[•·●▪◦\*\-]\s*', '', text).strip()
+                    if text:
+                        bullets.append(text)
+                if bullets:
+                    break
+        cleaned = [b.strip() for b in bullets if b.strip()]
+        if cleaned:
+            out["DETAILS"] = cleaned
+
+    return out
+
+
+def _render_template_with_values(template: str, values: dict) -> str:
+    """Take a blank template skeleton and fill in extracted values per section.
+    Missing values stay blank. Output uses the template's clean HTML — no
+    editor data-* attributes leak through."""
+    import re as _re
+    out = template
+
+    # Inline sections — value goes right after the bold label (with the
+    # template's own <br> separator if present, else nothing)
+    for label in ("TAGGED SIZE", "DIMENSIONS", "MATERIAL"):
+        v = values.get(label, "")
+        def _sub(m, value=v):
+            return m.group(1) + (m.group(2) or "") + value + m.group(3)
+        out = _re.sub(
+            rf'(<strong>{_re.escape(label)}:</strong>)'
+            rf'(\s*(?:<br[^>]*>)?\s*)'
+            rf'[^<]*?'
+            rf'(</p>)',
+            _sub, out, count=1, flags=_re.IGNORECASE,
+        )
+
+    # CONDITION / CONDITION NOTES — accept either parsed key
+    cond_val = values.get("CONDITION NOTES") or values.get("CONDITION") or ""
+    def _sub_cond(m, value=cond_val):
+        return m.group(1) + (m.group(2) or "") + value + m.group(3)
+    out = _re.sub(
+        r'(<strong>CONDITION(?:\s*NOTES)?:</strong>)'
+        r'(\s*(?:<br[^>]*>)?\s*)'
+        r'[^<]*?'
+        r'(</p>)',
+        _sub_cond, out, count=1, flags=_re.IGNORECASE,
+    )
+
+    # MEASUREMENTS table — fill each row's value from the parsed dict
+    meas = values.get("MEASUREMENTS") or {}
+    def _sub_row(m, table=meas):
+        return m.group(1) + table.get(m.group(2).strip().upper(), "") + m.group(3)
+    out = _re.sub(
+        r'(<strong>([A-Z][A-Z &]*?)</strong>\s*</td>\s*<td[^>]*?>)'
+        r'[^<]*?'
+        r'(</td>)',
+        _sub_row, out,
+    )
+
+    # DETAILS bullets — replace the template's blank <li></li> placeholders
+    # with the extracted ones.
+    bullets = values.get("DETAILS") or []
+    if bullets:
+        ul_match = _re.search(
+            r'(<strong>DETAILS:</strong>\s*</p>\s*)(<ul[^>]*>)(.*?)(</ul>)',
+            out, _re.IGNORECASE | _re.DOTALL,
+        )
+        if ul_match:
+            html_bullets = "\n".join(f"  <li>{b}</li>" for b in bullets)
+            new_block = (
+                ul_match.group(1) + ul_match.group(2) + "\n" +
+                html_bullets + "\n" + ul_match.group(4)
+            )
+            out = out[:ul_match.start()] + new_block + out[ul_match.end():]
+
+    return out
+
+
+# Per-brand SIZING NOTES injected right after TAGGED SIZE. Each entry is
+# (needles, paragraph_html). `needles` is a tuple of lowercase substrings
+# searched in vendor + title — first matching entry wins. The paragraph
+# should be a single <p>...</p> block; the SIZING NOTES heading is added
+# above it automatically. Add new brands by appending another entry.
+_VENDOR_SIZING_NOTES: list[dict] = [
+    {
+        "needles": ("issey miyake", "pleats please"),
+        # Strip any session/tracking params (?srsltid=...) before saving —
+        # those are per-visit and shouldn't be baked into product descriptions.
+        "paragraph": (
+            '<p>Please note as ISSEY MIYAKE items are designed with unique '
+            'fabrications and fits, sizing may vary between styles. Link to '
+            '<a href="https://us.isseymiyake.com/pages/size-charts-by-brand" '
+            'target="_blank" rel="noopener">official Issey Miyake sizing '
+            'chart</a>.</p>\n'
+        ),
+    },
+]
+
+
+def _build_sizing_notes_block(vendor: str, title: str) -> str:
+    """Pick the first brand entry whose needle appears in vendor + title and
+    return a SIZING NOTES block. Returns "" when nothing matches."""
+    haystack = f"{vendor or ''} {title or ''}".lower()
+    for entry in _VENDOR_SIZING_NOTES:
+        if any(n in haystack for n in entry["needles"]):
+            return (
+                '<p><strong>SIZING NOTES:</strong></p>\n'
+                + entry["paragraph"]
+            )
+    return ""
+
+
+def _inject_vendor_sizing_notes(body: str, vendor: str, title: str = "") -> str:
+    """If vendor (or title) matches a configured brand override, splice the
+    SIZING NOTES block right after the TAGGED SIZE paragraph. Stacks
+    multiple charts when several entries match (e.g. an Issey Miyake Pleats
+    Please item gets both charts). Idempotent."""
+    import re as _re
+    if not body:
+        return body
+    chunk = _build_sizing_notes_block(vendor, title)
+    if not chunk:
+        return body
+    if _re.search(r'<strong\b[^>]*>\s*SIZING NOTES\s*:', body, _re.IGNORECASE):
+        return body  # already present, don't duplicate
+
+    # Find "TAGGED SIZE:" anywhere, then walk forward to the next </p> —
+    # robust against intermediate <strong>/<span> tags.
+    label_m = _re.search(r'TAGGED SIZE\s*:', body, _re.IGNORECASE)
+    if label_m:
+        close = body.find('</p>', label_m.end())
+        if close != -1:
+            insertion = close + len('</p>')
+            return body[:insertion] + "\n" + chunk + body[insertion:]
+    # No TAGGED SIZE in body → prepend
+    return chunk + body
+
+
+def _merge_existing_into_template(existing: str, template: str, vendor: str = "", title: str = "") -> str:
+    """Reformat the existing body_html into the template's canonical
+    structure. Strategy: parse the existing body for each section's value,
+    then re-emit the template with those values plugged in.
+
+    Tolerant to rich-text-editor attributes on every tag — that's the bug
+    that caused duplicate sections in the old "append missing" approach.
+
+    Missing values come through blank. Existing values are preserved
+    verbatim (just relocated into the template's clean HTML).
+    """
+    if not template:
+        return _inject_vendor_sizing_notes(existing or "", vendor, title)
+    if not (existing or "").strip():
+        return _inject_vendor_sizing_notes(_blank_section(template), vendor, title)
+
+    values = _parse_existing_body(existing)
+    merged = _render_template_with_values(_blank_section(template), values)
+    return _inject_vendor_sizing_notes(merged, vendor, title)
+
+
+def _render_combined_description_failures(failing_rows: list[dict]) -> None:
+    """Single combined view: filter at top, per-row card with Apply checkbox,
+    metadata, editable body_html, and rendered HTML preview, bulk Apply at
+    the bottom. Replaces the old read-only failures table + separate
+    auto-populate editor.
+
+    Each row's proposed body_html lives in session_state keyed by product
+    ID — that way edits survive reruns and the bulk Apply reads whatever
+    the user has typed for each row.
+    """
+    if not failing_rows:
+        return
+
+    st.markdown(f"##### {len(failing_rows)} failing descriptions")
+
+    # ----- Filter by template ----------------------------------------------
+    options = ["(all)"] + sorted({r["template_name"] for r in failing_rows})
+    tf = st.selectbox(
+        "Filter by template",
+        options,
+        key="desc_audit_template_filter",
+    )
+    rows = (failing_rows if tf == "(all)"
+            else [r for r in failing_rows if r["template_name"] == tf])
+
+    if not rows:
+        st.info(f"No failing rows for template `{tf}`.")
+        return
+
+    LIMIT = 50
+    visible = rows[:LIMIT]
+    if len(rows) > LIMIT:
+        st.caption(
+            f"Showing first **{LIMIT}** of {len(rows)} matches. "
+            f"Use the filter above to narrow further."
+        )
+
+    # ----- Pre-compute proposed bodies (seed session_state once per row) ---
+    all_tpls = load_description_templates()
+    name_to_tpl = {t.name: t for t in all_tpls}
+    for r in visible:
+        body_key = f"desc_body_edit_{r['id']}"
+        if body_key not in st.session_state:
+            tpl = name_to_tpl.get(r["template_name"])
+            existing = r.get("body_html", "")
+            proposed = _merge_existing_into_template(
+                existing, tpl.template,
+                vendor=r.get("vendor", ""),
+                title=r.get("title", ""),
+            ) if tpl else ""
+            st.session_state[body_key] = proposed
+
+    # ----- Top action bar --------------------------------------------------
+    st.caption(
+        "Each row shows the matching template's auto-populated body_html "
+        "alongside a live rendered preview. Edit the textarea on the left "
+        "to override; the preview updates on the next render. Check **Apply** "
+        "on rows you want to push, then hit **Apply selected** below."
+    )
+    top_cols = st.columns([4, 1, 1])
+    with top_cols[1]:
+        if st.button("Check all visible", key="desc_check_all_btn",
+                     width="stretch"):
+            for r in visible:
+                st.session_state[f"desc_apply_check_{r['id']}"] = True
+            st.rerun()
+    with top_cols[2]:
+        if st.button("Uncheck all", key="desc_uncheck_all_btn",
+                     width="stretch"):
+            for r in visible:
+                st.session_state[f"desc_apply_check_{r['id']}"] = False
+            st.rerun()
+
+    # ----- Per-row cards ---------------------------------------------------
+    for r in visible:
+        pid = r["id"]
+        body_key = f"desc_body_edit_{pid}"
+        apply_key = f"desc_apply_check_{pid}"
+
+        with st.container(border=True):
+            # Header: checkbox + title + template + findings
+            hcols = st.columns([0.5, 5, 2, 4])
+            with hcols[0]:
+                st.checkbox(
+                    "Apply",
+                    key=apply_key,
+                    label_visibility="collapsed",
+                )
+            with hcols[1]:
+                st.markdown(f"**{r['title']}**")
+                st.caption(
+                    f"{r.get('vendor') or '(no vendor)'}  ·  "
+                    f"created {r.get('created_at', '?')}"
+                )
+            with hcols[2]:
+                st.markdown(f"`{r['template_name']}`")
+                st.link_button(
+                    "Shopify ↗",
+                    r.get("admin_url", "#"),
+                    width="stretch",
+                )
+            with hcols[3]:
+                st.caption("**Findings:**  " + " · ".join(r.get("findings") or []))
+
+            # Rendered preview, bounded so a big body doesn't blow out the
+            # card height. Click "✏️ Edit HTML" below to switch to raw editor.
+            with st.container(border=True, height=180):
+                st.markdown(
+                    st.session_state[body_key] or "_(empty)_",
+                    unsafe_allow_html=True,
+                )
+            with st.expander("Edit HTML", expanded=False):
+                st.text_area(
+                    "body_html",
+                    key=body_key,
+                    height=280,
+                    label_visibility="collapsed",
+                )
+
+    # ----- Bulk apply ------------------------------------------------------
+    st.markdown("")
+    # Container-sized so it matches the other primary action buttons on this
+    # tab (Run audit / Scan now), and the label is shortened from the
+    # jargon-y "PUT body_html to Shopify" — the caption above already
+    # explains what Apply does.
+    if st.button(
+        "Apply selected to Shopify",
+        key="desc_apply_btn", type="primary",
+        width="stretch",
+    ):
+        from shopify_push import update_product_body_html
+        to_apply = []
+        for r in visible:
+            if not st.session_state.get(f"desc_apply_check_{r['id']}", False):
+                continue
+            body = st.session_state.get(f"desc_body_edit_{r['id']}", "")
+            to_apply.append((r["id"], body, r["title"]))
+
+        if not to_apply:
+            st.warning("No rows checked.")
+        else:
+            # Auto-snapshot the pre-apply state so Undo can roll this back
+            # within the next 30 minutes.
+            import snapshots as _snap
+            pre_ids = [pid for pid, _, _ in to_apply]
+            with st.spinner(f"Snapshotting current state of {len(pre_ids)} products…"):
+                _sc, _sp = _snap.create_snapshot(
+                    pre_ids, label="step2_body_html", kind="pre_apply"
+                )
+            if _sc > 0:
+                st.session_state["undo_snapshot_path"] = str(_sp)
+            succeeded = 0
+            failed = []
+            progress = st.progress(0.0, text=f"PUTting {len(to_apply)} products…")
+            for i, (pid, body, title) in enumerate(to_apply):
+                status, resp = update_product_body_html(pid, body)
+                if status == 200:
+                    succeeded += 1
+                else:
+                    failed.append((title, status, resp))
+                progress.progress(
+                    (i + 1) / len(to_apply),
+                    text=f"{i+1}/{len(to_apply)} done",
+                )
+            progress.empty()
+            if succeeded:
+                # Drop the applied rows from the cached scan so the table
+                # visibly shortens without forcing a full Shopify re-fetch.
+                cached = st.session_state.get("desc_audit_result")
+                if cached:
+                    succ_set = {pid for pid, _, _ in to_apply
+                                if pid in {sid for sid, _, _ in to_apply}}
+                    # Only drop rows we actually succeeded for
+                    succ_set = set()
+                    fail_titles = {t for t, _, _ in failed}
+                    for pid, _, title in to_apply:
+                        if title not in fail_titles:
+                            succ_set.add(pid)
+                    cached["description_failures"] = [
+                        r for r in (cached.get("description_failures") or [])
+                        if r.get("id") not in succ_set
+                    ]
+                    st.session_state["desc_audit_result"] = cached
+                st.success(f"Updated {succeeded} product(s).")
+            if failed:
+                st.error(f"{len(failed)} failure(s):")
+                for title, status, resp in failed[:10]:
+                    st.markdown(f"- **{title}** — HTTP {status} — `{resp}`")
+            if succeeded:
+                st.rerun()
+
+
+def _render_category_fix_table(rows: list[dict]) -> None:
+    """Editable in-app category fixer.
+
+    The dropdown sources directly from the cached Shopify taxonomy — pick
+    any category for any product, no template indirection. Apply button
+    PUTs each checked row to Shopify via the REST product.category field.
+    """
+    import shopify_taxonomy as _stax
+
+    taxonomy = _stax.load_taxonomy()
+    if not taxonomy:
+        st.warning(
+            "🛠 Setup needed: the Shopify taxonomy isn't cached yet. Open "
+            "the **📝 Copy formats** tab → hit **📥 Fetch taxonomy** "
+            "(one-time, ~5–30s). The Apply button below stays disabled "
+            "until then."
+        )
+
+    NO_CHANGE = "(don't change)"
+    sorted_tax = sorted(taxonomy, key=lambda x: (x.get("full_name") or "").lower())
+    options: list[str] = [NO_CHANGE] + [item["full_name"] for item in sorted_tax]
+    gid_by_fullname = {item["full_name"]: item["id"] for item in sorted_tax}
+
+    # Auto-populate the best Shopify taxonomy match per row. We deliberately
+    # don't use st.cache_data here — the taxonomy file can change beneath us
+    # (Refresh button) and a sticky empty result was the bug that made all
+    # rows show "(don't change)". 200 rows × 525 nodes ≈ 100k comparisons,
+    # which is a sub-100ms hit in Python.
+    from shopify_taxonomy import suggest_category_for_product as _suggest_cat
+    def _row_suggestion(title: str, product_type: str, tags: str) -> tuple:
+        hit = _suggest_cat(title, product_type, tags, taxonomy=taxonomy)
+        if not hit:
+            return ("", "")
+        return (hit.get("id") or "", hit.get("full_name") or "")
+
+    # Apply pending "check all" toggle BEFORE the widget is instantiated —
+    # Streamlit raises if we modify the widget's session_state key after.
+    check_all_pending = st.session_state.pop("cat_fix_check_all_pending", False)
+
+    table_rows = []
+    for r in rows[:200]:
+        _, suggested_full_name = _row_suggestion(
+            r.get("title") or "",
+            r.get("product_type") or "",
+            r.get("tags") or "",
+        )
+        default_label = suggested_full_name if suggested_full_name in options else NO_CHANGE
+
+        default_apply = (
+            r["kind"] in ("missing", "unmapped")
+            and default_label != NO_CHANGE
+        )
+        if check_all_pending:
+            default_apply = default_label != NO_CHANGE
+        table_rows.append({
+            "Apply": default_apply,
+            "Kind": _KIND_LABEL[r["kind"]],
+            "Title": r["title"],
+            "Current category": r.get("category") or "(unset)",
+            "Set category to": default_label,
+            "_product_id": r["id"],
+        })
+
+    df = pd.DataFrame(table_rows)
+
+    if check_all_pending:
+        # Reseed the widget so the new defaults take effect — popping the
+        # widget's session entry forces re-init from `df` on this render.
+        st.session_state.pop("cat_fix_editor", None)
+
+    edited = st.data_editor(
+        df,
+        hide_index=True,
+        width="stretch",
+        key="cat_fix_editor",
+        column_config={
+            "Apply": st.column_config.CheckboxColumn("Apply"),
+            "Kind": st.column_config.TextColumn("Kind", disabled=True),
+            "Title": st.column_config.TextColumn(
+                "Title", disabled=True, width="medium",
+            ),
+            "Current category": st.column_config.TextColumn(
+                "Current category", disabled=True,
+            ),
+            "Set category to": st.column_config.SelectboxColumn(
+                "Set Shopify category to",
+                options=options,
+                required=True,
+            ),
+            "_product_id": st.column_config.NumberColumn(
+                "_product_id", disabled=True, format="%d",
+            ),
+        },
+    )
+    if len(rows) > 200:
+        st.caption(f"…and {len(rows) - 200} more (cap at 200).")
+
+    bc1, bc2 = st.columns([1, 1])
+    with bc1:
+        apply_disabled = not taxonomy
+        if st.button(
+            "Apply selected — PUT categories to Shopify",
+            key="cat_fix_apply_btn", type="primary",
+            width="stretch",
+            disabled=apply_disabled,
+            help=("Fetch the Shopify taxonomy in Copy formats first."
+                  if apply_disabled else None),
+        ):
+            from shopify_push import update_product_category
+            to_apply = []
+            for _, row in edited.iterrows():
+                if not row["Apply"]:
+                    continue
+                full_name = row["Set category to"]
+                if full_name == NO_CHANGE:
+                    continue
+                gid = gid_by_fullname.get(full_name, "")
+                if not gid:
+                    continue
+                to_apply.append((int(row["_product_id"]), gid, row["Title"]))
+
+            if not to_apply:
+                st.warning(
+                    "No rows applied — nothing checked, or rows had '(don't "
+                    "change)' selected."
+                )
+            else:
+                import time as _time
+                # Auto-snapshot the pre-apply state so the Undo button can
+                # roll this batch back within the next 30 minutes.
+                import snapshots as _snap
+                pre_ids = [pid for pid, _, _ in to_apply]
+                with st.spinner(f"Snapshotting current state of {len(pre_ids)} products…"):
+                    _sc, _sp = _snap.create_snapshot(
+                        pre_ids, label="step1_categories", kind="pre_apply"
+                    )
+                if _sc > 0:
+                    st.session_state["undo_snapshot_path"] = str(_sp)
+                succeeded_ids: list[int] = []
+                failed: list[tuple] = []
+                raw_samples: list[dict] = []  # full debug payload, first 5
+                progress = st.progress(0.0, text=f"PUTting {len(to_apply)} products…")
+                for i, (pid, gid, title) in enumerate(to_apply):
+                    status, resp = update_product_category(pid, gid)
+                    if status == 200:
+                        succeeded_ids.append(pid)
+                    else:
+                        failed.append((title, status, resp))
+                    if len(raw_samples) < 5:
+                        raw_samples.append({
+                            "product_id": pid,
+                            "title": title,
+                            "category_gid_sent": gid,
+                            "http_status": status,
+                            "response": resp,
+                        })
+                    progress.progress(
+                        (i + 1) / len(to_apply),
+                        text=f"{i+1}/{len(to_apply)} done",
+                    )
+                progress.empty()
+
+                # Persist outcome so the banner survives the rerun below
+                st.session_state["cat_fix_last_outcome"] = {
+                    "ts": _time.time(),
+                    "succeeded_count": len(succeeded_ids),
+                    "failed_count": len(failed),
+                    "failed_details": failed[:10],
+                    "raw_samples": raw_samples,
+                }
+
+                # Optimistically drop the just-applied rows from the cached
+                # scan so the table visibly shortens without forcing a full
+                # Shopify re-fetch. User can hit "Run description audit"
+                # whenever they want a fresh read.
+                if succeeded_ids:
+                    success_set = set(succeeded_ids)
+                    cached = st.session_state.get("desc_audit_result")
+                    if cached:
+                        cached["category_issues"] = [
+                            r for r in (cached.get("category_issues") or [])
+                            if r.get("id") not in success_set
+                        ]
+                        st.session_state["desc_audit_result"] = cached
+                st.rerun()
+    with bc2:
+        if st.button(
+            "Check all rows", key="cat_fix_check_all_btn",
+            width="stretch",
+        ):
+            # Set a pending flag instead of mutating the widget state directly
+            # (Streamlit forbids modifying widget-bound session_state after
+            # the widget has instantiated this run).
+            st.session_state["cat_fix_check_all_pending"] = True
+            st.rerun()
+
+
+_KIND_LABEL = {
+    "missing":    "🔴 No category set",
+    "unmapped":   "🟡 Category not mapped to a template",
+}
+
+
+def _render_category_issues(issues: list[dict]) -> None:
+    """Phase 1 detail UI: by-kind summary, per-row table, and the bulk
+    'map unmapped category → template' tool."""
+    # By-kind tally — only Missing / Unmapped. The old "Mismatched" bucket
+    # was a heuristic flag that re-fired even after the user fixed a row,
+    # so we no longer emit it from the scan.
+    counts = {"missing": 0, "unmapped": 0}
+    for r in issues:
+        if r["kind"] in counts:
+            counts[r["kind"]] += 1
+    c1, c2 = st.columns(2)
+    c1.metric(_KIND_LABEL["missing"], counts["missing"])
+    c2.metric(_KIND_LABEL["unmapped"], counts["unmapped"])
+
+    # Filter chip
+    kind_filter = st.radio(
+        "Show",
+        ["All", "Missing", "Unmapped"],
+        index=0,
+        horizontal=True,
+        key="cat_audit_kind_filter",
+    )
+    kind_map = {"All": None, "Missing": "missing", "Unmapped": "unmapped"}
+    selected_kind = kind_map[kind_filter]
+    rows = issues if selected_kind is None else [r for r in issues if r["kind"] == selected_kind]
+
+    if not rows:
+        st.info("Nothing in this bucket.")
+    else:
+        _render_category_fix_table(rows)
+
+    # ----- Bulk-fix: map unmapped Shopify categories → templates ----------
+    unmapped = [r for r in issues if r["kind"] == "unmapped" and r.get("category")]
+    if unmapped:
+        with st.expander(
+            "⚙️ Bulk: map unmapped Shopify categories to templates",
+            expanded=False,
+        ):
+            st.caption(
+                "Each row is a unique Shopify category with no template. "
+                "Pick which template should cover it, hit **💾 Apply** — the "
+                "category string gets appended to that template's "
+                "`applies_to_categories` so the next scan will route those "
+                "products correctly. Use the suggested column as a hint."
+            )
+            # Group unmapped issues by category and remember the best suggestion
+            by_cat: dict[str, dict] = {}
+            for r in unmapped:
+                slot = by_cat.setdefault(r["category"], {"count": 0, "suggested": None})
+                slot["count"] += 1
+                if r.get("suggested_template") and not slot["suggested"]:
+                    slot["suggested"] = r["suggested_template"]
+
+            templates_list = load_description_templates()
+            template_names = [t.name for t in templates_list]
+            LEAVE_UNMAPPED = "(leave unmapped)"
+
+            mapping_df = pd.DataFrame([
+                {
+                    "Shopify category": c,
+                    "Count": v["count"],
+                    "Suggested": v["suggested"] or "—",
+                    "Map to template": v["suggested"] if v["suggested"] in template_names else LEAVE_UNMAPPED,
+                }
+                for c, v in sorted(by_cat.items(), key=lambda kv: -kv[1]["count"])
+            ])
+
+            edited = st.data_editor(
+                mapping_df,
+                hide_index=True,
+                width="stretch",
+                key="cat_audit_bulk_editor",
+                column_config={
+                    "Shopify category": st.column_config.TextColumn(
+                        "Shopify category", disabled=True,
+                    ),
+                    "Count": st.column_config.NumberColumn(
+                        "Count", disabled=True, format="%d",
+                    ),
+                    "Suggested": st.column_config.TextColumn(
+                        "Suggested", disabled=True,
+                    ),
+                    "Map to template": st.column_config.SelectboxColumn(
+                        "Map to template",
+                        options=[LEAVE_UNMAPPED] + template_names,
+                        required=True,
+                    ),
+                },
+            )
+
+            if st.button("Apply mappings",
+                         key="cat_audit_apply_mappings_btn",
+                         type="primary", width="stretch"):
+                changes: dict[str, list[str]] = {}
+                for _, row in edited.iterrows():
+                    target = row["Map to template"]
+                    if target == LEAVE_UNMAPPED:
+                        continue
+                    changes.setdefault(target, []).append(row["Shopify category"])
+
+                if not changes:
+                    st.info("Nothing to apply — no rows had a template selected.")
+                else:
+                    updated_count = 0
+                    for t in templates_list:
+                        adds = changes.get(t.name, [])
+                        if not adds:
+                            continue
+                        existing_lower = {c.strip().lower() for c in t.applies_to_categories}
+                        for cat in adds:
+                            if cat.strip().lower() not in existing_lower:
+                                t.applies_to_categories.append(cat)
+                                updated_count += 1
+                    save_description_templates(templates_list)
+                    st.session_state.pop("desc_audit_result", None)
+                    st.success(
+                        f"Added {updated_count} category mapping(s) across "
+                        f"{len(changes)} template(s). Re-run the audit."
+                    )
+                    st.rerun()
+
+
+def render_copy_formats_tab() -> None:
+    """Per-category copy-format staging area.
+
+    Lets the user define which substrings must appear in a product
+    description (e.g. "Condition", "Measurements"), which phrases are banned
+    (e.g. "gorgeous"), a length window, and a reference template. The
+    description-format audit will read these to flag listings that don't
+    conform.
+    """
+    st.markdown("### Copy formats")
+    st.caption(
+        f"Per-category description rules — drives the upcoming description-format "
+        f"audit. Stored at `{DESCRIPTION_TEMPLATES_PATH.name}`; this tab is the "
+        f"source of truth (the file is rewritten on every save, so the leading "
+        f"comment block doesn't survive — edit here, not by hand)."
+    )
+
+    # --- Shopify taxonomy cache status + fetch button --------------------
+    import shopify_taxonomy as _stax
+    tax_cached = _stax.load_taxonomy()
+    age = _stax.cache_age_seconds()
+
+    tcols = st.columns([3, 2, 1])
+    with tcols[0]:
+        if tax_cached:
+            st.caption(
+                f"📚 Shopify taxonomy cached: **{len(tax_cached):,} categories** · "
+                f"last refreshed **{_stax.humanize_age(age)}** · "
+                f"`{_stax.cache_path().relative_to(BASE)}`"
+            )
+        else:
+            st.warning(
+                "Shopify taxonomy not cached yet — fetch it to enable the "
+                "category-picker dropdown in each template below."
+            )
+    with tcols[1]:
+        fetch_scope = st.radio(
+            "Scope",
+            ["Apparel only (fast)", "Everything (slow)"],
+            index=0,
+            horizontal=True,
+            key="copy_fmt_tax_scope",
+            help=(
+                "Apparel only: descend into Apparel & Accessories + Luggage & "
+                "Bags. ~1500 nodes, 5-15s. Everything: walk all 26 roots, "
+                "~10k nodes, 30-90s — rarely needed for a fashion catalogue."
+            ),
+        )
+    with tcols[2]:
+        if st.button(
+            "Refresh taxonomy" if tax_cached else "Fetch taxonomy",
+            key="copy_fmt_fetch_taxonomy_btn",
+            width="stretch",
+        ):
+            roots = None if fetch_scope == "Apparel only (fast)" else ["*"]
+            with st.spinner(
+                "Walking Shopify Admin GraphQL `taxonomy` "
+                f"({'apparel subtrees' if roots is None else 'full tree'})…"
+            ):
+                count, items_or_err = _stax.fetch_taxonomy(root_names=roots)
+            if count > 0:
+                st.success(f"Cached {count:,} categories.")
+                st.rerun()
+            else:
+                st.error(f"Fetch failed: {items_or_err}")
+
+    # Cost catalog: per-product cost from Shopify InventoryItem.unitCost.
+    # Powers the CSV ingest's auto-fill for items without a Cost per Item.
+    import cost_estimator as _cest
+    cost_cached = _cest.is_shopify_cost_cached()
+    cost_age = _cest.shopify_cost_cache_age_seconds()
+    ccols = st.columns([4, 1])
+    with ccols[0]:
+        if cost_cached:
+            try:
+                import json as _json
+                _cost_entries = _json.loads(_cest.SHOPIFY_COST_CACHE.read_text())
+            except Exception:
+                _cost_entries = []
+            st.caption(
+                f"Shopify cost catalog cached: **{len(_cost_entries):,} products** with "
+                f"per-unit cost · last refreshed **{_stax.humanize_age(cost_age)}** · "
+                f"powers the CSV-ingest cost auto-fill."
+            )
+        else:
+            st.caption(
+                "Shopify cost catalog: not cached yet — fetch to power "
+                "CSV-ingest cost auto-fill (especially for vintage / "
+                "non-luxury vendors not in past invoice data)."
+            )
+    with ccols[1]:
+        if st.button(
+            "Refresh costs" if cost_cached else "Fetch costs",
+            key="copy_fmt_fetch_costs_btn",
+            width="stretch",
+        ):
+            with st.spinner(
+                "Walking Shopify Admin GraphQL for InventoryItem.unitCost "
+                "(~30-60s for a few thousand products)…"
+            ):
+                count, msg = _cest.fetch_shopify_costs()
+            if count > 0:
+                st.success(f"{msg}")
+                st.rerun()
+            else:
+                st.error(f"Fetch failed: {msg}")
+
+    templates = load_description_templates()
+    names = [t.name for t in templates]
+
+    selectable = names + [_NEW_TEMPLATE_SENTINEL]
+
+    # Apply any pending selection set by a save/delete handler from the
+    # previous run. Must happen BEFORE the selectbox is instantiated —
+    # Streamlit raises if you reassign a widget-bound session_state key
+    # after the widget exists in the same run.
+    pending = st.session_state.pop("copy_formats_pending_select", None)
+    if pending in selectable:
+        st.session_state["copy_formats_selected"] = pending
+
+    default_idx = 0
+    prior = st.session_state.get("copy_formats_selected")
+    if prior in selectable:
+        default_idx = selectable.index(prior)
+
+    selected = st.selectbox(
+        "Category",
+        selectable,
+        index=default_idx,
+        key="copy_formats_selected",
+        help="Pick a category to edit, or '+ New category…' to add one.",
+    )
+
+    is_new = selected == _NEW_TEMPLATE_SENTINEL
+    current: DescriptionTemplate
+    if is_new:
+        current = DescriptionTemplate(name="")
+    else:
+        current = next(t for t in templates if t.name == selected)
+
+    # Form key changes per template so widget state resets on selection switch
+    form_key = f"copy_format_form__{selected}"
+    with st.form(form_key, clear_on_submit=False):
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            name = st.text_input(
+                "Category name",
+                value=current.name,
+                placeholder="e.g. Footwear",
+                help="Short label, also the dict key. Must be unique.",
+            )
+        with c2:
+            min_length = st.number_input(
+                "Min length (chars)",
+                value=int(current.min_length) if current.min_length is not None else 0,
+                min_value=0,
+                step=50,
+                help="0 = no minimum.",
+            )
+        with c3:
+            max_length = st.number_input(
+                "Max length (chars)",
+                value=int(current.max_length) if current.max_length is not None else 0,
+                min_value=0,
+                step=100,
+                help="0 = no maximum.",
+            )
+
+        applies_to_text = st.text_area(
+            "Applies to Shopify categories (one per line)",
+            value="\n".join(current.applies_to_categories),
+            height=130,
+            help=(
+                "Shopify Standard Product Category strings this template covers. "
+                "Match is case-insensitive substring — so an entry “Handbags” "
+                "matches both the leaf name and the full taxonomy path "
+                "“Apparel & Accessories > Handbags, Wallets & Cases > Handbags”."
+            ),
+        )
+
+        # Shopify category picker — sourced from the cached taxonomy if available,
+        # otherwise we fall back to a text input so the field is still editable.
+        if tax_cached:
+            NO_CAT = "(none — don't auto-populate this template's category)"
+            sorted_tax = sorted(tax_cached, key=lambda x: (x.get("full_name") or "").lower())
+            fullname_options = [NO_CAT] + [item["full_name"] for item in sorted_tax]
+            gid_by_fullname = {item["full_name"]: item["id"] for item in sorted_tax}
+            fullname_by_gid = {item["id"]: item["full_name"] for item in sorted_tax}
+
+            current_gid = current.shopify_category_gid_normalized()
+            current_label = fullname_by_gid.get(current_gid, NO_CAT) if current_gid else NO_CAT
+            if current_label not in fullname_options:
+                # Stored GID isn't in the cached taxonomy (stale cache or
+                # deprecated node). Fall back to NO_CAT but warn.
+                st.warning(
+                    f"Currently stored category GID `{current_gid}` isn't in "
+                    f"the cached taxonomy — refresh the taxonomy or re-pick."
+                )
+                current_label = NO_CAT
+
+            picked_fullname = st.selectbox(
+                "Shopify Standard Product Category",
+                options=fullname_options,
+                index=fullname_options.index(current_label),
+                help=(
+                    "Pick this template's canonical Shopify category. Used by the "
+                    "Phase 1 audit's Auto-populate action to write the category "
+                    "back to products that are missing or wrong. Type to filter."
+                ),
+            )
+            shopify_gid_input = (
+                "" if picked_fullname == NO_CAT
+                else gid_by_fullname.get(picked_fullname, "")
+            )
+        else:
+            st.info(
+                "Taxonomy cache empty — fetch it above to get the dropdown. "
+                "For now you can paste a GID manually:"
+            )
+            shopify_gid_input = st.text_input(
+                "Shopify Taxonomy ID (fallback — paste GID manually)",
+                value=current.shopify_category_gid,
+                placeholder="e.g. aa-1-13-8  or  gid://shopify/TaxonomyCategory/aa-1-13-8",
+            )
+
+        rs_col, bp_col = st.columns(2)
+        with rs_col:
+            required_text = st.text_area(
+                "Required sections (one per line)",
+                value="\n".join(current.required_sections),
+                height=160,
+                help="Substrings that must appear in the description (case-insensitive).",
+            )
+        with bp_col:
+            banned_text = st.text_area(
+                "Banned phrases (one per line)",
+                value="\n".join(current.banned_phrases),
+                height=160,
+                help="Substrings that must NOT appear (case-insensitive).",
+            )
+
+        template_body = st.text_area(
+            "Reference template",
+            value=current.template,
+            height=220,
+            help="Starter copy shown when drafting a new listing in this category. "
+                 "HTML is supported — see preview below.",
+        )
+
+        with st.expander("Preview rendered HTML", expanded=False):
+            if template_body.strip():
+                st.markdown(template_body, unsafe_allow_html=True)
+            else:
+                st.caption("(template is empty)")
+
+        notes = st.text_area(
+            "Notes (designer-only, not used by audit)",
+            value=current.notes,
+            height=80,
+        )
+
+        save_clicked = st.form_submit_button("Save", type="primary", width="content")
+
+    # Save handler
+    if save_clicked:
+        new_name = (name or "").strip()
+        if not new_name:
+            st.error("Category name is required.")
+        else:
+            collisions = [t.name for t in templates if t.name == new_name and t.name != current.name]
+            if is_new and new_name in names:
+                st.error(f"A category named “{new_name}” already exists. Pick a different name.")
+            elif collisions:
+                st.error(f"A category named “{new_name}” already exists. Pick a different name.")
+            else:
+                updated = DescriptionTemplate(
+                    name=new_name,
+                    applies_to_categories=_split_lines(applies_to_text),
+                    required_sections=_split_lines(required_text),
+                    banned_phrases=_split_lines(banned_text),
+                    min_length=int(min_length) if min_length else None,
+                    max_length=int(max_length) if max_length else None,
+                    template=template_body or "",
+                    notes=notes or "",
+                    shopify_category_gid=(shopify_gid_input or "").strip(),
+                )
+                if is_new:
+                    templates.append(updated)
+                else:
+                    for i, t in enumerate(templates):
+                        if t.name == current.name:
+                            templates[i] = updated
+                            break
+                save_description_templates(templates)
+                st.session_state["copy_formats_pending_select"] = new_name
+                st.success(f"Saved “{new_name}”.")
+                st.rerun()
+
+    # Delete (outside the form so it doesn't fight the save submit)
+    if not is_new:
+        with st.expander("Delete this category", expanded=False):
+            confirm = st.checkbox(
+                f"Yes, delete “{current.name}” permanently.",
+                key=f"copy_formats_confirm_delete__{current.name}",
+            )
+            if st.button("Delete category", key=f"copy_formats_delete_btn__{current.name}",
+                         disabled=not confirm, type="primary", width="stretch"):
+                remaining = [t for t in templates if t.name != current.name]
+                save_description_templates(remaining)
+                next_select = remaining[0].name if remaining else _NEW_TEMPLATE_SENTINEL
+                st.session_state["copy_formats_pending_select"] = next_select
+                st.success(f"Deleted “{current.name}”.")
+                st.rerun()
+
+    # ----- Preview panel ---------------------------------------------------
+    st.markdown("---")
+    st.markdown("#### Preview — paste a description to check it")
+    st.caption(
+        "Paste a real product description (HTML or plain text) and see how the "
+        "currently-loaded template above will judge it. This is the same check "
+        "the upcoming catalogue audit will run."
+    )
+
+    sample = st.text_area(
+        "Sample description",
+        value=st.session_state.get("copy_formats_preview_sample", ""),
+        height=220,
+        key="copy_formats_preview_sample",
+        placeholder="<p>Vintage Chanel quilted lambskin flap bag…</p>",
+    )
+
+    if sample.strip():
+        # Audit against the in-memory edited values (using the form's last
+        # saved state — i.e. `current`). If the user wants to test unsaved
+        # tweaks they save first; that's the contract.
+        preview_tpl = current if not is_new else DescriptionTemplate(name="(new)")
+        result = audit_description(sample, preview_tpl)
+        if result["passed"]:
+            st.success(f"Passes the “{preview_tpl.name or '(new)'}” template.")
+        else:
+            st.warning(f"{len(result['findings'])} issue(s) against “{preview_tpl.name or '(new)'}”:")
+            for f in result["findings"]:
+                st.markdown(f"- {f}")
+
+        with st.expander("Preview rendered HTML", expanded=False):
+            st.markdown(sample, unsafe_allow_html=True)
 
 
 def render_rules_tab() -> None:
@@ -2816,39 +4945,48 @@ def render_rules_tab() -> None:
 
     if stale:
         with st.container(border=True):
-            st.markdown(
-                f"##### ⏰ Stale pending notes "
-                f"<span style='color:#888; font-weight:400;'>"
-                f"({len(stale)} pending more than 2 days)</span>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"##### Stale pending notes  &nbsp; *{len(stale)} pending > 2 days*")
             st.caption(
                 "These came in a while ago and haven't been marked addressed. "
                 "Click a status button to dispose of each one."
             )
+            # Status-action buttons: identical width per button (equal columns
+            # 2/2/2 of the action area), padded labels so the glyph+word
+            # combos visually balance, and `type=` gives one primary action
+            # (Applied — the affirmative path) with the other two as
+            # secondary. Wider text column trimmed from 5/8 → 6/12 so the
+            # buttons get real width instead of being squashed into 1/8 each.
+            BTN_LABELS = {
+                "applied":  "Applied",
+                "deferred": "Defer",
+                "rejected": "Reject",
+            }
             for n in stale:
                 age = (_date.today() - n.date).days
                 age_str = f"{age}d ago" if age else "today"
                 snippet = n.quote.strip().split("\n")[0]
                 if len(snippet) > 110:
                     snippet = snippet[:107] + "..."
-                cols = st.columns([5, 1, 1, 1])
+                cols = st.columns([6, 2, 2, 2], gap="small", vertical_alignment="center")
                 with cols[0]:
                     st.markdown(
-                        f"**{n.id}**  ·  *{n.topic}*  ·  {age_str}\n\n"
+                        f"**{n.id}**  ·  *{n.topic}*  ·  {age_str}  \n"
                         f"<span style='color:#444'>{snippet}</span>",
                         unsafe_allow_html=True,
                     )
                 with cols[1]:
-                    if st.button("✓ Applied", key=f"stale_apply_{n.id}", use_container_width=True):
+                    if st.button(BTN_LABELS["applied"], key=f"stale_apply_{n.id}",
+                                 width="stretch", type="primary"):
                         update_feedback_status(n.id, "applied")
                         st.rerun()
                 with cols[2]:
-                    if st.button("⏸ Defer", key=f"stale_defer_{n.id}", use_container_width=True):
+                    if st.button(BTN_LABELS["deferred"], key=f"stale_defer_{n.id}",
+                                 width="stretch", type="secondary"):
                         update_feedback_status(n.id, "deferred")
                         st.rerun()
                 with cols[3]:
-                    if st.button("✗ Reject", key=f"stale_reject_{n.id}", use_container_width=True):
+                    if st.button(BTN_LABELS["rejected"], key=f"stale_reject_{n.id}",
+                                 width="stretch", type="secondary"):
                         update_feedback_status(n.id, "rejected")
                         st.rerun()
             st.markdown("")  # spacer
@@ -2881,7 +5019,9 @@ def render_rules_tab() -> None:
     else:
         for n in filtered:
             with st.expander(
-                f"{STATUS_BADGES.get(n.status, ('?', ''))[0]}  "
+                # Status word as the leading chip (replaces the prior glyph
+                # which the streamlined UI dropped). Upper-case for scanability.
+                f"[{n.status.upper()}]  "
                 f"{n.id}  ·  {n.topic}  ·  {n.date}  —  {n.quote[:80]}"
                 f"{'...' if len(n.quote) > 80 else ''}",
                 expanded=False,
@@ -2908,7 +5048,7 @@ def render_rules_tab() -> None:
                         index=["pending", "applied", "rejected", "deferred"].index(n.status),
                         key=f"st_{n.id}",
                     )
-                    if st.button("Update", key=f"upd_{n.id}", use_container_width=True):
+                    if st.button("Update", key=f"upd_{n.id}", width="stretch"):
                         ok = update_feedback_status(
                             n.id, new_status,
                             resolution=new_resolution if new_resolution.strip() else None,
@@ -2922,7 +5062,7 @@ def render_rules_tab() -> None:
     st.markdown("#### Rules")
 
     # ----- Each section as a collapsible expander ----------------------------
-    with st.expander(f"📐 Title rules", expanded=False):
+    with st.expander(f"Title rules", expanded=False):
         st.markdown(f"**Format:** `{rules.meta.get('title_format', '(unset)')}`")
         st.markdown(
             f"**Era policy:** Era only appears in titles when matching "
@@ -2938,7 +5078,7 @@ def render_rules_tab() -> None:
         st.code(", ".join(rules.titles.acronyms_uppercase), language="text")
 
     with st.expander(
-        f"📅 Model → era database  ·  "
+        f"Model → era database  ·  "
         f"{sum(len(v) for v in rules.model_era.values())} entries  ·  WIRED",
         expanded=False,
     ):
@@ -2948,10 +5088,10 @@ def render_rules_tab() -> None:
             for brand, models in rules.model_era.items()
             for model, era in models.items()
         ]
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
     with st.expander(
-        f"🏷️ Brand archetypes  ·  "
+        f"Brand archetypes  ·  "
         f"{sum(len(v) for v in rules.brand_archetypes.values())} pairs  ·  MIRROR",
         expanded=False,
     ):
@@ -2961,10 +5101,10 @@ def render_rules_tab() -> None:
             for brand, types in rules.brand_archetypes.items()
             for ptype, defaults in types.items()
         ]
-        st.dataframe(pd.DataFrame(rows).fillna(""), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows).fillna(""), hide_index=True, width="stretch")
 
     with st.expander(
-        f"💎 Brand tiers  ·  "
+        f"Brand tiers  ·  "
         f"luxury={len(rules.tier_brands.get('luxury', []))}, "
         f"mid={len(rules.tier_brands.get('mid', []))}  ·  MIRROR",
         expanded=False,
@@ -2978,7 +5118,7 @@ def render_rules_tab() -> None:
             st.code("\n".join(rules.tier_brands.get("mid", [])), language="text")
 
     with st.expander(
-        f"🔤 Canonicalization  ·  "
+        f"Canonicalization  ·  "
         f"{len(rules.canonicalize.get('brands', {}))} brand aliases, "
         f"{len(rules.canonicalize.get('types', {}))} type aliases  ·  MIRROR",
         expanded=False,
@@ -2989,16 +5129,16 @@ def render_rules_tab() -> None:
             df = pd.DataFrame(
                 [{"Input": k, "Canonical": v} for k, v in rules.canonicalize.get("brands", {}).items()]
             )
-            st.dataframe(df, hide_index=True, use_container_width=True, height=300)
+            st.dataframe(df, hide_index=True, width="stretch", height=300)
         with c2:
             st.markdown("**Type aliases**")
             df = pd.DataFrame(
                 [{"Input": k, "Canonical": v} for k, v in rules.canonicalize.get("types", {}).items()]
             )
-            st.dataframe(df, hide_index=True, use_container_width=True, height=300)
+            st.dataframe(df, hide_index=True, width="stretch", height=300)
 
     with st.expander(
-        f"🎯 Regression anchors  ·  {len(rules.regression_anchors)} confirmed titles",
+        f"Regression anchors  ·  {len(rules.regression_anchors)} confirmed titles",
         expanded=False,
     ):
         st.caption("Snapshot tests should verify these stay correct after rule changes.")
@@ -3007,7 +5147,7 @@ def render_rules_tab() -> None:
              "note": a.note or ""}
             for a in rules.regression_anchors
         ]
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
     st.markdown("---")
     st.caption(
@@ -3042,7 +5182,7 @@ def render_pricing_tab() -> None:
     st.markdown("### Pricing formula")
     st.caption(
         "Cost-function pricing. Market comps don't enter the formula — you "
-        "spot-check those manually via the `🔍 Gem` link per item in the "
+        "spot-check those manually via the `Comps` link per item in the "
         "Pricing & QA table."
     )
 
@@ -3082,7 +5222,7 @@ def render_pricing_tab() -> None:
     if floor_rows:
         st.dataframe(
             pd.DataFrame(floor_rows),
-            hide_index=True, use_container_width=True,
+            hide_index=True, width="stretch",
         )
         st.caption(
             "Applied AFTER the bracket multiplier + market_adjustment + "
@@ -3105,7 +5245,7 @@ def render_pricing_tab() -> None:
             continue
         is_default_open = (invoice_type == "vendor_invoice")
         with st.expander(
-            f"📦 `{invoice_type}`  ·  {len(categories)} bracket tables",
+            f"`{invoice_type}`  ·  {len(categories)} bracket tables",
             expanded=is_default_open,
         ):
             # Group by tier (luxury / mid / standard) for visual grouping
@@ -3139,7 +5279,7 @@ def render_pricing_tab() -> None:
                             })
                         st.dataframe(
                             pd.DataFrame(rows),
-                            hide_index=True, use_container_width=True,
+                            hide_index=True, width="stretch",
                         )
 
     # ----- Section 4: Cost → price calculator -----------------------------
@@ -3243,28 +5383,30 @@ def render_pricing_tab() -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-render_sidebar_notes()
-
 render_header()
 
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, catalogue_tab, pricing_tab, knowledge_tab = st.tabs([
-    "📦 Invoices",
-    "🛍️ Shopify catalogue",
-    "💰 Pricing",
-    "📐 Heuristics, Rules & Notes",
+home_tab, catalogue_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+    "Invoices",
+    "Shopify audit",
+    "Copy formats",
+    "Pricing",
+    "Notes & rules",
 ])
 
 with catalogue_tab:
     render_shopify_catalogue_tab()
 
+with copy_tab:
+    render_copy_formats_tab()
+
 with pricing_tab:
     render_pricing_tab()
 
 with knowledge_tab:
-    render_inline_note_capture()
+    render_quick_note_form()
     render_rules_tab()
 
 with home_tab:
@@ -3274,14 +5416,140 @@ with home_tab:
     source_label = ""
 
     if uploaded is not None:
-        with st.spinner(f"Transcribing {uploaded.name} — usually under 90 seconds…"):
-            invoice_data = cached_transcribe(uploaded.getvalue(), uploaded.name)
-            invoice_data["__source_file"] = Path(uploaded.name).stem + ".json"
-        source_label = uploaded.name
+        is_csv = Path(uploaded.name).suffix.lower() == ".csv"
+
+        if is_csv:
+            # CSV gets a preview-and-edit step so the user can drop rows
+            # before they become invoice items. Skip set is held in session
+            # state under a key tied to the filename so toggling a row
+            # doesn't bounce on every rerun.
+            confirm_key = f"csv_import_confirmed::{uploaded.name}"
+            skip_key = f"csv_skip_indices::{uploaded.name}"
+
+            if not st.session_state.get(confirm_key):
+                from csv_ingest import preview_csv_rows
+                # Write to a temp path so the parser can use its existing
+                # Path-based API; cached_transcribe will re-write later.
+                tmp_path = INPUTS / uploaded.name
+                tmp_path.write_bytes(uploaded.getvalue())
+                try:
+                    preview = preview_csv_rows(tmp_path)
+                except ValueError as e:
+                    st.error(f"Couldn't preview CSV: {e}")
+                    st.stop()
+
+                st.markdown(f"### CSV preview — {len(preview)} rows")
+                st.caption(
+                    "Uncheck **Keep** to skip a row. Only kept rows become "
+                    "invoice items when you hit **Import**. Defaults to all-kept."
+                )
+
+                # Pre-fill the skip set from session_state so toggles stick
+                prior_skip = st.session_state.get(skip_key, set())
+                rows_df = pd.DataFrame([
+                    {
+                        "Keep": (r["row_index"] not in prior_skip),
+                        "Row #": r["row_index"] + 1,
+                        "Title": r["title"],
+                        "Vendor": r["vendor"] or "(none)",
+                        "Cost": r["cost"],
+                        "Qty": r["qty"],
+                        "Tags": r["tags"],
+                        "_row_index": r["row_index"],
+                    }
+                    for r in preview
+                ])
+                edited = st.data_editor(
+                    rows_df,
+                    hide_index=True,
+                    width="stretch",
+                    key=f"csv_preview_editor::{uploaded.name}",
+                    column_config={
+                        "Keep": st.column_config.CheckboxColumn("Keep", default=True),
+                        "Row #": st.column_config.NumberColumn(
+                            "Row #", disabled=True, format="%d",
+                        ),
+                        "Title": st.column_config.TextColumn(
+                            "Title", disabled=True, width="medium",
+                        ),
+                        "Vendor": st.column_config.TextColumn("Vendor", disabled=True),
+                        "Cost": st.column_config.NumberColumn(
+                            "Cost", disabled=True, format="$%.2f",
+                        ),
+                        "Qty": st.column_config.NumberColumn(
+                            "Qty", disabled=True, format="%d",
+                        ),
+                        "Tags": st.column_config.TextColumn("Tags", disabled=True),
+                        "_row_index": st.column_config.NumberColumn(
+                            "_row_index", disabled=True, format="%d",
+                        ),
+                    },
+                )
+
+                keep_count = int(edited["Keep"].sum())
+                skip_count = len(preview) - keep_count
+
+                bc1, bc2, bc3 = st.columns([2, 1, 1])
+                with bc1:
+                    st.caption(
+                        f"**{keep_count}** kept · **{skip_count}** skipped"
+                    )
+                with bc2:
+                    if st.button(
+                        f"Import {keep_count} rows",
+                        key=f"csv_import_btn::{uploaded.name}",
+                        type="primary",
+                        width="stretch",
+                        disabled=(keep_count == 0),
+                    ):
+                        skip_set = {
+                            int(row["_row_index"])
+                            for _, row in edited.iterrows()
+                            if not row["Keep"]
+                        }
+                        st.session_state[skip_key] = skip_set
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+                with bc3:
+                    if st.button(
+                        "Cancel",
+                        key=f"csv_cancel_btn::{uploaded.name}",
+                        width="stretch",
+                        type="tertiary",
+                    ):
+                        st.session_state.pop(skip_key, None)
+                        st.session_state.pop(confirm_key, None)
+                        st.stop()
+
+                # Don't render anything below — user hasn't confirmed yet
+                st.stop()
+
+            # User confirmed — proceed with ingest, threading the skip set
+            # into cached_transcribe so cache key reflects the choice
+            skip_tuple = tuple(sorted(st.session_state.get(skip_key, set())))
+            with st.spinner(f"Parsing {uploaded.name} (CSV ingest)…"):
+                invoice_data = cached_transcribe(
+                    uploaded.getvalue(), uploaded.name, skip_tuple,
+                )
+                invoice_data["__source_file"] = Path(uploaded.name).stem + ".json"
+                invoice_data = _overlay_edits_from_disk(invoice_data)
+            source_label = uploaded.name
+        else:
+            with st.spinner(
+                f"Transcribing {uploaded.name} — usually under 90 seconds…"
+            ):
+                invoice_data = cached_transcribe(uploaded.getvalue(), uploaded.name)
+                invoice_data["__source_file"] = Path(uploaded.name).stem + ".json"
+                invoice_data = _overlay_edits_from_disk(invoice_data)
+            source_label = uploaded.name
     elif picked:
         p = OUTPUT / picked
         invoice_data = json.loads(p.read_text(encoding="utf-8"))
         invoice_data["__source_file"] = p.name
+        # Same overlay as the upload branch: if the user picked the original
+        # but an edited sibling exists, prefer the edited file so prior
+        # session overrides aren't silently dropped on re-open.
+        invoice_data = _overlay_edits_from_disk(invoice_data)
         source_label = picked
         # Make path available to the Buyee panel's "Fetch photos" button
         st.session_state["__current_invoice_path"] = str(p)
@@ -3457,7 +5725,7 @@ with home_tab:
                         }
                         for c in collision_log
                     ]
-                    st.dataframe(pd.DataFrame(rename_rows), hide_index=True, use_container_width=True)
+                    st.dataframe(pd.DataFrame(rename_rows), hide_index=True, width="stretch")
 
             stem = Path(source_label).stem or "shopify"
             date = invoice_data.get("invoice_date") or datetime.now().strftime("%Y-%m-%d")
@@ -3477,7 +5745,7 @@ with home_tab:
             st.markdown("---")
             head_c1, head_c2 = st.columns([3, 1])
             with head_c1:
-                st.markdown("### 🚀 Push directly to Shopify")
+                st.markdown("### Push directly to Shopify")
             with head_c2:
                 # Quick refresh of the live Shopify inventory cache. Useful after
                 # a push (new products won't appear in collision checks otherwise)
@@ -3493,9 +5761,9 @@ with home_tab:
                     age_label = cached_now.humanize_age() if cached_now and cached_now.is_loaded else "never"
                     if _shopify_configured_ok():
                         if st.button(
-                            f"🔄 Refresh Shopify\n({age_label})",
+                            f"Refresh Shopify\n({age_label})",
                             key="refresh_shopify_inventory_top",
-                            use_container_width=True,
+                            width="stretch",
                             help="Re-fetch product catalog from Shopify. Run this after a push "
                                  "or after manual edits in Shopify admin so the local cache "
                                  "matches the live store.",
@@ -3503,10 +5771,10 @@ with home_tab:
                             with st.spinner("Fetching from Shopify..."):
                                 fresh = _fetch_live()
                             if fresh.error:
-                                st.error(f"✗ {fresh.error}")
+                                st.error(f"{fresh.error}")
                             else:
                                 _save_cache(fresh)
-                                st.success(f"✓ {fresh.product_count} products, "
+                                st.success(f"{fresh.product_count} products, "
                                            f"{len(fresh.skus)} SKUs cached")
                                 st.rerun()
                 except Exception:
@@ -3556,11 +5824,11 @@ with home_tab:
                                               help="Override the dedup check. Use only when you intentionally want to re-create products. RARELY needed.")
                 with c3:
                     push_clicked = st.button(
-                        "🚀 Publish to Shopify",
+                        "Publish to Shopify",
                         type="primary",
                         disabled=(pending_count == 0 and not do_dry_run and not force_push)
                                  or st.session_state.get("_pushing_in_progress", False),
-                        use_container_width=True,
+                        width="stretch",
                         key="publish_to_shopify_button",
                     )
 
@@ -3595,7 +5863,7 @@ with home_tab:
                             st.session_state["_pushing_in_progress"] = False
 
                         if not result.get("ok"):
-                            st.error(f"✗ {result.get('error')}")
+                            st.error(f"{result.get('error')}")
                         else:
                             if do_dry_run:
                                 st.success(
@@ -3604,7 +5872,7 @@ with home_tab:
                                 )
                             else:
                                 st.success(
-                                    f"✓ Published {result['items_published']} new products · "
+                                    f"Published {result['items_published']} new products · "
                                     f"skipped {result['items_skipped_existing']} already-pushed · "
                                     f"{result['items_failed']} failed"
                                 )
@@ -3625,7 +5893,7 @@ with home_tab:
                                 ]
                                 if log_rows:
                                     st.dataframe(pd.DataFrame(log_rows), hide_index=True,
-                                                 use_container_width=True)
+                                                 width="stretch")
                             if not do_dry_run and result["items_published"] > 0:
                                 # Auto-refresh the local cache so freshly-pushed
                                 # products show up in next collision check.
@@ -3645,7 +5913,7 @@ with home_tab:
             # Duplicate cleanup — find & delete dupes from a previous mishap
             # ------------------------------------------------------------------
             if shopify_ready:
-                with st.expander("🧹 Find duplicate products in Shopify", expanded=False):
+                with st.expander("Find duplicate products in Shopify", expanded=False):
                     st.caption(
                         "Walk the live Shopify catalog and report products that share "
                         "a handle OR a SKU. Use this if you accidentally double-pushed "
@@ -3661,13 +5929,13 @@ with home_tab:
                         )
                     with dc2:
                         scan_clicked = st.button("Scan", key="scan_dupes",
-                                                  use_container_width=True)
+                                                  width="stretch")
                     if scan_clicked:
                         from shopify_push import find_duplicates
                         with st.spinner("Scanning Shopify catalog (~30s for 3500 products)..."):
                             result = find_duplicates(sku_prefix=sku_filter.strip() or None)
                         if result.get("error"):
-                            st.error(f"✗ {result['error']}")
+                            st.error(f"{result['error']}")
                         else:
                             n_handle_dupes = len(result.get("by_handle") or {})
                             n_sku_dupes = len(result.get("by_sku") or {})
@@ -3690,7 +5958,7 @@ with home_tab:
                                             "delete_url": f"https://{__import__('shopify_inventory').get_shop()}/admin/products/{p.get('id')}",
                                         })
                                 st.dataframe(pd.DataFrame(rows), hide_index=True,
-                                             use_container_width=True)
+                                             width="stretch")
                                 st.caption(
                                     "To delete a duplicate: click its `delete_url` to open "
                                     "the product in Shopify admin, then use Shopify's Delete "
@@ -3709,7 +5977,7 @@ with home_tab:
                                             "created_at": (v.get("created_at") or "")[:19],
                                         })
                                 st.dataframe(pd.DataFrame(rows), hide_index=True,
-                                             use_container_width=True)
+                                             width="stretch")
 
             st.markdown("---")
             st.markdown("### Pre-upload checklist")

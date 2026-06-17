@@ -52,6 +52,7 @@ output/photos/<stem>/   Per-item thumbnails from Buyee auction pages
 output/listings/        Per-item enrichment cache (web_search + photo vision)
 heuristics/rules.yaml   Source of truth for title/category/etc rules
 heuristics/feedback.yaml  Append-only user-feedback log
+heuristics/description_templates.yaml  Per-category description copy formats (UI-managed via Copy formats tab)
 buyee/state/            Local state (gitignored): cookies, indexes, logs, tokens
 tests/                  Regression: anchors + snapshots
 ```

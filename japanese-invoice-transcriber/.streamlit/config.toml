@@ -1,0 +1,21 @@
+# Streamlit theme configuration.
+#
+# Why pinned to light: the app's CSS in app.py (search for `.stSelectbox`,
+# `.stButton`, hero metrics, item cards, etc.) is built around an editorial
+# light palette — white card backgrounds, black borders, #111 text. Without
+# this pin, when the host machine is in OS dark mode Streamlit auto-themes
+# its BaseWeb components (dropdowns, tooltips, toasts, data_editor row
+# highlights) to dark — but the custom CSS keeps the page surfaces light.
+# The mismatch shows up most visibly in the "Pick transcribed" dropdown:
+# the closed input renders light (CSS-styled), the popover renders dark
+# (BaseWeb-themed), and the contrast looks broken.
+#
+# Pinning to base = "light" makes the whole app render consistently
+# regardless of the OS preference, matching the custom CSS.
+[theme]
+base = "light"
+primaryColor = "#111111"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#fafafa"
+textColor = "#111111"
+font = "sans serif"

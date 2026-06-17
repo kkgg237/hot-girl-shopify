@@ -1,0 +1,52 @@
+# Tops shot list (3 shots per SKU).
+#
+# Same source assumptions as listing-standard.yaml:
+#   0  front, eyes closed   (safety)
+#   1  front, eyes open     ← full body + front zoom
+#   2  front, eyes closed   (safety)
+#   3  side profile         (unused — same orientation as 3/4 in current shoot)
+#   4  3/4 turn left        (unused — same direction as shot 1 in current shoot)
+#   5  3/4 turn right       (safety — unused)
+#   6  back                 (safety)
+#   7  back                 ← back zoom
+#   8  back                 (safety)
+#
+# The "angled" 3/4 zoom (shot 4) was dropped for the same reason
+# listing-standard dropped its pure-side slot: shots 1/4/5 face the same
+# direction in the current shoot, so a front zoom + 3/4-angled zoom read as
+# redundant orientations. If a future shoot captures a true opposite-
+# direction 3/4 turn, reintroduce it as ``03_top_three_quarter_angled``
+# between front and back.
+#
+# Filenames look like ``{SKU}_{slot}.jpg`` so Shopify sorts them in order.
+
+name: listing-tops
+description: Tops listing — full body + 3/4-length front / back zoom
+output_size: [1536, 2048]
+
+# region_of_subject is in subject-relative coordinates: 0.0 = top of head,
+# 1.0 = feet. Negative top values extend the crop above the head, adding
+# headroom (standard for fashion crops). [-0.08, 0.75] = 8% headroom + crop
+# ending at 3/4 down the body. region_fill 0.95 = the zoomed region fills
+# 95% of the output height (snug crop, small margin all around).
+
+shots:
+  # Full-body framing matches listing-standard's hero (0.80, 0.0) so the
+  # subject lands in the same spot across categories — tests/test_templates.py
+  # asserts the cross-template match.
+  - slot: 01_full_body
+    source_shot: 1
+    subject_height_fraction: 0.80
+    vertical_bias: 0.0
+
+  # Front and back zoom slots share the same region / region_fill so a
+  # listing reads as a consistent pair, not two unrelated crops.
+  - slot: 02_top_three_quarter_front
+    source_shot: 1
+    region_of_subject: [-0.08, 0.75]
+    region_fill: 0.95
+
+  - slot: 03_top_three_quarter_back
+    source_shot: 7
+    region_of_subject: [-0.08, 0.75]
+    region_fill: 0.95

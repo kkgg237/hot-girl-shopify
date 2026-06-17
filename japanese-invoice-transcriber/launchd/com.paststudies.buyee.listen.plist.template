@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.buyee.listen.plist
+
+  Long-poll Telegram bot — listens for commands ("sync", "tunnel restart",
+  "pending", etc.) and acts on them. Keeps running forever (KeepAlive),
+  auto-respawns if it crashes (ThrottleInterval gates how fast).
+
+  Install:
+    ./launchd/install_buyee_listen.sh
+
+  Stop:
+    launchctl bootout gui/$UID/com.paststudies.buyee.listen
+
+  Logs:
+    {{PROJECT_ROOT}}/buyee/state/listen.log
+    {{PROJECT_ROOT}}/buyee/state/listen.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.buyee.listen</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{UV_PATH}}</string>
+        <string>run</string>
+        <string>--with</string><string>playwright</string>
+        <string>--with</string><string>pydantic</string>
+        <string>--with</string><string>pyyaml</string>
+        <string>--with</string><string>anthropic</string>
+        <string>--with</string><string>python-dotenv</string>
+        <string>python</string>
+        <string>-m</string><string>buyee</string><string>listen</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/listen.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/listen.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <!-- Wait at least 30s between crash-restarts so a broken token doesn't
+         spin in a tight loop. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

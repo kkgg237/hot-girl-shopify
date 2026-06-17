@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.stories.review.plist
+
+  Keeps the Shopify→IG story review UI (Hono server, src/server.ts)
+  running on http://localhost:3001. Exposed publicly via the shared
+  Cloudflare Tunnel at https://stories.paststudies-tools.com.
+
+  Install:
+    ./launchd/install_stories.sh
+
+  Stop:
+    launchctl bootout gui/$UID/com.paststudies.stories.review
+
+  Logs:
+    {{PROJECT_ROOT}}/launchd/state/stories.log
+    {{PROJECT_ROOT}}/launchd/state/stories.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.stories.review</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{NPM_PATH}}</string>
+        <string>run</string>
+        <string>review</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/launchd/state/stories.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/launchd/state/stories.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{{NODE_BIN_DIR}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

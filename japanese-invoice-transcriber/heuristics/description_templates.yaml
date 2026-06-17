@@ -1,0 +1,177 @@
+version: 1
+templates:
+- name: Handbag
+  applies_to_categories:
+  - Handbags
+  required_sections:
+  - 'DIMENSIONS:'
+  - 'DETAILS:'
+  - 'MATERIAL:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: null
+  max_length: null
+  template: "<p><strong>DIMENSIONS:</strong><br></p>\n<p><strong>DETAILS:</strong></p>\n<ul>\n  <li></li>\n\
+    \  <li></li>\n  <li></li>\n  <li></li>\n  <li></li>\n  <li></li>\n</ul>\n<p><strong>MATERIAL:</strong><br></p>\n\
+    <p><strong>CONDITION NOTES:</strong></p>\n"
+  notes: ''
+  shopify_category_gid: ''
+- name: Clothing
+  applies_to_categories:
+  - Outerwear
+  - Coats & Jackets
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'MEASUREMENTS:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: "<p><strong>TAGGED SIZE:</strong> </p>\n<p><strong>MEASUREMENTS:</strong></p>\n<table>\n \
+    \ <tbody>\n    <tr><td><strong>CHEST</strong></td><td></td></tr>\n    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>SLEEVE</strong></td><td></td></tr>\n    <tr><td><strong>SHOULDER</strong></td><td></td></tr>\n\
+    \  </tbody>\n</table>\n<p><strong>CONDITION NOTES:</strong></p>\n"
+  notes: ''
+  shopify_category_gid: ''
+- name: Tops
+  applies_to_categories:
+  - Shirts & Tops
+  - Tops
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'MEASUREMENTS:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: "<p><strong>TAGGED SIZE:</strong> </p>\n<p><strong>MEASUREMENTS:</strong></p>\n<table>\n \
+    \ <tbody>\n    <tr><td><strong>CHEST</strong></td><td></td></tr>\n    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n\
+    \  </tbody>\n</table>\n<p><strong>CONDITION NOTES:</strong></p>\n"
+  notes: ''
+  shopify_category_gid: ''
+- name: Bottoms
+  applies_to_categories:
+  - Pants
+  - Skirts
+  - Shorts
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'MEASUREMENTS:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: "<p><strong>TAGGED SIZE:</strong> </p>\n<p><strong>MEASUREMENTS:</strong></p>\n<table>\n \
+    \ <tbody>\n    <tr><td><strong>WAIST</strong></td><td></td></tr>\n    <tr><td><strong>HIPS</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>INSEAM</strong></td><td></td></tr>\n    <tr><td><strong>RISE</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n  </tbody>\n</table>\n<p><strong>CONDITION\
+    \ NOTES:</strong></p>\n"
+  notes: ''
+  shopify_category_gid: ''
+- name: Dresses
+  applies_to_categories:
+  - Dresses
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'MEASUREMENTS:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: "<p><strong>TAGGED SIZE:</strong> </p>\n<p><strong>MEASUREMENTS:</strong></p>\n<table>\n \
+    \ <tbody>\n    <tr><td><strong>CHEST</strong></td><td></td></tr>\n    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n\
+    \  </tbody>\n</table>\n<p><strong>CONDITION NOTES:</strong></p>\n"
+  notes: ''
+  shopify_category_gid: ''
+- name: Shoes
+  applies_to_categories:
+  - Shoes
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: '<p><strong>TAGGED SIZE:</strong> </p>
+
+    <p><strong>CONDITION NOTES:</strong></p>
+
+    '
+  notes: ''
+  shopify_category_gid: ''
+- name: Sets
+  applies_to_categories:
+  - Outfit Sets
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'MEASUREMENTS:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 100
+  max_length: null
+  template: "<p><strong>TAGGED SIZE:</strong> </p>\n<p><strong>MEASUREMENTS:</strong></p>\n<table>\n \
+    \ <tbody>\n    <tr><td><strong>CHEST</strong></td><td></td></tr>\n    <tr><td><strong>TOP LENGTH</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>WAIST</strong></td><td></td></tr>\n    <tr><td><strong>HIPS</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>INSEAM</strong></td><td></td></tr>\n    <tr><td><strong>RISE</strong></td><td></td></tr>\n\
+    \    <tr><td><strong>BOTTOM LENGTH</strong></td><td></td></tr>\n  </tbody>\n</table>\n<p><strong>CONDITION\
+    \ NOTES:</strong></p>\n"
+  notes: Two-piece / matching set / burnout set / co-ord. Combined top + bottom measurements.
+  shopify_category_gid: ''
+- name: Accessories
+  applies_to_categories:
+  - Clothing Accessories
+  - Jewelry
+  - Apparel & Accessories
+  required_sections:
+  - 'TAGGED SIZE:'
+  - 'CONDITION NOTES:'
+  banned_phrases:
+  - gorgeous
+  - stunning
+  - must-have
+  - perfect
+  - amazing
+  min_length: 50
+  max_length: null
+  template: '<p><strong>TAGGED SIZE:</strong> </p>
+
+    <p><strong>CONDITION NOTES:</strong></p>
+
+    '
+  notes: ''
+  shopify_category_gid: ''

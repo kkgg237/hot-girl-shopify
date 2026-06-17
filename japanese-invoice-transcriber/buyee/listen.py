@@ -157,6 +157,17 @@ def _handle_sync(cfg: BuyeeConfig, chat_id: int, max_pages: int = 5) -> None:
     ]
     if stats["downloaded"]:
         msg_lines.append(f"\n📦 {stats['downloaded']} new PDF(s) saved to inputs/buyee/.")
+        # Surface the item-URL cache refresh result — this is the V-prefix
+        # LuxeWholesale URL cache that powers the Pricing-tab Auction
+        # column AND the V-prefix photo scraper. Only refreshed on syncs
+        # that pulled new invoices, so seeing a count > 0 here means the
+        # new invoices' items will get clickable auction links + photos
+        # once you transcribe them.
+        if stats.get("item_urls_new"):
+            msg_lines.append(
+                f"🔗 {stats['item_urls_new']} new item URL(s) cached for the "
+                f"new invoices' V-prefix items."
+            )
         msg_lines.append("Open the Streamlit app to QA + transcribe.")
     elif stats["new"] == 0:
         msg_lines.append("\nNothing new since last check.")
@@ -929,6 +940,13 @@ def _handle_help_v2(cfg: BuyeeConfig, chat_id: int, args: str = "") -> None:
         "  notes                   — pending notes >2 days old\n"
         "  notes all               — every pending note\n"
         "  notes 5                 — pending notes >5 days old\n\n"
+        "Infrastructure:\n"
+        "  app                     — Streamlit + port + public URL health\n"
+        "  app restart             — restart Streamlit (~5-10s downtime)\n"
+        "  tunnel                  — Cloudflare tunnel state + pid\n"
+        "  tunnel restart          — restart the public hostname\n"
+        "  audit                   — last catalogue audit result\n"
+        "  audit run               — trigger catalogue audit now (~30-60s)\n\n"
         "Misc:\n"
         "  history                 — last 10 bot actions\n"
         "  help                    — this message"
@@ -942,6 +960,256 @@ def _handle_help_v2(cfg: BuyeeConfig, chat_id: int, args: str = "") -> None:
 # Maps the first whitespace-delimited word (lowercase, no slash) to a handler.
 # Each handler takes (cfg, chat_id, args_string) where args_string is the
 # rest of the message after the command name.
+# ---------------------------------------------------------------------------
+# Infrastructure controls — restart launchd-managed services from your phone
+# ---------------------------------------------------------------------------
+
+def _handle_tunnel(cfg: "BuyeeConfig", chat_id: int, args: str = "") -> None:
+    """Status / restart for the Cloudflare Tunnel launchd agent.
+
+    Subcommands:
+        tunnel          → print state + last exit code (read-only, safe)
+        tunnel status   → same as above
+        tunnel restart  → launchctl kickstart -k (drops the tunnel briefly,
+                          ~5 seconds before public hostname reconnects)
+    """
+    import os
+    import subprocess
+
+    LABEL = "com.paststudies.invoice.tunnel"
+    uid = os.getuid()
+    sub = (args or "").strip().lower() or "status"
+
+    if sub == "restart":
+        try:
+            result = subprocess.run(
+                ["launchctl", "kickstart", "-k", f"gui/{uid}/{LABEL}"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception as e:
+            send_message(cfg.telegram_token, chat_id,
+                         f"✗ Tunnel restart crashed: {type(e).__name__}: {e}")
+            return
+        if result.returncode == 0:
+            send_message(cfg.telegram_token, chat_id,
+                f"🔄 Tunnel restarted.\n\n"
+                f"Public hostname usually reconnects in ~5 seconds. "
+                f"Try invoices.paststudies-tools.com in a moment."
+            )
+            _log_action("tunnel_restart", source="telegram")
+        else:
+            send_message(cfg.telegram_token, chat_id,
+                f"✗ Tunnel restart failed (rc={result.returncode}):\n"
+                f"{(result.stderr or result.stdout)[:300]}")
+    elif sub in ("status", ""):
+        try:
+            result = subprocess.run(
+                ["launchctl", "print", f"gui/{uid}/{LABEL}"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception as e:
+            send_message(cfg.telegram_token, chat_id,
+                         f"✗ Tunnel status crashed: {type(e).__name__}: {e}")
+            return
+        if result.returncode != 0:
+            send_message(cfg.telegram_token, chat_id,
+                f"✗ Couldn't read tunnel status — agent may not be loaded.\n"
+                f"To install: `./launchd/install_tunnel.sh <hostname>`\n\n"
+                f"{result.stderr[:200]}")
+            return
+        out = result.stdout
+        state_m = re.search(r"state\s*=\s*(\S+)", out)
+        exit_m = re.search(r"last exit code\s*=\s*(-?\d+)", out)
+        pid_m = re.search(r"pid\s*=\s*(\d+)", out)
+        state = state_m.group(1) if state_m else "?"
+        send_message(cfg.telegram_token, chat_id,
+            f"🌐 Cloudflare Tunnel · {LABEL}\n"
+            f"  state: {state}\n"
+            f"  last exit code: {exit_m.group(1) if exit_m else '?'}\n"
+            f"  pid: {pid_m.group(1) if pid_m else '(not running)'}\n\n"
+            f"Send `tunnel restart` to kick it."
+        )
+    else:
+        send_message(cfg.telegram_token, chat_id,
+            f"❓ Unknown tunnel subcommand: {sub!r}\n\n"
+            f"Valid: `tunnel`, `tunnel status`, `tunnel restart`")
+
+
+def _handle_app(cfg: "BuyeeConfig", chat_id: int, args: str = "") -> None:
+    """Status / restart for the Streamlit invoice UI launchd agent.
+
+    The launchd `state = running` flag only tells you the wrapper process
+    is alive — it doesn't say whether anything is actually listening on
+    :8501. So `app` here also probes the local port + the public URL
+    behind the Cloudflare tunnel, which is what actually matters.
+
+    Subcommands:
+        app          → state + pid + port-listening + public URL reachability
+        app status   → same as above
+        app restart  → launchctl kickstart -k (full respawn; ~5s downtime)
+    """
+    import os
+    import socket
+    import subprocess
+    import urllib.error
+    import urllib.request
+
+    LABEL = "com.paststudies.invoice.streamlit"
+    PUBLIC_URL = "https://invoices.paststudies-tools.com/"
+    LOCAL_PORT = 8501
+    uid = os.getuid()
+    sub = (args or "").strip().lower() or "status"
+
+    if sub == "restart":
+        try:
+            result = subprocess.run(
+                ["launchctl", "kickstart", "-k", f"gui/{uid}/{LABEL}"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception as e:
+            send_message(cfg.telegram_token, chat_id,
+                         f"✗ App restart crashed: {type(e).__name__}: {e}")
+            return
+        if result.returncode == 0:
+            send_message(cfg.telegram_token, chat_id,
+                f"🔄 Streamlit app restarted.\n\n"
+                f"It usually takes ~5-10s to bind to port {LOCAL_PORT} "
+                f"and the public URL to come back. "
+                f"Send `app` in a moment to verify."
+            )
+            _log_action("app_restart", source="telegram")
+        else:
+            send_message(cfg.telegram_token, chat_id,
+                f"✗ App restart failed (rc={result.returncode}):\n"
+                f"{(result.stderr or result.stdout)[:300]}")
+    elif sub in ("status", ""):
+        # 1. Launchd agent state
+        try:
+            result = subprocess.run(
+                ["launchctl", "print", f"gui/{uid}/{LABEL}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            out = result.stdout if result.returncode == 0 else ""
+        except Exception as e:
+            out = ""
+            err = f"{type(e).__name__}: {e}"
+        state_m = re.search(r"state\s*=\s*(\S+)", out)
+        pid_m = re.search(r"pid\s*=\s*(\d+)", out)
+        agent_state = state_m.group(1) if state_m else "?"
+        agent_pid = pid_m.group(1) if pid_m else "(not running)"
+
+        # 2. Is anything actually listening on :8501?
+        port_ok = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2)
+                port_ok = (s.connect_ex(("127.0.0.1", LOCAL_PORT)) == 0)
+        except Exception:
+            pass
+
+        # 3. Does the public URL respond?
+        public_status = "?"
+        try:
+            req = urllib.request.Request(PUBLIC_URL, method="HEAD")
+            with urllib.request.urlopen(req, timeout=8) as r:
+                public_status = f"HTTP {r.status}"
+        except urllib.error.HTTPError as he:
+            public_status = f"HTTP {he.code}"
+        except Exception as e:
+            public_status = f"unreachable ({type(e).__name__})"
+
+        # Overall verdict
+        if agent_state == "running" and port_ok and public_status == "HTTP 200":
+            emoji = "✅"
+            verdict = "all green"
+        elif agent_state == "running" and not port_ok:
+            emoji = "⚠️"
+            verdict = "agent alive but port dead — send `app restart`"
+        else:
+            emoji = "⚠️"
+            verdict = "degraded"
+
+        send_message(cfg.telegram_token, chat_id,
+            f"{emoji} Streamlit app · {LABEL}\n"
+            f"  launchd state: {agent_state}  ·  pid: {agent_pid}\n"
+            f"  port {LOCAL_PORT}: {'listening ✓' if port_ok else 'not listening ✗'}\n"
+            f"  public url: {public_status}\n\n"
+            f"{verdict}"
+        )
+    else:
+        send_message(cfg.telegram_token, chat_id,
+            f"❓ Unknown app subcommand: {sub!r}\n\n"
+            f"Valid: `app`, `app status`, `app restart`")
+
+
+def _handle_audit(cfg: "BuyeeConfig", chat_id: int, args: str = "") -> None:
+    """On-demand catalogue audit (no-photo + wrong-vendor scan).
+
+    Subcommands:
+        audit         → status from the last run (read-only)
+        audit status  → same as above
+        audit run     → trigger the same audit launchd runs every Monday
+                        9am, posts the digest to this chat when done
+                        (~30-60 seconds total)
+    """
+    sub = (args or "").strip().lower() or "status"
+
+    if sub == "run":
+        send_message(cfg.telegram_token, chat_id,
+                     "🔍 Running catalogue audit — usually 30-60 seconds…")
+        try:
+            from weekly_catalogue_audit import run_audit
+            # run_audit() does the scan, formats the digest, sends to the
+            # authorized chat itself, and writes a `weekly_audit` log entry.
+            exit_code = run_audit(dry_run=False)
+        except Exception as e:
+            send_message(cfg.telegram_token, chat_id,
+                         f"✗ Audit crashed: {type(e).__name__}: {e}")
+            _log_action("audit_run", source="telegram", status="crash",
+                        error=f"{type(e).__name__}: {e}")
+            return
+        _log_action("audit_run", source="telegram",
+                    exit_code=int(exit_code) if exit_code is not None else None)
+        if exit_code not in (0, None):
+            send_message(cfg.telegram_token, chat_id,
+                         f"⚠️ Audit finished with exit code {exit_code}. "
+                         f"Check ~/Library/Logs/com.paststudies.weekly-audit.*.log.")
+
+    elif sub in ("status", ""):
+        # Find the most recent `weekly_audit` entry in the telegram log
+        log_path = Path(__file__).resolve().parent.parent / "buyee" / "state" / "telegram_log.jsonl"
+        last = None
+        if log_path.exists():
+            try:
+                with log_path.open(encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if entry.get("kind") == "weekly_audit":
+                            last = entry
+            except OSError:
+                pass
+        if not last:
+            send_message(cfg.telegram_token, chat_id,
+                "📋 No catalogue audit runs logged yet.\n\n"
+                "Send `audit run` to trigger one now (~30-60s).")
+            return
+        send_message(cfg.telegram_token, chat_id,
+            f"📋 Last catalogue audit · {last.get('ts', '?')}\n"
+            f"  status: {last.get('status', '?')}\n"
+            f"  scanned: {last.get('scanned', 0):,}\n"
+            f"  no photos: {last.get('no_photos', 0)}\n"
+            f"  wrong vendor: {last.get('wrong_vendor', 0)}\n\n"
+            f"Send `audit run` to trigger another now."
+        )
+    else:
+        send_message(cfg.telegram_token, chat_id,
+            f"❓ Unknown audit subcommand: {sub!r}\n\n"
+            f"Valid: `audit`, `audit status`, `audit run`")
+
+
 COMMAND_HANDLERS = {
     "sync":    lambda cfg, cid, args: _handle_sync(cfg, cid),
     "status":  lambda cfg, cid, args: _handle_status(cfg, cid),
@@ -959,6 +1227,9 @@ COMMAND_HANDLERS = {
     "notes":   _handle_notes,
     "add":     _handle_add,
     "invoice": _handle_invoice,
+    "tunnel":  _handle_tunnel,
+    "app":     _handle_app,
+    "audit":   _handle_audit,
 }
 
 

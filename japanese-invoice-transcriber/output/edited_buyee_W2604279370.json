@@ -29,7 +29,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 185
+      "override_price": 185,
+      "shopify_product_id": 10241957822740,
+      "shopify_sku": "DIO_2605_563",
+      "shopify_handle": "christian-dior-navy-short-sleeve-short-sleeve-top-dio-2605-563",
+      "shopify_pushed_at": "2026-06-01T14:59:19"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -54,7 +58,11 @@
       "coupon_discount": 0.0,
       "override_title": "Christian Dior Monogram Socks",
       "override_vendor": null,
-      "override_price": 85
+      "override_price": 35,
+      "shopify_product_id": 10241957855508,
+      "shopify_sku": "DIO_2605_524",
+      "shopify_handle": "christian-dior-monogram-socks-dio-2605-524",
+      "shopify_pushed_at": "2026-06-01T14:59:20"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -79,7 +87,11 @@
       "coupon_discount": 0.0,
       "override_title": "Christian Dior White Mandarin Collar Embroidered Short Dress",
       "override_vendor": null,
-      "override_price": 195
+      "override_price": 195,
+      "shopify_product_id": 10241957888276,
+      "shopify_sku": "DIO_2605_473",
+      "shopify_handle": "christian-dior-white-mandarin-collar-embroidered-short-dress-dio-2605-473",
+      "shopify_pushed_at": "2026-06-01T14:59:22"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -104,7 +116,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 245
+      "override_price": 175,
+      "shopify_product_id": 10241957953812,
+      "shopify_sku": "BUR_2605_683",
+      "shopify_handle": "burberry-pink-nova-check-short-skirt-bur-2605-683",
+      "shopify_pushed_at": "2026-06-01T14:59:23"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -129,7 +145,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 95
+      "override_price": 125,
+      "shopify_product_id": 10241957986580,
+      "shopify_sku": "KRI_2605_242",
+      "shopify_handle": "krizia-brown-mock-neck-sleeveless-vest-kri-2605-242",
+      "shopify_pushed_at": "2026-06-01T14:59:24"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -154,7 +174,11 @@
       "coupon_discount": 0.0,
       "override_title": "Burberry Beige Nova Check Wool Short Skirt",
       "override_vendor": null,
-      "override_price": 295
+      "override_price": 175,
+      "shopify_product_id": 10241958019348,
+      "shopify_sku": "BUR_2605_356",
+      "shopify_handle": "burberry-beige-nova-check-wool-short-skirt-bur-2605-356",
+      "shopify_pushed_at": "2026-06-01T14:59:26"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -177,9 +201,13 @@
       "currency": "JPY",
       "item_price": 7000.0,
       "coupon_discount": 0.0,
-      "override_title": "Christian Dior Navy Embroidered Jacket",
+      "override_title": "Christian Dior Sports Terry Cloth Navy Embroidered Jacket",
       "override_vendor": null,
-      "override_price": 325
+      "override_price": 225,
+      "shopify_product_id": 10241958052116,
+      "shopify_sku": "DIO_2605_352",
+      "shopify_handle": "christian-dior-sports-terry-cloth-navy-embroidered-jacket-dio-2605-352",
+      "shopify_pushed_at": "2026-06-01T14:59:27"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -204,7 +232,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 195
+      "override_price": 175,
+      "shopify_product_id": 10241958084884,
+      "shopify_sku": "DIO_2605_477",
+      "shopify_handle": "christian-dior-orange-long-sleeve-embroidered-polo-shirt-dio-2605-477",
+      "shopify_pushed_at": "2026-06-01T14:59:28"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -229,7 +261,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 295
+      "override_price": 195,
+      "shopify_product_id": 10241958150420,
+      "shopify_sku": "DIO_2605_127",
+      "shopify_handle": "christian-dior-white-v-neck-sleeveless-knit-embroidered-knit-vest-dio-2605-127",
+      "shopify_pushed_at": "2026-06-01T14:59:30"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -254,7 +290,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 175
+      "override_price": 175,
+      "shopify_product_id": 10241958215956,
+      "shopify_sku": "DIO_2605_066",
+      "shopify_handle": "christian-dior-white-long-sleeve-embroidered-shirt-dio-2605-066",
+      "shopify_pushed_at": "2026-06-01T14:59:31"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -279,7 +319,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 295
+      "override_price": 325,
+      "shopify_product_id": 10241958248724,
+      "shopify_sku": "DG_2605_770",
+      "shopify_handle": "dolce-gabbana-blue-cropped-beaded-short-denim-jacket-dg-2605-770",
+      "shopify_pushed_at": "2026-06-01T14:59:32"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -304,7 +348,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 295
+      "override_price": 295,
+      "shopify_product_id": 10241958281492,
+      "shopify_sku": "DG_2605_288",
+      "shopify_handle": "dolce-gabbana-sequined-cardigan-dg-2605-288",
+      "shopify_pushed_at": "2026-06-01T14:59:34"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -329,7 +377,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 195
+      "override_price": 195,
+      "shopify_product_id": 10241958314260,
+      "shopify_sku": "GUC_2605_104",
+      "shopify_handle": "gucci-white-v-neck-short-sleeve-t-shirt-guc-2605-104",
+      "shopify_pushed_at": "2026-06-01T14:59:35"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -354,7 +406,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 225
+      "override_price": 245,
+      "shopify_product_id": 10241958347028,
+      "shopify_sku": "DG_2605_650",
+      "shopify_handle": "dolce-gabbana-black-short-sleeve-lace-floral-polo-shirt-dg-2605-650",
+      "shopify_pushed_at": "2026-06-01T14:59:36"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -379,7 +435,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 195
+      "override_price": 175,
+      "shopify_product_id": 10241958412564,
+      "shopify_sku": "VIN_2605_638",
+      "shopify_handle": "vintage-brown-tailored-lambskin-short-leather-jacket-vin-2605-638",
+      "shopify_pushed_at": "2026-06-01T14:59:38"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -404,7 +464,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 295
+      "override_price": 195,
+      "shopify_product_id": 10241958445332,
+      "shopify_sku": "VIN_2605_203",
+      "shopify_handle": "vintage-brown-belted-leather-long-leather-coat-vin-2605-203",
+      "shopify_pushed_at": "2026-06-01T14:59:39"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -429,7 +493,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 195
+      "override_price": 165,
+      "shopify_product_id": 10241958510868,
+      "shopify_sku": "VIN_2605_763",
+      "shopify_handle": "vintage-red-leather-long-leather-coat-vin-2605-763",
+      "shopify_pushed_at": "2026-06-01T14:59:41"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -454,7 +522,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 245
+      "override_price": 185,
+      "shopify_product_id": 10241958543636,
+      "shopify_sku": "VIN_2605_269",
+      "shopify_handle": "vintage-green-sheepskin-midi-dress-vin-2605-269",
+      "shopify_pushed_at": "2026-06-01T14:59:42"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -479,7 +551,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 145
+      "override_price": 145,
+      "shopify_product_id": 10241958576404,
+      "shopify_sku": "VIN_2605_693",
+      "shopify_handle": "vintage-white-lambskin-short-leather-jacket-vin-2605-693",
+      "shopify_pushed_at": "2026-06-01T14:59:43"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -504,7 +580,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 225
+      "override_price": 175,
+      "shopify_product_id": 10241958609172,
+      "shopify_sku": "VIN_2605_273",
+      "shopify_handle": "vintage-beige-tailored-leather-short-leather-jacket-vin-2605-273",
+      "shopify_pushed_at": "2026-06-01T14:59:44"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -529,7 +609,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 145
+      "override_price": 145,
+      "shopify_product_id": 10241958641940,
+      "shopify_sku": "VIN_2605_001",
+      "shopify_handle": "vintage-belted-sheepskin-short-leather-jacket-vin-2605-001",
+      "shopify_pushed_at": "2026-06-01T14:59:46"
     },
     {
       "source_platform": "JDirectItems Auction",
@@ -554,7 +638,11 @@
       "coupon_discount": 0.0,
       "override_title": null,
       "override_vendor": null,
-      "override_price": 145
+      "override_price": 145,
+      "shopify_product_id": 10241958707476,
+      "shopify_sku": "VIN_2605_210",
+      "shopify_handle": "vintage-navy-long-sleeve-lambskin-short-leather-jacket-vin-2605-210",
+      "shopify_pushed_at": "2026-06-01T14:59:47"
     },
     {
       "source_platform": "LuxeWholesale",
@@ -579,7 +667,11 @@
       "coupon_discount": 0.0,
       "override_title": "90's Louis Vuitton Pochette Brown Monogram Pouch",
       "override_vendor": null,
-      "override_price": 625
+      "override_price": 695,
+      "shopify_product_id": 10241958773012,
+      "shopify_sku": "LV_2605_025",
+      "shopify_handle": "90-s-louis-vuitton-pochette-brown-monogram-pouch-lv-2605-025",
+      "shopify_pushed_at": "2026-06-01T14:59:49"
     }
   ],
   "commission_fees": [

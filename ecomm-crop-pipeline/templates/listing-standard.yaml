@@ -1,0 +1,52 @@
+# Standard 4-shot ecomm listing template.
+#
+# Assumed Capture One shoot order (per SKU, 9 frames):
+#   0  front, eyes closed   (safety)
+#   1  front, eyes open     ← hero
+#   2  front, eyes closed   (safety)
+#   3  side profile         (unused — same orientation as 3/4 in current shoot)
+#   4  3/4 turn left        ← three_quarter
+#   5  3/4 turn right       (safety — unused, same direction as shot 4 in current shoot)
+#   6  back                 (safety)
+#   7  back                 ← back
+#   8  back                 (safety)
+#
+# Pure side profile was dropped because shots 3/4/5 all face the same
+# direction in the current shoot — having both side and 3/4 reads redundant.
+# If a future shoot captures a true 3/4 turn RIGHT (opposite direction from
+# shot 4), add it back as ``03_three_quarter_right`` between 02 and 03_back.
+#
+# Filenames look like ``{SKU}_{slot}.jpg`` so Shopify sorts them in order.
+
+name: listing-standard
+description: Standard 4-shot fashion ecomm listing
+output_size: [1536, 2048]
+
+shots:
+  # All full-body slots share the same framing so the subject lands in the
+  # same spot from hero → 3/4 → back. Don't tune one slot's
+  # subject_height_fraction / vertical_bias without updating the others —
+  # tests/test_templates.py asserts they stay in sync.
+  - slot: 01_hero
+    source_shot: 1
+    subject_height_fraction: 0.80
+    vertical_bias: 0.0
+
+  - slot: 02_three_quarter
+    source_shot: 4
+    subject_height_fraction: 0.80
+    vertical_bias: 0.0
+
+  - slot: 03_back
+    source_shot: 7
+    subject_height_fraction: 0.80
+    vertical_bias: 0.0
+
+  - slot: 04_detail
+    source_shot: 1
+    # Detail shots use ``region_of_subject`` instead of subject_height_fraction.
+    # Values are fractions of the detected subject's vertical extent:
+    #   0.0 = top of subject (head), 1.0 = bottom (feet)
+    # This crops to chest/torso showing fabric, collar, button line.
+    region_of_subject: [0.08, 0.55]
+    region_fill: 0.92

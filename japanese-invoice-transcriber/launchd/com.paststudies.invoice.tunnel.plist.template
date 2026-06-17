@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.invoice.tunnel.plist
+
+  Runs a Cloudflare Tunnel that forwards a public hostname to
+  http://localhost:8501. Run install_tunnel.sh first to authenticate
+  with Cloudflare, create the tunnel, and configure DNS.
+
+  Install:
+    ./launchd/install_tunnel.sh
+
+  Stop:
+    launchctl bootout gui/$UID/com.paststudies.invoice.tunnel
+
+  Logs:
+    {{PROJECT_ROOT}}/buyee/state/tunnel.log
+    {{PROJECT_ROOT}}/buyee/state/tunnel.err.log
+
+  Config: ~/.cloudflared/config.yml (created by install_tunnel.sh)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.invoice.tunnel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{CLOUDFLARED_PATH}}</string>
+        <string>tunnel</string>
+        <string>--config</string>
+        <string>{{HOME}}/.cloudflared/config.yml</string>
+        <string>run</string>
+        <string>{{TUNNEL_NAME}}</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/tunnel.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/tunnel.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

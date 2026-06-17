@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.weekly_snapshot.plist
+
+  Runs weekly_snapshot.py every Monday at 8:00 local time — captures every
+  live Shopify product's body_html + category so the audit's Undo flow has
+  a baseline to fall back on if something goes sideways during the week.
+
+  Install:
+    ./launchd/install_weekly_snapshot.sh
+
+  Trigger a one-off run now (without changing the schedule):
+    launchctl kickstart -k gui/$UID/com.paststudies.weekly_snapshot
+
+  Stop / uninstall:
+    launchctl bootout gui/$UID/com.paststudies.weekly_snapshot
+    rm ~/Library/LaunchAgents/com.paststudies.weekly_snapshot.plist
+
+  Logs:
+    {{PROJECT_ROOT}}/buyee/state/weekly_snapshot.log
+    {{PROJECT_ROOT}}/buyee/state/weekly_snapshot.err.log
+
+  Snapshots end up in:
+    {{PROJECT_ROOT}}/buyee/state/snapshots/snapshot_<UTC-ts>_weekly_*.json
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.weekly_snapshot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{UV_PATH}}</string>
+        <string>run</string>
+        <string>--with</string><string>python-dotenv</string>
+        <string>--with</string><string>pydantic</string>
+        <string>--with</string><string>pyyaml</string>
+        <string>python</string>
+        <string>weekly_snapshot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <!-- Monday 8:00am local time. launchd weekdays: Sun=0, Mon=1, … Sat=6. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- If the Mac was asleep at 8am Mon, run as soon as it wakes. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/weekly_snapshot.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/weekly_snapshot.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

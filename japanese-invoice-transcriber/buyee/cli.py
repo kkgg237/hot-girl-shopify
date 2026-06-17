@@ -68,6 +68,26 @@ def cmd_sync(args):
     return 0 if stats["errors"] == 0 else 1
 
 
+def cmd_scrape_urls(args):
+    """Walk Buyee's authenticated shipped-baggages pages and cache the btob
+    item URLs that appear inline on each page.
+
+    Populates `buyee/state/item_urls.json` keyed by source_id. The Pricing-
+    tab Auction column reads from this cache for V-prefix (LuxeWholesale)
+    items where the URL isn't derivable from the source_id alone.
+    """
+    print(f"Scraping item URLs from Buyee shipped-baggages pages...")
+    stats = scraper.scrape_item_urls(headless=not args.headed)
+    print()
+    print("=" * 60)
+    print(f"  Pages visited:     {stats['pages_visited']}")
+    print(f"  Pairs found:       {stats['urls_found']}")
+    print(f"  New / changed:     {stats['urls_new']}")
+    print(f"  Errors:            {stats['errors']}")
+    print(f"  Cache file:        {scraper.ITEM_URLS_CACHE}")
+    return 0 if stats["errors"] == 0 else 1
+
+
 def cmd_setup(args):
     """Interactive Telegram bot setup wizard."""
     from .listen import setup_interactive
@@ -278,6 +298,23 @@ def main(argv: list[str] | None = None) -> int:
     pn.add_argument("--always", action="store_true",
                     help="Send even when there are no stale notes (default: skip)")
     pn.set_defaults(func=cmd_notes_digest)
+
+    psu = sub.add_parser(
+        "scrape-urls",
+        help="Walk baggage detail pages, cache (source_id → btob URL) pairs "
+             "for LuxeWholesale V-prefix items. Populates the Pricing-tab "
+             "Auction column for V-prefix items.",
+    )
+    psu.add_argument("--order", action="append", default=None,
+                     help="Specific baggage ID to scrape (W…); repeat to "
+                          "list more. Default: scrape every indexed baggage.")
+    psu.add_argument("--all", action="store_true",
+                     help="Force re-scrape every baggage (ignores any "
+                          "fully-cached optimization).")
+    psu.add_argument("--headed", action="store_true",
+                     help="Run Playwright with a visible browser window — "
+                          "useful for debugging Buyee's auth challenges.")
+    psu.set_defaults(func=cmd_scrape_urls)
 
     pp = sub.add_parser("photos", help="Scrape first-photo thumbnails from Buyee auction pages")
     pp.add_argument("invoice", help="Path to a transcribed invoice JSON")

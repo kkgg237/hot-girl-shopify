@@ -1,0 +1,13 @@
+# Virtualenv + caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets + local state (token cache, push ledger, sku map)
+.env
+state/*
+!state/.gitkeep
+
+# Crop output handed in from the crop pipeline
+staging/

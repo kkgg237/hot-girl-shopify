@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.paststudies.invoice.streamlit.plist
+
+  Keeps the Streamlit invoice transcriber UI running on http://localhost:8501.
+  Pair with com.paststudies.invoice.tunnel to expose it via Cloudflare Tunnel.
+
+  Install:
+    ./launchd/install_streamlit.sh
+
+  Stop:
+    launchctl bootout gui/$UID/com.paststudies.invoice.streamlit
+
+  Logs:
+    {{PROJECT_ROOT}}/buyee/state/streamlit.log
+    {{PROJECT_ROOT}}/buyee/state/streamlit.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.paststudies.invoice.streamlit</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{UV_PATH}}</string>
+        <string>run</string>
+        <string>app.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/streamlit.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/buyee/state/streamlit.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

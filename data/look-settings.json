@@ -1,0 +1,28 @@
+{
+  "clothing": {
+    "color": "#1a1614",
+    "align": "left",
+    "xPct": 6.5,
+    "yPct": 48,
+    "brandSize": 36,
+    "nameSize": 30,
+    "priceSize": 28,
+    "showBrand": true,
+    "showName": false,
+    "showPrice": true,
+    "showDollar": false
+  },
+  "bags": {
+    "color": "#1a1614",
+    "align": "left",
+    "xPct": 6.5,
+    "yPct": 48,
+    "brandSize": 36,
+    "nameSize": 30,
+    "priceSize": 28,
+    "showBrand": true,
+    "showName": false,
+    "showPrice": true,
+    "showDollar": false
+  }
+}

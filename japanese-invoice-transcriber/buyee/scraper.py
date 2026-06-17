@@ -233,6 +233,28 @@ def sync_invoices(max_pages: int = 10, dry_run: bool = False) -> dict:
 
     index.save()
 
+    # Refresh the V-prefix item-URL cache whenever we discovered new
+    # invoices. The cache walks `/mybaggages/shipped/*` to pair each
+    # source_id with its actual btob URL — needed because LuxeWholesale
+    # (V-prefix) URLs are opaque and can't be constructed from the V-id.
+    # Skip on quiet syncs (no new downloads) to avoid pointless re-fetches:
+    # the cache's stop-when-no-new-pairs logic would no-op anyway, but
+    # skipping saves a Playwright session boot.
+    if not dry_run and stats["downloaded"] > 0:
+        try:
+            print(f"  ⓘ {stats['downloaded']} new invoice(s) — refreshing item-URL cache…")
+            url_stats = scrape_item_urls(headless=True)
+            stats["item_urls_new"] = url_stats.get("urls_new", 0)
+            stats["item_urls_total"] = url_stats.get("urls_found", 0)
+            print(f"  ✓ Item-URL cache: {url_stats.get('urls_new', 0)} new, "
+                  f"{url_stats.get('urls_found', 0)} total this run.")
+        except Exception as e:
+            print(f"  ⚠ Item-URL cache refresh failed: {e}")
+            stats["item_urls_error"] = str(e)
+    else:
+        stats["item_urls_new"] = 0
+        stats["item_urls_total"] = 0
+
     # Record sync completion in meta — drives auto-sync TTL + freshness badges
     meta = load_meta()
     meta.last_sync_completed_at = _dt.datetime.now().isoformat(timespec="seconds")
@@ -246,6 +268,194 @@ def sync_invoices(max_pages: int = 10, dry_run: bool = False) -> dict:
     save_meta(meta)
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Item-URL scraping — pull (source_id → btob URL) pairs from baggage pages.
+#
+# Why this exists: Buyee's LuxeWholesale (V-prefix) items have URLs like
+#   https://buyee.jp/btob/item/25/202603068954486
+# where the 15-digit ID is opaque — it's NOT derivable from the V-id or any
+# field in the PDF. The only way to get the URL is to scrape Buyee's
+# baggage-detail page, which lists each item with its <a href> to the btob
+# URL. We cache the result so Pricing-tab Auction-column lookups are O(1).
+# ---------------------------------------------------------------------------
+
+ITEM_URLS_CACHE = HERE / "state" / "item_urls.json"
+
+# Pattern that catches every btob item URL we've seen so far:
+#   https://buyee.jp/btob/item/25/202603068954486
+_BTOB_HREF_RE = re.compile(r'href="(https?://buyee\.jp/btob/item/\d+/\d+)"', re.IGNORECASE)
+_BTOB_HREF_RE_REL = re.compile(r'href="(/btob/item/\d+/\d+)"', re.IGNORECASE)
+# V-id pattern: capital V then 8+ digits
+_VID_RE = re.compile(r'\bV\d{8,}\b')
+# Yahoo Auctions ID pattern: lowercase letter + 8+ digits (already mapped
+# deterministically, but we still cache the URL for completeness).
+_YAH_RE = re.compile(r'\b[a-z]\d{8,}\b')
+
+
+def _baggage_detail_candidates(order_id: str) -> list[str]:
+    """Buyee's baggage detail URL pattern has shifted over time. Try a wide
+    range of plausible paths; the scraper uses the first one that returns
+    a non-empty page containing btob item links.
+    """
+    return [
+        # btob namespace (the URL family of the items we're after)
+        f"https://buyee.jp/btob/mybaggages/{order_id}",
+        f"https://buyee.jp/btob/mybaggages/detail/{order_id}",
+        f"https://buyee.jp/btob/orders/{order_id}",
+        f"https://buyee.jp/btob/baggages/{order_id}",
+        # Classic /mybaggages namespace
+        f"https://buyee.jp/mybaggages/{order_id}",
+        f"https://buyee.jp/mybaggages/detail/{order_id}",
+        f"https://buyee.jp/mybaggages/info/{order_id}",
+        f"https://buyee.jp/mybaggages/view/{order_id}",
+        f"https://buyee.jp/mybaggages/edit/{order_id}",
+        # Pre-shipment / consolidated views
+        f"https://buyee.jp/baggages/{order_id}",
+        f"https://buyee.jp/mybaggages/shipping/{order_id}",
+    ]
+
+
+def _extract_item_url_pairs(html: str) -> dict[str, str]:
+    """From a baggage detail page's HTML, pair each btob URL with the
+    nearest V-id (or Yahoo Auctions ID) that appears in the surrounding
+    text. Returns {source_id: full_btob_url}.
+
+    Strategy: walk the HTML in order, alternating between "found a btob
+    URL" and "found a V-id". Each btob URL gets assigned to the LAST V-id
+    seen — Buyee's detail rows render id first, link second.
+    """
+    pairs: dict[str, str] = {}
+    # Build an ordered list of (position, kind, value) tokens
+    tokens: list[tuple[int, str, str]] = []
+    for m in _VID_RE.finditer(html):
+        tokens.append((m.start(), "vid", m.group(0)))
+    for m in _YAH_RE.finditer(html):
+        tokens.append((m.start(), "yah", m.group(0)))
+    for m in _BTOB_HREF_RE.finditer(html):
+        tokens.append((m.start(), "btob", m.group(1)))
+    for m in _BTOB_HREF_RE_REL.finditer(html):
+        tokens.append((m.start(), "btob", f"https://buyee.jp{m.group(1)}"))
+    tokens.sort()
+
+    last_sid: Optional[str] = None
+    for _, kind, value in tokens:
+        if kind in ("vid", "yah"):
+            last_sid = value
+        elif kind == "btob" and last_sid:
+            # Only set if we don't already have a URL for this sid — first
+            # match wins, which is usually the canonical link.
+            pairs.setdefault(last_sid, value)
+            last_sid = None  # consume this sid so duplicates don't grab it
+    return pairs
+
+
+def _load_item_urls_cache() -> dict[str, str]:
+    """Read the on-disk cache. Returns {} if missing/corrupt."""
+    if not ITEM_URLS_CACHE.exists():
+        return {}
+    try:
+        import json
+        return json.loads(ITEM_URLS_CACHE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_item_urls_cache(cache: dict[str, str]) -> None:
+    """Atomic-ish write — temp file + rename."""
+    import json
+    ITEM_URLS_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ITEM_URLS_CACHE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(ITEM_URLS_CACHE)
+
+
+def scrape_item_urls(
+    order_ids: Optional[list[str]] = None,  # kept for back-compat; ignored
+    only_new: bool = True,                  # kept for back-compat; ignored
+    headless: bool = True,
+    max_pages: int = 10,
+) -> dict:
+    """Walk Buyee's shipped-baggages pages and cache (source_id → btob URL).
+
+    Discovery path (June 2026):
+      The shipped-list page itself
+      (`/mybaggages/shipped/<n>?term=0&page=<n>`) embeds the btob item URL
+      inline for every item in every baggage on that page. There's no
+      per-baggage drill-down needed — one page fetch yields dozens of
+      pairs. Pagination follows the same `?page=N` parameter the URL bar
+      shows. We stop when a page produces zero new pairs (empty or
+      already-cached) or when we hit `max_pages`.
+
+    Args:
+      order_ids:  legacy parameter, currently ignored. Pages contain every
+                  baggage's items intermixed; filtering to a single baggage
+                  isn't a useful saving since we already paginate cheaply.
+      only_new:   legacy, ignored — pagination stop-on-no-new handles this.
+      headless:   pass-through to Playwright. False opens a visible browser
+                  window (useful when debugging Cloudflare challenges).
+      max_pages:  pagination cap. 10 covers ~250 items for typical accounts.
+
+    Returns stats dict: {pages_visited, urls_found, urls_new, errors}.
+    """
+    cache = _load_item_urls_cache()
+    stats = {"pages_visited": 0, "urls_found": 0, "urls_new": 0, "errors": 0}
+
+    RAW_HTML_DIR.mkdir(parents=True, exist_ok=True)
+
+    with with_session(headless=headless) as (pw, ctx, page):
+        for page_num in range(1, max_pages + 1):
+            url = f"https://buyee.jp/mybaggages/shipped/{page_num}?term=0&page={page_num}"
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
+                html = page.content()
+            except Exception as e:
+                print(f"  ✗ page {page_num}: navigate failed: {e}")
+                stats["errors"] += 1
+                continue
+
+            stats["pages_visited"] += 1
+            # Persist for inspection / future selector work
+            (RAW_HTML_DIR / f"shipped_authed_p{page_num}.html").write_text(
+                html, encoding="utf-8",
+            )
+
+            pairs = _extract_item_url_pairs(html)
+            if not pairs:
+                print(f"  ⏭ page {page_num}: no btob links found; stopping.")
+                break
+
+            new_this_page = 0
+            for sid, item_url in pairs.items():
+                if cache.get(sid) != item_url:
+                    new_this_page += 1
+                cache[sid] = item_url
+            stats["urls_found"] += len(pairs)
+            stats["urls_new"] += new_this_page
+            print(f"  ✓ page {page_num}: {len(pairs)} pairs ({new_this_page} new)")
+
+            # If a whole page produces no new pairs we've caught up; stop.
+            if new_this_page == 0 and page_num > 1:
+                print(f"  ⓘ page {page_num}: all pairs already cached, stopping.")
+                break
+
+    _save_item_urls_cache(cache)
+    return stats
+
+
+def get_item_url(source_id: str) -> Optional[str]:
+    """Public lookup — returns the cached btob URL for a source_id, or None.
+
+    Hot path for the Pricing-tab Auction column. Reads the cache on every
+    call; the app-side loader caches the dict in Streamlit's session so
+    disk hits stay infrequent.
+    """
+    return _load_item_urls_cache().get(source_id)
 
 
 def _download_pdf(page, url: str, dest: Path) -> bool:

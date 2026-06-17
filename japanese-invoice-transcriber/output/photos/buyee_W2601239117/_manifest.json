@@ -1,0 +1,24 @@
+{
+  "invoice": "/Users/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/buyee_W2601239117.json",
+  "stats": {
+    "total_items": 11,
+    "eligible": 11,
+    "downloaded": 9,
+    "skipped_existing": 0,
+    "skipped_ineligible": 0,
+    "errors": 2
+  },
+  "log": [
+    "h1213930365: ERROR no image found on page",
+    "g1211149068: ERROR no image found on page",
+    "f1215009148: 857x1200 → 143x200, 5.0 KB",
+    "u1175122021: 900x1200 → 150x200, 2.8 KB",
+    "e1215078103: 1200x1200 → 200x200, 3.5 KB",
+    "p1215239615: 1080x1080 → 200x200, 6.4 KB",
+    "e1214078101: 800x800 → 200x200, 5.1 KB",
+    "w1214127409: 1200x1200 → 200x200, 4.1 KB",
+    "n1214686154: 1200x1200 → 200x200, 4.1 KB",
+    "x1215348221: 708x1146 → 124x200, 3.4 KB",
+    "o1215536222: 1200x1200 → 200x200, 6.5 KB"
+  ]
+}

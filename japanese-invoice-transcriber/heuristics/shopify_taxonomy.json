@@ -1,0 +1,2627 @@
+[
+  {
+    "id": "gid://shopify/TaxonomyCategory/ap",
+    "name": "Animals & Pet Supplies",
+    "full_name": "Animals & Pet Supplies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa",
+    "name": "Apparel & Accessories",
+    "full_name": "Apparel & Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1",
+    "name": "Clothing",
+    "full_name": "Apparel & Accessories > Clothing"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1",
+    "name": "Activewear",
+    "full_name": "Apparel & Accessories > Clothing > Activewear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1",
+    "name": "Activewear Pants",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-1",
+    "name": "Joggers",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Joggers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-2",
+    "name": "Leggings",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Leggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-3",
+    "name": "Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-4",
+    "name": "Sweatpants",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Sweatpants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-5",
+    "name": "Tights",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Tights"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-6",
+    "name": "Track Pants",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Track Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-7",
+    "name": "Training Pants",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Training Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-1-8",
+    "name": "Wind Pants",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Pants > Wind Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-7",
+    "name": "Activewear Sweatshirts & Hoodies",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Sweatshirts & Hoodies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-7-2",
+    "name": "Hoodies",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Sweatshirts & Hoodies > Hoodies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-7-4",
+    "name": "Sweatshirts",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Sweatshirts & Hoodies > Sweatshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-7-5",
+    "name": "Track Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Sweatshirts & Hoodies > Track Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-2",
+    "name": "Activewear Tops",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-2-1",
+    "name": "Crop Tops",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Tops > Crop Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-2-2",
+    "name": "T-Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Tops > T-Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-2-3",
+    "name": "Tank Tops",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Tops > Tank Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-8",
+    "name": "Activewear Vests & Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Vests & Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-8-2",
+    "name": "Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Vests & Jackets > Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-8-1",
+    "name": "Vests",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Vests & Jackets > Vests"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-4",
+    "name": "Boxing Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Boxing Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-5",
+    "name": "Dance Dresses, Skirts & Costumes",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Dance Dresses, Skirts & Costumes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-9",
+    "name": "Leotards & Unitards",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Leotards & Unitards"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-1-6",
+    "name": "Sports Bras",
+    "full_name": "Apparel & Accessories > Clothing > Activewear > Sports Bras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25",
+    "name": "Baby & Children's Clothing",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1",
+    "name": "Baby & Children's Bottoms",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-2",
+    "name": "Cargos",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Cargos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-3",
+    "name": "Chinos",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Chinos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-4",
+    "name": "Jeans",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Jeans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-5",
+    "name": "Jeggings",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Jeggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-7",
+    "name": "Joggers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Joggers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-8",
+    "name": "Leggings",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Leggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-11",
+    "name": "Skirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Skirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-12",
+    "name": "Skorts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Skorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-13",
+    "name": "Sweatpants",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Sweatpants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-1-14",
+    "name": "Trousers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Bottoms > Trousers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-2",
+    "name": "Baby & Children's Diaper Covers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Diaper Covers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-3",
+    "name": "Baby & Children's Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-10",
+    "name": "Baby & Children's One-Pieces",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's One-Pieces"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4",
+    "name": "Baby & Children's Outerwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17",
+    "name": "Baby & Children's Coats & Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-1",
+    "name": "Bolero Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Bolero Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-2",
+    "name": "Bomber Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Bomber Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-3",
+    "name": "Capes",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Capes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-4",
+    "name": "Motorcycle Outerwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Motorcycle Outerwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-5",
+    "name": "Overcoats",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Overcoats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-6",
+    "name": "Parkas",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Parkas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-7",
+    "name": "Pea Coats",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Pea Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-8",
+    "name": "Ponchos",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Ponchos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-9",
+    "name": "Puffer Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Puffer Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-10",
+    "name": "Rain Coats",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Rain Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-11",
+    "name": "Sport Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Sport Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-12",
+    "name": "Track Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Track Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-13",
+    "name": "Trench Coats",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Trench Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-14",
+    "name": "Trucker Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Trucker Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-15",
+    "name": "Windbreakers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Windbreakers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-17-16",
+    "name": "Wrap Coats",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Baby & Children's Coats & Jackets > Wrap Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-4-18",
+    "name": "Snow Pants & Suits",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outerwear > Snow Pants & Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-5",
+    "name": "Baby & Children's Outfits",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Outfits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-6",
+    "name": "Baby & Children's Sleepwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Sleepwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-7",
+    "name": "Baby & Children's Socks & Tights",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Socks & Tights"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8",
+    "name": "Baby & Children's Swimwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-2",
+    "name": "Burkinis",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Burkinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-3",
+    "name": "Classic Bikinis",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Classic Bikinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-4",
+    "name": "Cover Ups",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Cover Ups"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-22",
+    "name": "One-Piece Swimsuits",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > One-Piece Swimsuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-9",
+    "name": "Rash Guards",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Rash Guards"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-10",
+    "name": "Skirtinis",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Skirtinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-23",
+    "name": "Surf Tops",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Surf Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-13",
+    "name": "Swim Boxers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swim Boxers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-14",
+    "name": "Swim Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swim Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-15",
+    "name": "Swim Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swim Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-16",
+    "name": "Swim Jammers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swim Jammers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-17",
+    "name": "Swim Trunks",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swim Trunks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-8-24",
+    "name": "Swimwear Tops",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Swimwear > Swimwear Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9",
+    "name": "Baby & Children's Tops",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-2",
+    "name": "Bodysuits",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Bodysuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-3",
+    "name": "Cardigans",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Cardigans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-11",
+    "name": "Hoodies",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Hoodies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-4",
+    "name": "Overshirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Overshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-5",
+    "name": "Polos",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Polos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-6",
+    "name": "Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-12",
+    "name": "Sweaters",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Sweaters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-13",
+    "name": "Sweatshirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Sweatshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-7",
+    "name": "T-Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > T-Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-9-10",
+    "name": "Tunics",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Tops > Tunics"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11",
+    "name": "Baby & Children's Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3",
+    "name": "Boys' Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-1",
+    "name": "Boys' Long Johns",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Long Johns"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2",
+    "name": "Boys' Underpants",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2-1",
+    "name": "Boxer Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants > Boxer Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2-2",
+    "name": "Boxer Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants > Boxer Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2-3",
+    "name": "Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants > Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2-4",
+    "name": "Midway Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants > Midway Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-2-5",
+    "name": "Trunks",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Underpants > Trunks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-3-3",
+    "name": "Boys' Undershirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Boys' Underwear > Boys' Undershirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2",
+    "name": "Girls' Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-1",
+    "name": "Girls' Long Johns",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Long Johns"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2",
+    "name": "Girls' Underpants",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-1",
+    "name": "Bikinis",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Bikinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-2",
+    "name": "Boxer Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Boxer Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-3",
+    "name": "Boyshorts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Boyshorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-4",
+    "name": "Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-5",
+    "name": "Hipsters",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Hipsters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-6",
+    "name": "Panties",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Panties"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-7",
+    "name": "Period Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Period Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-2-8",
+    "name": "Thongs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Underpants > Thongs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-3",
+    "name": "Girls' Undershirts",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Undershirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-2-3-2",
+    "name": "First Bras",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Girls' Underwear > Girls' Undershirts > First Bras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1",
+    "name": "Toddler Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1-1",
+    "name": "Boxer Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear > Boxer Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1-2",
+    "name": "Boxers",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear > Boxers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1-3",
+    "name": "Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear > Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1-4",
+    "name": "Panties",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear > Panties"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-25-11-1-5",
+    "name": "Training Pants",
+    "full_name": "Apparel & Accessories > Clothing > Baby & Children's Clothing > Baby & Children's Underwear > Toddler Underwear > Training Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13",
+    "name": "Clothing Tops",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-1",
+    "name": "Blouses",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Blouses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-2",
+    "name": "Bodysuits",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Bodysuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-3",
+    "name": "Cardigans",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Cardigans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-13",
+    "name": "Hoodies",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Hoodies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-5",
+    "name": "Overshirts",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Overshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-6",
+    "name": "Polos",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Polos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-7",
+    "name": "Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-12",
+    "name": "Sweaters",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Sweaters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-14",
+    "name": "Sweatshirts",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-8",
+    "name": "T-Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > T-Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-9",
+    "name": "Tank Tops",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Tank Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-13-11",
+    "name": "Tunics",
+    "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Tunics"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-4",
+    "name": "Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6",
+    "name": "Lingerie",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-1",
+    "name": "Bodysuits",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bodysuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-2",
+    "name": "Bra Accessories",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bra Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-2-1",
+    "name": "Bra Strap Pads",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bra Accessories > Bra Strap Pads"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-2-2",
+    "name": "Bra Straps & Extenders",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bra Accessories > Bra Straps & Extenders"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-2-3",
+    "name": "Breast Enhancing Inserts",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bra Accessories > Breast Enhancing Inserts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-2-4",
+    "name": "Breast Petals & Concealers",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bra Accessories > Breast Petals & Concealers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-3",
+    "name": "Bras",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Bras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-4",
+    "name": "Camisoles",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Camisoles"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-6",
+    "name": "Hosiery",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Hosiery"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-7",
+    "name": "Jock Straps",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Jock Straps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-8",
+    "name": "Lingerie Accessories",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Lingerie Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-8-1",
+    "name": "Garter Belts",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Lingerie Accessories > Garter Belts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-8-2",
+    "name": "Garters",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Lingerie Accessories > Garters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-8-3",
+    "name": "Pantyhose",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Lingerie Accessories > Pantyhose"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-9",
+    "name": "Petticoats & Pettipants",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Petticoats & Pettipants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10",
+    "name": "Shapewear",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10-1",
+    "name": "Bodysuits",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear > Bodysuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10-2",
+    "name": "Full Body Shapes",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear > Full Body Shapes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10-3",
+    "name": "High Waisted Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear > High Waisted Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10-4",
+    "name": "Thigh Slimmers",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear > Thigh Slimmers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-10-5",
+    "name": "Waist Cinchers",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Shapewear > Waist Cinchers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11",
+    "name": "Women's Underpants",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-1",
+    "name": "Bikinis",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > Bikinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-2",
+    "name": "Boyshorts",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > Boyshorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-3",
+    "name": "Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-4",
+    "name": "G-Strings",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > G-Strings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-5",
+    "name": "Period Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > Period Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-11-6",
+    "name": "Thongs",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underpants > Thongs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-12",
+    "name": "Women's Undershirts",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Undershirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-6-13",
+    "name": "Women's Underwear Slips",
+    "full_name": "Apparel & Accessories > Clothing > Lingerie > Women's Underwear Slips"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7",
+    "name": "Maternity Clothing",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-2",
+    "name": "Maternity Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-3",
+    "name": "Maternity One-Pieces",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity One-Pieces"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4",
+    "name": "Maternity Pants",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-2",
+    "name": "Cargos",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Cargos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-3",
+    "name": "Chinos",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Chinos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-4",
+    "name": "Jeans",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Jeans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-5",
+    "name": "Jeggings",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Jeggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-7",
+    "name": "Joggers",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Joggers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-8",
+    "name": "Leggings",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Leggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-11",
+    "name": "Skorts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Skorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-4-12",
+    "name": "Trousers",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Pants > Trousers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-5",
+    "name": "Maternity Skirts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Skirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-6",
+    "name": "Maternity Sleepwear",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Sleepwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7",
+    "name": "Maternity Swimwear",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-4",
+    "name": "Burkinis",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Burkinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-5",
+    "name": "Classic Bikinis",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Classic Bikinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-6",
+    "name": "Cover Ups",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Cover Ups"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-20",
+    "name": "One-Piece Swimsuits",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > One-Piece Swimsuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-2",
+    "name": "Swim Boxers",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Swim Boxers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-14",
+    "name": "Swim Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Swim Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-7-21",
+    "name": "Swimwear Tops",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Swimwear > Swimwear Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8",
+    "name": "Maternity Tops",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-1",
+    "name": "Blouses",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Blouses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-2",
+    "name": "Bodysuits",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Bodysuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-3",
+    "name": "Cardigans",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Cardigans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-4",
+    "name": "Nursing Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Nursing Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-5",
+    "name": "Overshirts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Overshirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-7",
+    "name": "Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-8",
+    "name": "T-Shirts",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > T-Shirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-8-11",
+    "name": "Tunics",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Maternity Tops > Tunics"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-7-1",
+    "name": "Nursing Bras",
+    "full_name": "Apparel & Accessories > Clothing > Maternity Clothing > Nursing Bras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8",
+    "name": "Men's Undergarments",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-1",
+    "name": "Men's Long Johns",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Long Johns"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-2",
+    "name": "Men's Undershirts",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Undershirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3",
+    "name": "Men's Underwear",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-2",
+    "name": "Boxer Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Boxer Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-3",
+    "name": "Boxer Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Boxer Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-4",
+    "name": "Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-5",
+    "name": "Jockstraps",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Jockstraps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-6",
+    "name": "Midway Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Midway Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-7",
+    "name": "Thongs",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Thongs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-8",
+    "name": "Trunks",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Trunks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-8-3-9",
+    "name": "Undershorts",
+    "full_name": "Apparel & Accessories > Clothing > Men's Undergarments > Men's Underwear > Undershorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-9",
+    "name": "One-Pieces",
+    "full_name": "Apparel & Accessories > Clothing > One-Pieces"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10",
+    "name": "Outerwear",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-1",
+    "name": "Chaps",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Chaps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2",
+    "name": "Coats & Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-1",
+    "name": "Bolero Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Bolero Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-2",
+    "name": "Bomber Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Bomber Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-3",
+    "name": "Capes",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Capes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-5",
+    "name": "Overcoats",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Overcoats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-6",
+    "name": "Parkas",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Parkas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-7",
+    "name": "Pea Coats",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Pea Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-8",
+    "name": "Ponchos",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Ponchos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-9",
+    "name": "Puffer Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Puffer Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-10",
+    "name": "Rain Coats",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Rain Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-11",
+    "name": "Sport Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Sport Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-12",
+    "name": "Track Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Track Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-13",
+    "name": "Trench Coats",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Trench Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-14",
+    "name": "Trucker Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Trucker Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-15",
+    "name": "Varsity Jackets",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Varsity Jackets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-16",
+    "name": "Windbreakers",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Windbreakers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-2-17",
+    "name": "Wrap Coats",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets > Wrap Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-7",
+    "name": "Motorcycle Outerwear",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Motorcycle Outerwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-3",
+    "name": "Rain Pants",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Rain Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-4",
+    "name": "Rain Suits",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Rain Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-5",
+    "name": "Snow Pants & Suits",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Snow Pants & Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-10-6",
+    "name": "Vests",
+    "full_name": "Apparel & Accessories > Clothing > Outerwear > Vests"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-11",
+    "name": "Outfit Sets",
+    "full_name": "Apparel & Accessories > Clothing > Outfit Sets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12",
+    "name": "Pants",
+    "full_name": "Apparel & Accessories > Clothing > Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-2",
+    "name": "Cargo Pants",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Cargo Pants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-3",
+    "name": "Chinos",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Chinos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-4",
+    "name": "Jeans",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Jeans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-5",
+    "name": "Jeggings",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Jeggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-7",
+    "name": "Joggers",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Joggers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-8",
+    "name": "Leggings",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Leggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-12-11",
+    "name": "Trousers",
+    "full_name": "Apparel & Accessories > Clothing > Pants > Trousers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14",
+    "name": "Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-1",
+    "name": "Bermudas",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Bermudas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-2",
+    "name": "Cargo Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Cargo Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-3",
+    "name": "Chino Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Chino Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-5",
+    "name": "Denim Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Denim Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-6",
+    "name": "Jegging Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Jegging Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-7",
+    "name": "Jogger Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Jogger Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-8",
+    "name": "Legging Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Legging Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-14-4",
+    "name": "Short Trousers",
+    "full_name": "Apparel & Accessories > Clothing > Shorts > Short Trousers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-15",
+    "name": "Skirts",
+    "full_name": "Apparel & Accessories > Clothing > Skirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-16",
+    "name": "Skorts",
+    "full_name": "Apparel & Accessories > Clothing > Skorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17",
+    "name": "Sleepwear & Loungewear",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-1",
+    "name": "Long Johns",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Long Johns"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2",
+    "name": "Loungewear",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1",
+    "name": "Loungewear Bottoms",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1-1",
+    "name": "Boxers",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms > Boxers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1-2",
+    "name": "Joggers",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms > Joggers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1-3",
+    "name": "Leggings",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms > Leggings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1-4",
+    "name": "Shorts",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms > Shorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-1-5",
+    "name": "Skirts",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Bottoms > Skirts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-2-2",
+    "name": "Loungewear Tops",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Loungewear > Loungewear Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-3",
+    "name": "Nightgowns",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Nightgowns"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-6",
+    "name": "Onesies",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Onesies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-4",
+    "name": "Pajamas",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Pajamas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-17-5",
+    "name": "Robes",
+    "full_name": "Apparel & Accessories > Clothing > Sleepwear & Loungewear > Robes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18",
+    "name": "Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-1",
+    "name": "Ankle Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Ankle Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-2",
+    "name": "Athletic Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Athletic Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-3",
+    "name": "Crew Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Crew Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-4",
+    "name": "Dance Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Dance Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-5",
+    "name": "Footie Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Footie Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-6",
+    "name": "Heel Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Heel Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-7",
+    "name": "Hold Up Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Hold Up Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-8",
+    "name": "Knee Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Knee Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-9",
+    "name": "Panty Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Panty Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-18-10",
+    "name": "Sneaker Socks",
+    "full_name": "Apparel & Accessories > Clothing > Socks > Sneaker Socks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-19",
+    "name": "Suits",
+    "full_name": "Apparel & Accessories > Clothing > Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-19-1",
+    "name": "Pant Suits",
+    "full_name": "Apparel & Accessories > Clothing > Suits > Pant Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-19-2",
+    "name": "Skirt Suits",
+    "full_name": "Apparel & Accessories > Clothing > Suits > Skirt Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-19-3",
+    "name": "Tuxedos",
+    "full_name": "Apparel & Accessories > Clothing > Suits > Tuxedos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20",
+    "name": "Swimwear",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-2",
+    "name": "Boardshorts",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Boardshorts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-5",
+    "name": "Burkinis",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Burkinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-6",
+    "name": "Classic Bikinis",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Classic Bikinis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-7",
+    "name": "Cover Ups",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Cover Ups"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-22",
+    "name": "One-Piece Swimsuits",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > One-Piece Swimsuits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-25",
+    "name": "Period Swimwear",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Period Swimwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-12",
+    "name": "Rash Guards",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Rash Guards"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-23",
+    "name": "Surf Tops",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Surf Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-3",
+    "name": "Swim Boxers",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Swim Boxers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-4",
+    "name": "Swim Briefs",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Swim Briefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-17",
+    "name": "Swim Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Swim Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-20-24",
+    "name": "Swimwear Tops",
+    "full_name": "Apparel & Accessories > Clothing > Swimwear > Swimwear Tops"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-23",
+    "name": "Traditional & Ceremonial Clothing",
+    "full_name": "Apparel & Accessories > Clothing > Traditional & Ceremonial Clothing"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-23-1",
+    "name": "Kimonos",
+    "full_name": "Apparel & Accessories > Clothing > Traditional & Ceremonial Clothing > Kimonos"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-23-2",
+    "name": "Saris & Lehengas",
+    "full_name": "Apparel & Accessories > Clothing > Traditional & Ceremonial Clothing > Saris & Lehengas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24",
+    "name": "Uniforms & Workwear",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-1",
+    "name": "Contractor Pants & Coveralls",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Contractor Pants & Coveralls"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-2",
+    "name": "Flight Suits",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Flight Suits"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-3",
+    "name": "Food Service Uniforms",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Food Service Uniforms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-4",
+    "name": "Military Uniforms",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Military Uniforms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-5",
+    "name": "School Uniforms",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > School Uniforms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-9",
+    "name": "Scrubs",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Scrubs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-6",
+    "name": "Security Uniforms",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Security Uniforms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-7",
+    "name": "Sports Uniforms",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > Sports Uniforms"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-24-8",
+    "name": "White Coats",
+    "full_name": "Apparel & Accessories > Clothing > Uniforms & Workwear > White Coats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-22",
+    "name": "Wedding & Bridal Party Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Wedding & Bridal Party Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-22-1",
+    "name": "Bridal Party Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Wedding & Bridal Party Dresses > Bridal Party Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-1-22-2",
+    "name": "Wedding Dresses",
+    "full_name": "Apparel & Accessories > Clothing > Wedding & Bridal Party Dresses > Wedding Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2",
+    "name": "Clothing Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-1",
+    "name": "Arm Warmers & Sleeves",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Arm Warmers & Sleeves"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-33",
+    "name": "Baby & Children's Clothing Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Baby & Children's Clothing Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-33-1",
+    "name": "Baby & Children's Belts",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Baby & Children's Clothing Accessories > Baby & Children's Belts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-33-2",
+    "name": "Baby & Children's Gloves & Mittens",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Baby & Children's Clothing Accessories > Baby & Children's Gloves & Mittens"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-33-3",
+    "name": "Baby & Children's Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Baby & Children's Clothing Accessories > Baby & Children's Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-33-4",
+    "name": "Baby & Children's Protective Wear",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Baby & Children's Clothing Accessories > Baby & Children's Protective Wear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-3",
+    "name": "Balaclavas",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Balaclavas"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-4",
+    "name": "Bandanas & Headties",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Bandanas & Headties"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-5",
+    "name": "Belt Buckles",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Belt Buckles"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-6",
+    "name": "Belts",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Belts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-7",
+    "name": "Bridal Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Bridal Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-8",
+    "name": "Button Studs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Button Studs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-9",
+    "name": "Collar Stays",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Collar Stays"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-10",
+    "name": "Cufflinks",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Cufflinks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-11",
+    "name": "Decorative Fans",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Decorative Fans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-12",
+    "name": "Earmuffs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Earmuffs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-32",
+    "name": "Fashion Face Masks",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Fashion Face Masks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-13",
+    "name": "Gloves & Mittens",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Gloves & Mittens"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14",
+    "name": "Hair Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-13",
+    "name": "Hair Bands",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Bands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-1",
+    "name": "Hair Bun & Volume Shapers",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Bun & Volume Shapers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-2",
+    "name": "Hair Combs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Combs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-3",
+    "name": "Hair Extensions",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Extensions"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-4",
+    "name": "Hair Forks & Sticks",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Forks & Sticks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-5",
+    "name": "Hair Nets",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Nets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-6",
+    "name": "Hair Pins, Claws & Clips",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Pins, Claws & Clips"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-7",
+    "name": "Hair Wreaths",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Hair Wreaths"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-8",
+    "name": "Headbands",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Headbands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-9",
+    "name": "Ponytail Holders",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Ponytail Holders"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-10",
+    "name": "Tiaras",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Tiaras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-11",
+    "name": "Wig Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Wig Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-14-12",
+    "name": "Wigs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hair Accessories > Wigs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-15",
+    "name": "Hand Muffs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hand Muffs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-16",
+    "name": "Handkerchiefs",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Handkerchiefs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17",
+    "name": "Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-1",
+    "name": "Baseball Caps",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Baseball Caps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-2",
+    "name": "Beanies",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Beanies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-3",
+    "name": "Berets",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Berets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-4",
+    "name": "Bowler Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Bowler Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-5",
+    "name": "Bucket Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Bucket Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-6",
+    "name": "Cowboy Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Cowboy Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-7",
+    "name": "Fedoras",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Fedoras"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-8",
+    "name": "Flat Caps",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Flat Caps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-9",
+    "name": "Panama Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Panama Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-10",
+    "name": "Snapback Caps",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Snapback Caps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-11",
+    "name": "Sun Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Sun Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-12",
+    "name": "Top Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Top Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-13",
+    "name": "Trilbies",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Trilbies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-14",
+    "name": "Trucker Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Trucker Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-15",
+    "name": "Visors",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Visors"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-17-16",
+    "name": "Winter Hats",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Hats > Winter Hats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-18",
+    "name": "Headwear",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Headwear"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-18-1",
+    "name": "Fascinators",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Headwear > Fascinators"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-18-2",
+    "name": "Headdresses",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Headwear > Headdresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-18-3",
+    "name": "Turbans",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Headwear > Turbans"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-19",
+    "name": "Leg Warmers",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Leg Warmers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-20",
+    "name": "Leis",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Leis"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-21",
+    "name": "Maternity Belts & Support Bands",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Maternity Belts & Support Bands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-22",
+    "name": "Neck Gaiters",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Neck Gaiters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-23",
+    "name": "Neckties",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Neckties"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-24",
+    "name": "Pinback Buttons",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Pinback Buttons"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-25",
+    "name": "Sashes",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Sashes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-26",
+    "name": "Scarves & Shawls",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Scarves & Shawls"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-27",
+    "name": "Sunglasses",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Sunglasses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-28",
+    "name": "Suspenders",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Suspenders"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-29",
+    "name": "Tie Clips",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Tie Clips"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-31",
+    "name": "Traditional Clothing Accessories",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Traditional Clothing Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-2-30",
+    "name": "Wristbands",
+    "full_name": "Apparel & Accessories > Clothing Accessories > Wristbands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3",
+    "name": "Costumes & Accessories",
+    "full_name": "Apparel & Accessories > Costumes & Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-1",
+    "name": "Costume Accessories",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Costume Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-2",
+    "name": "Costume Shoes",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Costume Shoes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-3",
+    "name": "Costumes",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Costumes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-3-1",
+    "name": "Costume Dresses",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Costumes > Costume Dresses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-3-2",
+    "name": "Costume Sets",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Costumes > Costume Sets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-3-4",
+    "name": "Masks",
+    "full_name": "Apparel & Accessories > Costumes & Accessories > Masks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-4",
+    "name": "Handbag & Wallet Accessories",
+    "full_name": "Apparel & Accessories > Handbag & Wallet Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-4-1",
+    "name": "Keychains",
+    "full_name": "Apparel & Accessories > Handbag & Wallet Accessories > Keychains"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-4-2",
+    "name": "Lanyards",
+    "full_name": "Apparel & Accessories > Handbag & Wallet Accessories > Lanyards"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-4-3",
+    "name": "Wallet Chains",
+    "full_name": "Apparel & Accessories > Handbag & Wallet Accessories > Wallet Chains"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5",
+    "name": "Handbags, Wallets & Cases",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-1",
+    "name": "Badge & Pass Holders",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Badge & Pass Holders"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-2",
+    "name": "Business Card Cases",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Business Card Cases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-3",
+    "name": "Checkbook Covers",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Checkbook Covers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4",
+    "name": "Handbags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-1",
+    "name": "Baguette Handbags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Baguette Handbags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-2",
+    "name": "Barrel Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Barrel Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-3",
+    "name": "Beach Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Beach Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-4",
+    "name": "Bucket Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Bucket Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-5",
+    "name": "Clutch Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Clutch Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-6",
+    "name": "Convertible Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Convertible Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-7",
+    "name": "Cross Body Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Cross Body Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-8",
+    "name": "Doctor Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Doctor Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-9",
+    "name": "Envelope Clutches",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Envelope Clutches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-10",
+    "name": "Fold Over Clutches",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Fold Over Clutches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-11",
+    "name": "Half-Moon Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Half-Moon Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-12",
+    "name": "Hobo Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Hobo Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-13",
+    "name": "Minaudieres",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Minaudieres"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-14",
+    "name": "Muff Clutches & Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Muff Clutches & Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-15",
+    "name": "Saddle Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Saddle Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-16",
+    "name": "Satchel Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Satchel Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-17",
+    "name": "School Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > School Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-18",
+    "name": "Shopper Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Shopper Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-19",
+    "name": "Shoulder Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Shoulder Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-4-20",
+    "name": "Trapezoid Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Trapezoid Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5",
+    "name": "Wallets & Money Clips",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-2",
+    "name": "Card Cases",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Card Cases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-3",
+    "name": "Coin Purses",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Coin Purses"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-4",
+    "name": "Key Cases",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Key Cases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-5",
+    "name": "Neck Pouches",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Neck Pouches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-6",
+    "name": "Travel Wallets",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Travel Wallets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-7",
+    "name": "Wallets",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Wallets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-5-5-8",
+    "name": "Wrist Bags",
+    "full_name": "Apparel & Accessories > Handbags, Wallets & Cases > Wallets & Money Clips > Wrist Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6",
+    "name": "Jewelry",
+    "full_name": "Apparel & Accessories > Jewelry"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-1",
+    "name": "Anklets",
+    "full_name": "Apparel & Accessories > Jewelry > Anklets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-2",
+    "name": "Body Jewelry",
+    "full_name": "Apparel & Accessories > Jewelry > Body Jewelry"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-3",
+    "name": "Bracelets",
+    "full_name": "Apparel & Accessories > Jewelry > Bracelets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-4",
+    "name": "Brooches & Lapel Pins",
+    "full_name": "Apparel & Accessories > Jewelry > Brooches & Lapel Pins"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-5",
+    "name": "Charms & Pendants",
+    "full_name": "Apparel & Accessories > Jewelry > Charms & Pendants"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-6",
+    "name": "Earrings",
+    "full_name": "Apparel & Accessories > Jewelry > Earrings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-7",
+    "name": "Jewelry Sets",
+    "full_name": "Apparel & Accessories > Jewelry > Jewelry Sets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-8",
+    "name": "Necklaces",
+    "full_name": "Apparel & Accessories > Jewelry > Necklaces"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-9",
+    "name": "Rings",
+    "full_name": "Apparel & Accessories > Jewelry > Rings"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-12",
+    "name": "Smart Watches",
+    "full_name": "Apparel & Accessories > Jewelry > Smart Watches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-10",
+    "name": "Watch Accessories",
+    "full_name": "Apparel & Accessories > Jewelry > Watch Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-10-1",
+    "name": "Watch Bands",
+    "full_name": "Apparel & Accessories > Jewelry > Watch Accessories > Watch Bands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-10-2",
+    "name": "Watch Stickers & Decals",
+    "full_name": "Apparel & Accessories > Jewelry > Watch Accessories > Watch Stickers & Decals"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-10-3",
+    "name": "Watch Winders",
+    "full_name": "Apparel & Accessories > Jewelry > Watch Accessories > Watch Winders"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-6-11",
+    "name": "Watches",
+    "full_name": "Apparel & Accessories > Jewelry > Watches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7",
+    "name": "Shoe Accessories",
+    "full_name": "Apparel & Accessories > Shoe Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-1",
+    "name": "Boot Liners",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Boot Liners"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-2",
+    "name": "Gaiters",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Gaiters"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-3",
+    "name": "Shoe Covers",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Covers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-4",
+    "name": "Shoe Grips",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Grips"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-5",
+    "name": "Shoe Inserts",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Inserts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-5-1",
+    "name": "Anti Slip Steps",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Inserts > Anti Slip Steps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-5-2",
+    "name": "Arch Supports",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Inserts > Arch Supports"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-5-3",
+    "name": "Gel Pads",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Inserts > Gel Pads"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-5-4",
+    "name": "Heel Cushions",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoe Inserts > Heel Cushions"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-6",
+    "name": "Shoelaces",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Shoelaces"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-7-7",
+    "name": "Spurs",
+    "full_name": "Apparel & Accessories > Shoe Accessories > Spurs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8",
+    "name": "Shoes",
+    "full_name": "Apparel & Accessories > Shoes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-1",
+    "name": "Athletic Shoes",
+    "full_name": "Apparel & Accessories > Shoes > Athletic Shoes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11",
+    "name": "Baby & Children's Shoes",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11-4",
+    "name": "Baby & Children's Athletic Shoes",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes > Baby & Children's Athletic Shoes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11-1",
+    "name": "Baby & Children's Boots",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes > Baby & Children's Boots"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11-2",
+    "name": "Baby & Children's Sandals",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes > Baby & Children's Sandals"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11-5",
+    "name": "Baby & Children's Sneakers",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes > Baby & Children's Sneakers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-11-6",
+    "name": "First Steps & Crawlers",
+    "full_name": "Apparel & Accessories > Shoes > Baby & Children's Shoes > First Steps & Crawlers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-3",
+    "name": "Boots",
+    "full_name": "Apparel & Accessories > Shoes > Boots"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-9",
+    "name": "Flats",
+    "full_name": "Apparel & Accessories > Shoes > Flats"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-10",
+    "name": "Heels",
+    "full_name": "Apparel & Accessories > Shoes > Heels"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-6",
+    "name": "Sandals",
+    "full_name": "Apparel & Accessories > Shoes > Sandals"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-7",
+    "name": "Slippers",
+    "full_name": "Apparel & Accessories > Shoes > Slippers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/aa-8-8",
+    "name": "Sneakers",
+    "full_name": "Apparel & Accessories > Shoes > Sneakers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/ae",
+    "name": "Arts & Entertainment",
+    "full_name": "Arts & Entertainment"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/bt",
+    "name": "Baby & Toddler",
+    "full_name": "Baby & Toddler"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/bu",
+    "name": "Bundles",
+    "full_name": "Bundles"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/bi",
+    "name": "Business & Industrial",
+    "full_name": "Business & Industrial"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/co",
+    "name": "Cameras & Optics",
+    "full_name": "Cameras & Optics"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/el",
+    "name": "Electronics",
+    "full_name": "Electronics"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/fb",
+    "name": "Food, Beverages & Tobacco",
+    "full_name": "Food, Beverages & Tobacco"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/fr",
+    "name": "Furniture",
+    "full_name": "Furniture"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/gc",
+    "name": "Gift Cards",
+    "full_name": "Gift Cards"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/ha",
+    "name": "Hardware",
+    "full_name": "Hardware"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/hb",
+    "name": "Health & Beauty",
+    "full_name": "Health & Beauty"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/hg",
+    "name": "Home & Garden",
+    "full_name": "Home & Garden"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb",
+    "name": "Luggage & Bags",
+    "full_name": "Luggage & Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-1",
+    "name": "Backpacks",
+    "full_name": "Luggage & Bags > Backpacks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-1-15",
+    "name": "Hiking Backpacks",
+    "full_name": "Luggage & Bags > Backpacks > Hiking Backpacks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-1-16",
+    "name": "Laptop Backpacks",
+    "full_name": "Luggage & Bags > Backpacks > Laptop Backpacks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-1-17",
+    "name": "Military Backpacks",
+    "full_name": "Luggage & Bags > Backpacks > Military Backpacks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-1-12",
+    "name": "School Backpacks",
+    "full_name": "Luggage & Bags > Backpacks > School Backpacks"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-2",
+    "name": "Briefcases",
+    "full_name": "Luggage & Bags > Briefcases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-3",
+    "name": "Cosmetic & Toiletry Bags",
+    "full_name": "Luggage & Bags > Cosmetic & Toiletry Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-3-3",
+    "name": "Makeup Bags",
+    "full_name": "Luggage & Bags > Cosmetic & Toiletry Bags > Makeup Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-3-4",
+    "name": "Toiletry Bags",
+    "full_name": "Luggage & Bags > Cosmetic & Toiletry Bags > Toiletry Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-3-5",
+    "name": "Travel Organizer Bags",
+    "full_name": "Luggage & Bags > Cosmetic & Toiletry Bags > Travel Organizer Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-4",
+    "name": "Diaper Bags",
+    "full_name": "Luggage & Bags > Diaper Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-5",
+    "name": "Dry Boxes",
+    "full_name": "Luggage & Bags > Dry Boxes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-6",
+    "name": "Duffel Bags",
+    "full_name": "Luggage & Bags > Duffel Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-6-1",
+    "name": "Gym Duffel Bags",
+    "full_name": "Luggage & Bags > Duffel Bags > Gym Duffel Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-7",
+    "name": "Fanny Packs",
+    "full_name": "Luggage & Bags > Fanny Packs"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-8",
+    "name": "Garment Bags",
+    "full_name": "Luggage & Bags > Garment Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-15",
+    "name": "Laptop Bags",
+    "full_name": "Luggage & Bags > Laptop Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9",
+    "name": "Luggage Accessories",
+    "full_name": "Luggage & Bags > Luggage Accessories"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-1",
+    "name": "Dry Box Liners & Inserts",
+    "full_name": "Luggage & Bags > Luggage Accessories > Dry Box Liners & Inserts"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-2",
+    "name": "Luggage Covers",
+    "full_name": "Luggage & Bags > Luggage Accessories > Luggage Covers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-3",
+    "name": "Luggage Racks & Stands",
+    "full_name": "Luggage & Bags > Luggage Accessories > Luggage Racks & Stands"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-4",
+    "name": "Luggage Straps",
+    "full_name": "Luggage & Bags > Luggage Accessories > Luggage Straps"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-5",
+    "name": "Luggage Tags",
+    "full_name": "Luggage & Bags > Luggage Accessories > Luggage Tags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-6",
+    "name": "Packing Organizers",
+    "full_name": "Luggage & Bags > Luggage Accessories > Packing Organizers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-7",
+    "name": "Travel Bottles & Containers",
+    "full_name": "Luggage & Bags > Luggage Accessories > Travel Bottles & Containers"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-9-8",
+    "name": "Travel Pouches",
+    "full_name": "Luggage & Bags > Luggage Accessories > Travel Pouches"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-10",
+    "name": "Messenger Bags",
+    "full_name": "Luggage & Bags > Messenger Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-11",
+    "name": "Shopping Totes",
+    "full_name": "Luggage & Bags > Shopping Totes"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-12",
+    "name": "Suitcases",
+    "full_name": "Luggage & Bags > Suitcases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-12-2",
+    "name": "Carry-On Suitcases",
+    "full_name": "Luggage & Bags > Suitcases > Carry-On Suitcases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-12-3",
+    "name": "Checked Suitcases",
+    "full_name": "Luggage & Bags > Suitcases > Checked Suitcases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-12-5",
+    "name": "Kids' Suitcases",
+    "full_name": "Luggage & Bags > Suitcases > Kids' Suitcases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-12-9",
+    "name": "Suitcase Travel Sets",
+    "full_name": "Luggage & Bags > Suitcases > Suitcase Travel Sets"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-13",
+    "name": "Tote Bags",
+    "full_name": "Luggage & Bags > Tote Bags"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/lb-14",
+    "name": "Train Cases",
+    "full_name": "Luggage & Bags > Train Cases"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/ma",
+    "name": "Mature",
+    "full_name": "Mature"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/me",
+    "name": "Media",
+    "full_name": "Media"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/os",
+    "name": "Office Supplies",
+    "full_name": "Office Supplies"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/pa",
+    "name": "Product Add-Ons",
+    "full_name": "Product Add-Ons"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/rc",
+    "name": "Religious & Ceremonial",
+    "full_name": "Religious & Ceremonial"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/se",
+    "name": "Services",
+    "full_name": "Services"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/so",
+    "name": "Software",
+    "full_name": "Software"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/sg",
+    "name": "Sporting Goods",
+    "full_name": "Sporting Goods"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/tg",
+    "name": "Toys & Games",
+    "full_name": "Toys & Games"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/na",
+    "name": "Uncategorized",
+    "full_name": "Uncategorized"
+  },
+  {
+    "id": "gid://shopify/TaxonomyCategory/vp",
+    "name": "Vehicles & Parts",
+    "full_name": "Vehicles & Parts"
+  }
+]

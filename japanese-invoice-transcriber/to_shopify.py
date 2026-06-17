@@ -99,8 +99,20 @@ def shopify_category(product_type: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SKU generation — {BRAND_3}_{YYMM}_{3_DIGITS}
+# SKU generation — {BRAND_3}_{YYMM}_{3-digit random integer}
 # ---------------------------------------------------------------------------
+#
+# Format (per user preference 2026-06):
+#   {brand-prefix 2-3 letters}_{YYMM}_{NNN}
+#   e.g.  LV_2606_417   CHA_2606_032   ISM_2605_881   UNK_2606_205
+#
+# - Brand prefix: 2-3 uppercase letters from the canonical brand name, with
+#   well-known overrides (LV, DG, DIO, YSL, BV, ISM, …) so multi-word brands
+#   collapse to the obvious initialism instead of the first 3 letters.
+# - YYMM: month of the invoice. Lets you eyeball "from which buy batch?"
+# - Last 3: random integer (NOT derived from source-id letters). Stable per
+#   source_id within an invoice so the Pricing tab's data_editor doesn't
+#   thrash across reruns (see _stable_suffix_for note below).
 
 BRAND_PREFIX_OVERRIDES = {
     "Louis Vuitton": "LV", "Dolce & Gabbana": "DG",
@@ -111,6 +123,13 @@ BRAND_PREFIX_OVERRIDES = {
 
 
 def brand_prefix(brand: str | None) -> str:
+    """Return the 2-3 letter SKU prefix for a brand.
+
+    - Canonicalize via canon_brand so "louis vuitton" → "Louis Vuitton" hits
+      the LV override.
+    - Fall back to the first 3 alpha chars uppercased (e.g. "Burberry" → "BUR").
+    - "UNK" when no brand is detected (Vintage items, etc.).
+    """
     if not brand:
         return "UNK"
     b = canon_brand(brand) or brand
@@ -120,28 +139,38 @@ def brand_prefix(brand: str | None) -> str:
     return letters or "UNK"
 
 
-def random_suffix(source_id: str | None, _used: set[str]) -> str:
-    """Prefer the last 3 alphanumerics of source_id for traceability; else random.
+def _stable_suffix_for(source_id: str) -> int:
+    """Hash source_id → stable integer in [0, 999].
 
-    Note: kept for backward compatibility, but make_sku() no longer relies on
-    this for collision avoidance — it does its own walk through 000-999.
+    "Random" to a human eye but the SAME value on every render for the same
+    source_id. Why deterministic matters: the Pricing tab rebuilds its
+    DataFrame on every Streamlit rerun (cell focus, button click, etc.).
+    If the SKU column shifted between renders, st.data_editor would notice
+    "underlying data changed" and silently drop the user's in-flight cell
+    edit — so typing a new Variant Price and tabbing out would visibly
+    reset the cell.
+
+    BLAKE2b chosen over Python's hash() because hash() varies across
+    Python sessions (PYTHONHASHSEED randomization), which would make SKUs
+    flicker across restarts.
+    """
+    import hashlib
+    h = hashlib.blake2b(source_id.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(h, "big") % 1000
+
+
+def random_suffix(source_id: str | None, _used: set[str]) -> str:
+    """Deprecated — make_sku() builds suffixes inline via _stable_suffix_for.
+
+    Kept as a thin shim so any external caller doesn't break. Returns a
+    deterministic suffix when source_id is given; otherwise sequential.
     """
     if source_id:
-        s = "".join(c for c in source_id if c.isalnum())[-3:].upper()
-        if s and len(s) == 3:
-            return s
-    while True:
-        n = f"{random.randint(0, 999):03d}"
-        if n not in _used:
-            return n
-
-
-def _source_id_suffix(source_id: str | None) -> str | None:
-    """Last 3 alphanumeric chars of source_id, uppercase. None if unavailable."""
-    if not source_id:
-        return None
-    s = "".join(c for c in source_id if c.isalnum())[-3:].upper()
-    return s if len(s) == 3 else None
+        return f"{_stable_suffix_for(source_id):03d}"
+    n = 0
+    while f"{n:03d}" in _used:
+        n += 1
+    return f"{n:03d}"
 
 
 def make_sku(
@@ -151,18 +180,24 @@ def make_sku(
     used: set[str],
     blocked: set[str] | None = None,
 ) -> tuple[str, str | None]:
-    """Generate a unique SKU. Returns (sku, original_proposal).
+    """Generate a stable {PREFIX}_{YYMM}_{NNN} SKU. Returns (sku, original_proposal).
 
-    - Tries the source_id-derived 3-digit suffix first (preserves traceability)
-    - On collision (with `used` or `blocked`), walks 000-999 sequentially and
-      picks the first slot that's free. Fresh 3-digit number — no dash suffix.
-    - Falls back to 4-digit if all 1000 3-digit slots are taken (very unlikely)
+    NNN is a hash-derived random-looking 3-digit integer (NOT letters from
+    source_id). Same source_id → same SKU on every call within a session,
+    so the Pricing-tab data_editor doesn't reset cell edits across reruns.
+
+    Collision handling:
+      - If the deterministic candidate collides with `used` or `blocked`,
+        walk forward through 000-999 until a free slot is found.
+      - Falls back to 4-digit suffix if all 1000 3-digit slots are taken
+        for this brand+month (1000 SKUs from one brand in one month is
+        unusual; the escalation keeps us collision-safe regardless).
+
+    `original_proposal` is non-None only when a collision-walk happened —
+    used by the audit log to record "would have been X, became Y".
 
     `used` is mutated (the chosen SKU is added).
-    `blocked` is read-only — pass existing Shopify SKUs here so we avoid them.
-
-    The returned `original_proposal` is non-None only when the source-id-derived
-    SKU collided, indicating a rename happened. Used for the collision log.
+    `blocked` is read-only — pass live Shopify SKUs here to avoid them.
     """
     prefix = brand_prefix(brand)
     if invoice_date:
@@ -174,24 +209,23 @@ def make_sku(
         yymm = datetime.now().strftime("%y%m")
 
     blocked_all = used | (blocked or set())
+    seed = source_id or "_anonymous"
+    base = _stable_suffix_for(seed)
 
-    # 1) Try source-id-derived suffix
+    # 1) Try the deterministic 3-digit slot; collision-walk forward through 000-999
     proposal: str | None = None
-    sid_suffix = _source_id_suffix(source_id)
-    if sid_suffix:
-        proposal = f"{prefix}_{yymm}_{sid_suffix}"
-        if proposal not in blocked_all:
-            used.add(proposal)
-            return proposal, None  # no rename
-
-    # 2) Walk 000-999 for the first free 3-digit slot
-    for n in range(1000):
+    for offset in range(1000):
+        n = (base + offset) % 1000
         candidate = f"{prefix}_{yymm}_{n:03d}"
         if candidate not in blocked_all:
+            if offset > 0:
+                # First-pick collided — capture for the audit log
+                proposal = f"{prefix}_{yymm}_{base:03d}"
             used.add(candidate)
-            return candidate, proposal  # proposal is the would-have-been SKU
+            return candidate, proposal
 
-    # 3) Escalate to 4-digit (1000 SKUs in one brand+month is unusual)
+    # 2) All 1000 3-digit slots taken — escalate to 4-digit
+    proposal = f"{prefix}_{yymm}_{base:03d}"
     for n in range(1000, 10000):
         candidate = f"{prefix}_{yymm}_{n}"
         if candidate not in blocked_all:
@@ -277,6 +311,8 @@ def item_to_rows(
     existing_skus: set[str] | None = None,
     existing_handles: set[str] | None = None,
     collision_log: list | None = None,
+    templates: list | None = None,
+    taxonomy: list | None = None,
 ) -> list[dict]:
     """Expand one item into one row per unit (spec §13: lot expansion).
 
@@ -301,8 +337,40 @@ def item_to_rows(
     pricing = item.get("pricing_result", {})
     cost_per_unit = item.get("cost_breakdown", {}).get("unit_cost_usd", 0)
     qty = max(int(item.get("quantity", 1)), 1)
-    category = shopify_category(item.get("product_type"))
     canon_t = canon_type(item.get("product_type")) or ""
+
+    # Category: prefer the live Shopify taxonomy suggester (matches what the
+    # Step 1 audit recommends). Falls back to the legacy SHOPIFY_CATEGORY
+    # dict when the suggester can't resolve a leaf (no fashion noun in title).
+    category = ""
+    if taxonomy:
+        try:
+            from shopify_taxonomy import suggest_category_for_product
+            hit = suggest_category_for_product(
+                title=item.get("description_english") or "",
+                product_type=item.get("product_type") or "",
+                tags="",
+                taxonomy=taxonomy,
+            )
+            if hit:
+                category = hit.get("full_name", "")
+        except Exception:
+            pass
+    if not category:
+        category = shopify_category(item.get("product_type"))
+
+    # Body (HTML): use the matching description template's blank skeleton so
+    # the exported CSV passes the description audit on re-import. Falls back
+    # to empty string when no template covers this category.
+    body_html = ""
+    if templates and category:
+        try:
+            from heuristics import find_template_for_category
+            tpl = find_template_for_category(category, templates)
+            if tpl and tpl.template:
+                body_html = tpl.template
+        except Exception:
+            pass
     vendor = (
         item.get("override_vendor")
         or canon_brand(item.get("detected_brand"))
@@ -315,10 +383,12 @@ def item_to_rows(
     for unit_idx in range(qty):
         is_lot_unit = qty > 1
 
-        # Generate SKU — make_sku now picks a fresh 3-digit from the start
-        # if the source-id-derived suffix would collide with anything in
-        # used_skus or existing_skus. Returns (final_sku, original_proposal)
-        # where original_proposal is non-None only when a rename happened.
+        # Generate SKU — make_sku now returns a random 7-digit integer
+        # (e.g. "4827193"), collision-checked against used_skus + existing_skus.
+        # `original_proposal` is always None under the new scheme (random
+        # picks don't have a "would have been" alternative), so the rename
+        # branch below is effectively dead. Kept as-is in case the SKU rule
+        # ever swings back toward deterministic suffixes.
         sku, original_proposal = make_sku(
             vendor, invoice.get("invoice_date"), item.get("source_id"),
             used_skus, blocked=existing_skus,
@@ -353,7 +423,7 @@ def item_to_rows(
         rows.append({
             "Handle": handle,
             "Title": title,
-            "Body (HTML)": "",
+            "Body (HTML)": body_html,
             "Vendor": vendor,
             "Product Category": category,
             "Type": canon_t,

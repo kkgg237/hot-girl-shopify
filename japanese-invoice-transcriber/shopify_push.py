@@ -362,6 +362,366 @@ def _admin_product_url(shop: str, product_id: int) -> str:
     return f"https://{shop}/admin/products/{product_id}"
 
 
+def _is_in_stock(product: dict) -> bool:
+    """Return True if at least one variant has inventory_quantity > 0, OR
+    none of the variants track inventory at all (in which case Shopify lets
+    the merchant keep selling, so "sold out" doesn't apply).
+    """
+    variants = product.get("variants") or []
+    if not variants:
+        # No variant data — assume in stock to avoid silently hiding products
+        # whose stock state we can't determine.
+        return True
+    tracked_total = 0
+    any_tracked = False
+    for v in variants:
+        if v.get("inventory_management"):
+            any_tracked = True
+            try:
+                tracked_total += int(v.get("inventory_quantity") or 0)
+            except (TypeError, ValueError):
+                pass
+    if not any_tracked:
+        return True
+    return tracked_total > 0
+
+
+def _extract_category(product: dict) -> str:
+    """Pull Shopify's standardized Product Category off a product object,
+    tolerating API-version differences in field name and value shape.
+
+    Newer Admin API versions return `category` as an object
+    ({id, name, full_name}); older ones surface it as `product_category`
+    (string or object). Returns the most descriptive string available
+    (`full_name` if present, else `name`, else the raw value), or "".
+    """
+    for key in ("category", "product_category"):
+        v = product.get(key)
+        if not v:
+            continue
+        if isinstance(v, str):
+            return v.strip()
+        if isinstance(v, dict):
+            for sub in ("full_name", "name", "title"):
+                s = v.get(sub)
+                if s:
+                    return s.strip()
+    return ""
+
+
+def scan_description_issues(scope: str = "live", in_stock_only: bool = True) -> dict:
+    """Two-phase catalogue audit: Shopify Standard Product Category first,
+    then body_html against the routed template.
+
+    Phase 1 — category audit
+        For each product, classify into one of:
+          - "missing":    no Shopify category set at all
+          - "unmapped":   category set, but doesn't route to any template
+          - "mismatched": category routes to template A, but title/product_type
+                          suggests template B (advisory — heuristic may be wrong)
+        Every category-issue row carries a `suggested_template` from
+        heuristics.suggest_template_from_product so the user knows what to
+        set in Shopify.
+
+    Phase 2 — description audit
+        Products with a category that routes to a template (whether or not
+        Phase 1 thinks it's mismatched) are scored against that template:
+        required sections present, no banned phrases, length window OK.
+
+    Args:
+        scope: "live" (default) | "active" | "all".
+        in_stock_only: when True (default), skip products with all tracked
+            variants at inventory_quantity == 0.
+
+    Returns:
+        {
+          "fetched": int,
+          "scanned": int,
+          "scope": str,
+          "in_stock_only": bool,
+          "passing": int,                       # passed phase 2
+          "category_issues": [
+            {
+              kind, id, title, handle, vendor, product_type, category,
+              status, admin_url, created_at, published_at,
+              current_template, suggested_template,
+            }, ...
+          ],
+          "description_failures": [
+            {... + template_name, findings: [str], body_chars: int}
+          ],
+          "by_template": {name: {"passing": n, "failing": n}, ...},
+          "error": str | None,
+          "partial_error": str | None,
+        }
+    """
+    from shopify_inventory import get_shop, get_token
+    from heuristics import (
+        audit_description,
+        find_template_for_category,
+        load_description_templates,
+        suggest_template_from_product,
+    )
+
+    shop = get_shop()
+    token = get_token()
+    if not shop or not token:
+        return {"error": "Shopify not configured", "fetched": 0}
+
+    templates = load_description_templates()
+    if not templates:
+        return {
+            "error": "No description templates defined — set them up in the "
+                     "Copy formats tab first.",
+            "fetched": 0,
+            "scanned": 0,
+            "passing": 0,
+            "category_issues": [],
+            "description_failures": [],
+            "by_template": {},
+            "scope": scope,
+            "in_stock_only": in_stock_only,
+        }
+
+    scope_norm = (scope or "live").lower()
+    if scope_norm not in ("live", "active", "all"):
+        scope_norm = "live"
+
+    # Fetch via GraphQL — the REST product endpoint's `category` field is
+    # write-blind to GraphQL `productUpdate` writes (split-brain) so a row
+    # we just fixed via `update_product_category` still came back as
+    # "missing" from REST. GraphQL reads from the same store the mutation
+    # writes to, so the audit reflects writebacks immediately.
+    products: list[dict] = []
+    partial_error: Optional[str] = None
+
+    if scope_norm == "live":
+        graphql_query_filter = "status:active published_status:published"
+    elif scope_norm == "active":
+        graphql_query_filter = "status:active"
+    else:
+        graphql_query_filter = ""
+
+    PRODUCTS_QUERY = """
+    query AuditProducts($cursor: String, $q: String) {
+      products(first: 100, after: $cursor, query: $q) {
+        edges {
+          cursor
+          node {
+            id
+            legacyResourceId
+            title
+            handle
+            vendor
+            productType
+            tags
+            status
+            bodyHtml
+            createdAt
+            publishedAt
+            totalInventory
+            tracksInventory
+            category {
+              id
+              name
+              fullName
+            }
+          }
+        }
+        pageInfo { hasNextPage }
+      }
+    }
+    """
+    gql_url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}/graphql.json"
+    gql_headers = {
+        "X-Shopify-Access-Token": token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    cursor: Optional[str] = None
+    page = 0
+    while True:
+        page += 1
+        payload = json.dumps({
+            "query": PRODUCTS_QUERY,
+            "variables": {"cursor": cursor, "q": graphql_query_filter},
+        }).encode("utf-8")
+        req = urllib.request.Request(gql_url, data=payload, method="POST",
+                                     headers=gql_headers)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")[:500]
+            except Exception:
+                body = ""
+            err_msg = f"HTTP {e.code}: {body}"
+            if not products:
+                return {
+                    "error": f"{err_msg} on page {page}",
+                    "fetched": 0, "scanned": 0, "passing": 0,
+                    "category_issues": [], "description_failures": [],
+                    "by_template": {}, "scope": scope,
+                    "in_stock_only": in_stock_only,
+                }
+            partial_error = (
+                f"⚠️ Stopped after page {page-1} ({len(products)} products fetched) "
+                f"because: {err_msg}."
+            )
+            break
+
+        if data.get("errors"):
+            err_msg = f"GraphQL errors: {data['errors']}"
+            if not products:
+                return {
+                    "error": err_msg, "fetched": 0, "scanned": 0, "passing": 0,
+                    "category_issues": [], "description_failures": [],
+                    "by_template": {}, "scope": scope,
+                    "in_stock_only": in_stock_only,
+                }
+            partial_error = err_msg
+            break
+
+        conn = (data.get("data") or {}).get("products") or {}
+        edges = conn.get("edges") or []
+        for edge in edges:
+            node = edge.get("node") or {}
+            cat = node.get("category") or {}
+            try:
+                pid = int(node.get("legacyResourceId") or 0)
+            except (TypeError, ValueError):
+                continue
+            if not pid:
+                continue
+            # Normalize to REST-style dict so the rest of the function below
+            # (status/category/inventory checks) keeps working unchanged.
+            products.append({
+                "id": pid,
+                "title": node.get("title") or "",
+                "handle": node.get("handle") or "",
+                "vendor": node.get("vendor") or "",
+                "product_type": node.get("productType") or "",
+                "tags": node.get("tags") or [],
+                "status": (node.get("status") or "").lower(),
+                "body_html": node.get("bodyHtml") or "",
+                "created_at": node.get("createdAt") or "",
+                "published_at": node.get("publishedAt") or "",
+                "_total_inventory": node.get("totalInventory"),
+                "_tracks_inventory": bool(node.get("tracksInventory")),
+                # Keep the original REST shape for `category` so the existing
+                # _extract_category() helper still returns the full path.
+                "category": ({
+                    "id": cat.get("id"),
+                    "name": cat.get("name") or "",
+                    "full_name": cat.get("fullName") or "",
+                } if cat else None),
+            })
+
+        page_info = conn.get("pageInfo") or {}
+        if not page_info.get("hasNextPage") or not edges:
+            break
+        cursor = edges[-1].get("cursor")
+        time.sleep(0.1)
+
+    category_issues: list[dict] = []
+    description_failures: list[dict] = []
+    by_template: dict[str, dict[str, int]] = {}
+    scanned = 0
+    passing = 0
+
+    for p in products:
+        # GraphQL has already applied `status:active published_status:published`
+        # via the query filter, so all products here match scope. Belt-and-
+        # suspenders: still check status if scope="all" came through some
+        # other path.
+        status_val = (p.get("status") or "").lower()
+
+        # GraphQL inventory check: tracksInventory=False OR totalInventory > 0.
+        # Mirrors the variants-based _is_in_stock() but uses the product-level
+        # totals GraphQL returns.
+        if in_stock_only:
+            tracks = p.get("_tracks_inventory", False)
+            total = p.get("_total_inventory")
+            if tracks and (total is not None) and int(total) <= 0:
+                continue
+
+        scanned += 1
+        title = p.get("title", "") or ""
+        product_type = (p.get("product_type") or "").strip()
+        # GraphQL returns tags as a list; downstream code expects a string-ish
+        # form. Join with spaces for substring/word checks.
+        tags_raw = p.get("tags") or ""
+        tags = " ".join(tags_raw) if isinstance(tags_raw, list) else tags_raw
+        category = _extract_category(p)
+        body_html = p.get("body_html") or ""
+        published_at = p.get("published_at")
+
+        current_tpl = find_template_for_category(category, templates) if category else None
+        suggested = suggest_template_from_product(title, product_type, tags, templates)
+
+        base_row = {
+            "id": p.get("id"),
+            "title": title,
+            "handle": p.get("handle", ""),
+            "vendor": (p.get("vendor") or "").strip(),
+            "product_type": product_type,
+            "category": category,
+            "status": status_val,
+            "admin_url": _admin_product_url(shop, p.get("id")),
+            "created_at": (p.get("created_at") or "")[:10],
+            "published_at": (published_at or "")[:10],
+            "current_template": current_tpl.name if current_tpl else None,
+            "suggested_template": suggested,
+        }
+
+        # ---- Phase 1: category classification ----
+        if not category:
+            category_issues.append({"kind": "missing", **base_row})
+        elif current_tpl is None:
+            category_issues.append({"kind": "unmapped", **base_row})
+        # NOTE: "mismatched" detection deliberately removed. It used to flag
+        # rows where the title-based heuristic suggested template X but the
+        # actual category routes to template Y. Too noisy — once you applied
+        # a fix, the heuristic still disagreed and the row reappeared next
+        # run. Treat the user's Shopify category as the source of truth.
+
+        # ---- Phase 2: description audit (only if we have a routed template) ----
+        if current_tpl is not None:
+            bucket = by_template.setdefault(current_tpl.name,
+                                            {"passing": 0, "failing": 0})
+            result = audit_description(body_html, current_tpl)
+            if result["passed"]:
+                passing += 1
+                bucket["passing"] += 1
+            else:
+                bucket["failing"] += 1
+                description_failures.append({
+                    **base_row,
+                    "template_name": current_tpl.name,
+                    "findings": result["findings"],
+                    "body_chars": len(body_html),
+                    "body_html": body_html,
+                })
+
+    # Sort newest-first so recent damage rises
+    category_issues.sort(key=lambda r: r["created_at"], reverse=True)
+    description_failures.sort(key=lambda r: r["created_at"], reverse=True)
+
+    return {
+        "fetched": len(products),
+        "scanned": scanned,
+        "scope": scope_norm,
+        "in_stock_only": in_stock_only,
+        "passing": passing,
+        "category_issues": category_issues,
+        "description_failures": description_failures,
+        "by_template": dict(sorted(by_template.items())),
+        "error": None,
+        "partial_error": partial_error,
+    }
+
+
 def scan_catalogue_issues(
     bad_vendors: Optional[list[str]] = None,
     scope: str = "live",
@@ -533,6 +893,157 @@ def scan_catalogue_issues(
         "error": None,
         "partial_error": partial_error,
     }
+
+
+def update_product_category(product_id: int, category_gid: str) -> tuple[int, dict]:
+    """Set a product's Shopify Standard Product Category.
+
+    Uses the GraphQL `productUpdate` mutation — the REST product endpoint
+    accepts `category` in the request body but silently ignores it (no error,
+    no update). GraphQL is the only writeback path that actually persists.
+
+    Returns (status_code, body). 200 = applied successfully. userErrors from
+    GraphQL come back as 422 with the {"userErrors": [...]} payload so the
+    UI can surface them like any other failure.
+    """
+    from shopify_inventory import get_shop, get_token
+
+    shop = get_shop()
+    token = get_token()
+    if not shop or not token:
+        return 0, {"error": "Shopify not configured"}
+    if not (category_gid or "").startswith("gid://"):
+        return 0, {"error": f"Invalid category GID: {category_gid!r}"}
+
+    product_gid = f"gid://shopify/Product/{product_id}"
+    url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}/graphql.json"
+    mutation = """
+    mutation SetCategory($input: ProductInput!) {
+      productUpdate(input: $input) {
+        product {
+          id
+          category { id name fullName }
+        }
+        userErrors { field message }
+      }
+    }
+    """
+    variables = {
+        "input": {
+            "id": product_gid,
+            "category": category_gid,
+        }
+    }
+    payload = json.dumps({"query": mutation, "variables": variables}).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=payload, method="POST",
+        headers={
+            "X-Shopify-Access-Token": token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            body_text = e.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body_text) if body_text else {}
+        except Exception:
+            parsed = {"_raw_error": body_text if "body_text" in locals() else ""}
+        return e.code, parsed
+    except urllib.error.URLError as e:
+        return 0, {"error": f"Network error: {e.reason}"}
+
+    # Top-level GraphQL errors (bad query, throttling, etc.)
+    if data.get("errors"):
+        return 400, {"errors": data["errors"]}
+
+    payload_out = (data.get("data") or {}).get("productUpdate") or {}
+    user_errors = payload_out.get("userErrors") or []
+    if user_errors:
+        # Treat user errors as a 422 — invalid input we can show to the user
+        return 422, {"userErrors": user_errors}
+
+    # Verify the mutation actually persisted. Shopify can return a clean
+    # response with no userErrors but the category field unchanged when the
+    # input GID is malformed, archived, or otherwise rejected silently.
+    product_obj = payload_out.get("product") or {}
+    actual = (product_obj.get("category") or {})
+    actual_gid = (actual.get("id") or "") if isinstance(actual, dict) else ""
+    if actual_gid != category_gid:
+        return 422, {
+            "verification_failed": True,
+            "expected_gid": category_gid,
+            "actual_gid": actual_gid or "(null — category did not persist)",
+            "product": product_obj,
+        }
+
+    # Diagnostic: read back via REST so we can see whether the audit (which
+    # fetches via REST) will reflect this write. If REST returns null/old
+    # values here, GraphQL writes aren't visible to REST reads and we need
+    # to switch the audit's product fetch to GraphQL too.
+    rest_readback: dict = {}
+    try:
+        rest_url = (
+            f"https://{shop}/admin/api/{DEFAULT_API_VERSION}/products/"
+            f"{product_id}.json?fields=id,category,product_category"
+        )
+        rest_req = urllib.request.Request(
+            rest_url,
+            headers={
+                "X-Shopify-Access-Token": token,
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(rest_req, timeout=15) as resp:
+            rest_body = json.loads(resp.read().decode("utf-8"))
+        rest_product = rest_body.get("product") or {}
+        rest_readback = {
+            "rest_category": rest_product.get("category"),
+            "rest_product_category": rest_product.get("product_category"),
+        }
+    except Exception as e:
+        rest_readback = {"rest_readback_error": f"{type(e).__name__}: {e}"}
+
+    return 200, {**payload_out, "_rest_readback": rest_readback}
+
+
+def update_product_body_html(product_id: int, new_body_html: str) -> tuple[int, dict]:
+    """PUT a body_html update to a single product. Returns (status_code, body).
+
+    Used by the description-audit Phase 2 inline editor to fix a listing
+    without leaving the app. 200 = success.
+    """
+    from shopify_inventory import get_shop, get_token
+
+    shop = get_shop()
+    token = get_token()
+    if not shop or not token:
+        return 0, {"error": "Shopify not configured"}
+
+    url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}/products/{product_id}.json"
+    body = {"product": {"id": product_id, "body_html": new_body_html}}
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="PUT",
+        headers={
+            "X-Shopify-Access-Token": token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            body_text = e.read().decode("utf-8", errors="replace")
+            parsed = json.loads(body_text) if body_text else {}
+        except Exception:
+            parsed = {"_raw_error": body_text if "body_text" in locals() else ""}
+        return e.code, parsed
 
 
 def update_product_status(product_id: int, new_status: str) -> tuple[int, dict]:

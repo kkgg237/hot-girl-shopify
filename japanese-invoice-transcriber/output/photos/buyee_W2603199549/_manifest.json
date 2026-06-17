@@ -1,0 +1,16 @@
+{
+  "invoice": "/Users/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/buyee_W2603199549.json",
+  "stats": {
+    "total_items": 25,
+    "eligible": 24,
+    "downloaded": 3,
+    "skipped_existing": 21,
+    "skipped_ineligible": 1,
+    "errors": 0
+  },
+  "log": [
+    "m1081651145: 1024x1024 → 200x200, 3.5 KB",
+    "o1220891934: 600x600 → 200x200, 6.7 KB",
+    "j1103209177: 1080x1080 → 200x200, 2.8 KB"
+  ]
+}

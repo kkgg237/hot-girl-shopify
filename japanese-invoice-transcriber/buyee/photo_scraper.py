@@ -34,10 +34,26 @@ PHOTOS_DIR = PROJECT_ROOT / "output" / "photos"
 AUCTION_PATTERN = re.compile(r"^[a-z]\d{8,}$")
 
 # JS that runs in the page context to find the main product image URL.
-# Tries og:image first (most reliable), falls back to known DOM selectors.
-_FIND_FIRST_IMG = """() => {
-    const og = document.querySelector('meta[property="og:image"]');
-    if (og && og.content) return og.content;
+#
+# Strategy in priority order:
+#   1. btob product photo — looks like cdn.buyee.jp/btob/images/auction/item/.../1.jpg
+#   2. Yahoo Auctions product photo — itemprop=image / known selectors
+#   3. og:image meta — works for most Yahoo Auctions pages
+#
+# Logo-blocklist: explicitly reject Buyee branding images that show up on
+# many pages (especially btob, where og:image is the generic logo). Without
+# this filter, every btob item would download the exact same 22KB logo.
+_FIND_FIRST_IMG = r"""() => {
+    const LOGO_PAT = /(buyee_logo|logo_buyee|googlelogo|gsi\/style)/i;
+    const isProductPhoto = (src) => src && !LOGO_PAT.test(src);
+
+    // 1. btob CDN pattern — these are the real high-res product shots
+    const btobImgs = Array.from(document.querySelectorAll('img'))
+        .map(i => i.src || i.dataset.src || '')
+        .filter(src => /cdn\.buyee\.jp\/btob\/images\/auction\/item\//.test(src));
+    if (btobImgs.length) return btobImgs[0];
+
+    // 2. Yahoo Auctions DOM selectors
     const candidates = [
         'img[itemprop="image"]',
         '.g-thumbnail__image',
@@ -50,9 +66,18 @@ _FIND_FIRST_IMG = """() => {
     ];
     for (const sel of candidates) {
         const el = document.querySelector(sel);
-        if (el && (el.src || el.dataset.src)) {
-            return el.src || el.dataset.src;
-        }
+        const src = el && (el.src || el.dataset.src);
+        if (isProductPhoto(src)) return src;
+    }
+
+    // 3. og:image fallback (filtered against the logo blocklist)
+    const og = document.querySelector('meta[property="og:image"]');
+    if (og && isProductPhoto(og.content)) return og.content;
+
+    // 4. Last resort: any <img> whose src isn't on the logo blocklist
+    for (const img of document.querySelectorAll('img')) {
+        const src = img.src || img.dataset.src;
+        if (isProductPhoto(src) && img.naturalWidth > 200) return src;
     }
     return null;
 }"""
@@ -66,22 +91,43 @@ def fetch_first_photo(
     quality: int = 60,
     timeout_ms: int = 20000,
 ) -> tuple[bool, str]:
-    """Navigate to a Buyee auction page, grab the first photo, save thumbnail.
-
-    Returns (success, message). Message is for logging — describes what
-    happened (URL fetched, image dimensions, errors, etc.)
+    """Backward-compat wrapper — accepts a Yahoo Auctions ID, constructs
+    the jdirectitems URL, then delegates to `fetch_first_photo_from_url`.
     """
     url = f"https://buyee.jp/item/jdirectitems/auction/{auction_id}"
+    return fetch_first_photo_from_url(page, url, out_path,
+                                       max_size=max_size, quality=quality,
+                                       timeout_ms=timeout_ms)
+
+
+def fetch_first_photo_from_url(
+    page,
+    url: str,
+    out_path: Path,
+    max_size: int = 200,
+    quality: int = 60,
+    timeout_ms: int = 20000,
+) -> tuple[bool, str]:
+    """Navigate to ANY Buyee item page (Yahoo Auctions OR btob), grab the
+    first photo (og:image preferred), save as a compressed thumbnail.
+
+    Works for both URL families because the og:image meta tag is present
+    on every Buyee item-detail page regardless of source namespace. The
+    DOM-selector fallbacks in `_FIND_FIRST_IMG` cover edge cases where
+    og:image is missing.
+    """
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
     except Exception as e:
         return False, f"navigate failed: {e}"
 
-    # Some auctions are expired and redirect to a "sorry, no longer available"
-    # page. We can still grab the photo if it's on the og:image.
+    # Yahoo Auctions: expired auctions redirect to a search page.
+    # btob: expired/removed items 404 to the same generic "Page not found".
+    # Either way, we can still try the og:image (sometimes preserved on
+    # the error page); if that fails, no harm done.
     final_url = page.url
-    if "search" in final_url.lower() and "auction" not in final_url.lower():
-        return False, f"redirected away: {final_url}"
+    if final_url.endswith("/signup/login") or "/signup/login?" in final_url:
+        return False, f"session expired (redirected to login)"
 
     try:
         img_url = page.evaluate(_FIND_FIRST_IMG)
@@ -128,9 +174,41 @@ def fetch_first_photo(
         return False, f"resize/save failed: {e}"
 
 
+def _url_for_source_id(source_id: Optional[str]) -> Optional[str]:
+    """Return the Buyee item URL for a source_id, or None if unfetchable.
+
+    Two namespaces:
+      - Yahoo Auctions (lowercase letter + 8+ digits): URL is DETERMINISTIC,
+        constructed inline (no Buyee call required).
+      - LuxeWholesale (V-prefix + digits): URL is OPAQUE, looked up in the
+        btob-URL cache (`buyee/state/item_urls.json`) populated by
+        `scraper.scrape_item_urls()`. Returns None if not yet cached.
+
+    Everything else (CSV-imported, BrandStreet auth codes, etc.) → None.
+    """
+    if not source_id:
+        return None
+    if AUCTION_PATTERN.match(source_id):
+        return f"https://buyee.jp/item/jdirectitems/auction/{source_id}"
+    if source_id.startswith("V") and source_id[1:].isdigit():
+        # Lazy import to avoid a circular dep at module-load time
+        try:
+            from .scraper import get_item_url
+        except ImportError:
+            return None
+        return get_item_url(source_id)
+    return None
+
+
 def is_eligible(source_id: Optional[str]) -> bool:
-    """True if this source_id has a fetchable Buyee auction page."""
-    return bool(source_id and AUCTION_PATTERN.match(source_id))
+    """True if we have (or can construct) a Buyee URL for this item.
+
+    Now covers BOTH Yahoo Auctions IDs (always fetchable) AND V-prefix
+    LuxeWholesale items whose btob URL has been cached via
+    `python -m buyee scrape-urls`. V-prefix items without a cached URL
+    return False — run scrape-urls to populate them.
+    """
+    return _url_for_source_id(source_id) is not None
 
 
 def fetch_invoice_photos(
@@ -141,8 +219,9 @@ def fetch_invoice_photos(
 ) -> dict:
     """Fetch first-photo thumbnails for every eligible item in an invoice.
 
-    Eligibility = lowercase-prefix Yahoo Auctions ID. V-prefix items skipped.
-    Cached results (existing files) are skipped unless overwrite=True.
+    Eligibility = either a Yahoo Auctions ID (URL constructed deterministically)
+    OR a V-prefix LuxeWholesale ID whose btob URL is in the scraped cache.
+    Cached results (existing thumbnail files) are skipped unless overwrite=True.
 
     Returns stats dict.
     """
@@ -162,24 +241,33 @@ def fetch_invoice_photos(
     }
     log: list[str] = []
 
-    eligible_items = []
+    # Pair each eligible item with its resolved URL up-front so we have one
+    # clean spot to short-circuit ineligibles and avoid two-pass eligibility
+    # logic. Items without a URL (no Yahoo match, no cache hit) get counted
+    # as ineligible — the bot can suggest running scrape-urls when this
+    # number is high.
+    eligible: list[tuple[dict, str]] = []
     for it in items:
         sid = it.get("source_id")
         if only_ids is not None and sid not in only_ids:
             continue
-        if not is_eligible(sid):
+        url = _url_for_source_id(sid)
+        if not url:
             stats["skipped_ineligible"] += 1
             continue
-        eligible_items.append(it)
-    stats["eligible"] = len(eligible_items)
+        eligible.append((it, url))
+    stats["eligible"] = len(eligible)
 
-    if not eligible_items:
-        return {**stats, "log": ["No eligible items (no Yahoo Auctions IDs)."]}
+    if not eligible:
+        return {**stats, "log": [
+            "No eligible items. Run `python -m buyee scrape-urls` to cache "
+            "btob URLs for V-prefix items, then retry."
+        ]}
 
-    print(f"Fetching photos for {len(eligible_items)} eligible item(s)...")
+    print(f"Fetching photos for {len(eligible)} eligible item(s)...")
 
     with with_session(headless=True) as (pw, ctx, page):
-        for it in eligible_items:
+        for it, url in eligible:
             sid = it["source_id"]
             out_path = out_dir / f"{sid}.jpg"
             if out_path.exists() and not overwrite:
@@ -187,7 +275,7 @@ def fetch_invoice_photos(
                 print(f"  · {sid}: already cached")
                 continue
 
-            ok, msg = fetch_first_photo(page, sid, out_path)
+            ok, msg = fetch_first_photo_from_url(page, url, out_path)
             if ok:
                 stats["downloaded"] += 1
                 print(f"  ✓ {sid}: {msg}")

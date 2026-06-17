@@ -1,0 +1,24 @@
+{
+  "invoice": "/Users/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/buyee_W2601299730.json",
+  "stats": {
+    "total_items": 18,
+    "eligible": 11,
+    "downloaded": 11,
+    "skipped_existing": 0,
+    "skipped_ineligible": 7,
+    "errors": 0
+  },
+  "log": [
+    "h1211937930: 1200x1200 → 200x200, 3.8 KB",
+    "m1215221847: 960x960 → 200x200, 3.3 KB",
+    "p1215353778: 960x960 → 200x200, 3.7 KB",
+    "p1142137287: 1200x1200 → 200x200, 5.3 KB",
+    "b1215353113: 960x960 → 200x200, 3.3 KB",
+    "x1215370853: 960x960 → 200x200, 3.8 KB",
+    "t1215371756: 960x960 → 200x200, 4.6 KB",
+    "o1215367523: 960x960 → 200x200, 3.6 KB",
+    "v1216648759: 1200x1200 → 200x200, 4.1 KB",
+    "u1214474213: 900x900 → 200x200, 3.7 KB",
+    "u1216768223: 1200x1200 → 200x200, 4.1 KB"
+  ]
+}
