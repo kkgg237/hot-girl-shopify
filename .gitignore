@@ -33,3 +33,7 @@ venv/
 shop-photo-editor/storage/      # 100MB+ of Gemini-generated JPGs
 shop-photo-editor/data/*.db
 shop-photo-editor/data/*.db-journal
+
+# Raw camera-card source JPGs used during crop work — kept local only,
+# they're large (>17 MB each) and not referenced by application code.
+test-content/before/
