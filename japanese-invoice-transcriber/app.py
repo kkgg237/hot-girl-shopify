@@ -5379,6 +5379,244 @@ def render_pricing_tab() -> None:
     )
 
 
+def render_bulk_drop_audit_tab() -> None:
+    """SKU → bag/accessory description drafts → approved Shopify writes."""
+    import drop_audit as da
+    from shopify_inventory import get_shop, is_configured
+
+    st.subheader("Bulk Drop Audit")
+    st.caption(
+        "Look up bag/accessory SKUs, generate Shopify-template description drafts, "
+        "review/edit, then push approved descriptions only. Existing descriptions "
+        "are skipped by default."
+    )
+
+    if not is_configured():
+        st.warning(
+            "Shopify isn't configured. Connect it in the **Shopify audit** tab first."
+        )
+        return
+
+    sku_text = st.text_area(
+        "SKUs",
+        value=st.session_state.get("bda_sku_text", ""),
+        key="bda_sku_text",
+        height=140,
+        placeholder="Paste one SKU per line. Commas are OK too.",
+    )
+    skus = da.parse_skus(sku_text)
+    st.caption(f"Parsed {len(skus)} unique SKU(s).")
+
+    if st.button("Lookup SKUs", type="primary", width="stretch", disabled=not skus):
+        shop = get_shop() or ""
+        with st.spinner(f"Looking up {len(skus)} SKU(s) in Shopify…"):
+            products = da.lookup_products_by_skus(skus, shop=shop)
+        st.session_state["bda_products"] = products
+        st.session_state["bda_drafts"] = {}
+        st.session_state["bda_rendered"] = {}
+        st.session_state["bda_sources"] = {}
+        st.session_state["bda_warnings"] = {}
+
+    products = st.session_state.get("bda_products") or []
+    if not products:
+        st.info("Paste SKUs and click **Lookup SKUs** to begin.")
+        return
+
+    rows = da.plan_products(products)
+    status_counts = {status: sum(1 for r in rows if r.status == status) for status in sorted({r.status for r in rows})}
+    if status_counts:
+        st.markdown(" · ".join(f"**{k}:** {v}" for k, v in status_counts.items()))
+
+    preview_df = pd.DataFrame([
+        {
+            "Generate": r.selected_by_default,
+            "SKU": r.product.sku,
+            "Title": r.product.title,
+            "Status": r.status,
+            "Price": r.product.price,
+            "Product status": r.product.status,
+            "Type": r.product.product_type,
+            "Warnings": "; ".join(r.warnings),
+            "Admin": r.product.admin_url,
+        }
+        for r in rows
+    ])
+    edited = st.data_editor(
+        preview_df,
+        hide_index=True,
+        width="stretch",
+        key="bda_lookup_editor",
+        column_config={
+            "Generate": st.column_config.CheckboxColumn(
+                "Generate", help="Only ready, blank-description rows should be selected."
+            ),
+            "Admin": st.column_config.LinkColumn("Admin", display_text="open"),
+        },
+        disabled=["SKU", "Title", "Status", "Price", "Product status", "Type", "Warnings", "Admin"],
+    )
+
+    selected_skus = set(
+        edited.loc[edited["Generate"].astype(bool), "SKU"].astype(str).tolist()
+        if not edited.empty else []
+    )
+    ready_by_sku = {r.product.sku: r for r in rows if r.status == "Ready to generate"}
+    invalid_selected = selected_skus - set(ready_by_sku)
+    if invalid_selected:
+        st.warning(
+            "Some selected rows are not ready and will be ignored: "
+            + ", ".join(sorted(invalid_selected))
+        )
+    selected_ready = [ready_by_sku[sku] for sku in selected_skus if sku in ready_by_sku]
+
+    st.markdown("### Generate drafts")
+    st.caption(
+        "Measurements must come from a verified matching source. If you leave dimensions "
+        "blank, the description will say `Needs review`. Details stay capped at 3-4 lines."
+    )
+
+    if not selected_ready:
+        st.info("Select ready rows above to generate drafts.")
+    else:
+        for row in selected_ready:
+            p = row.product
+            with st.expander(f"{p.sku} · {p.title}", expanded=False):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    if p.image_url:
+                        st.image(p.image_url, caption="First Shopify image", use_container_width=True)
+                    st.caption(f"Product type: {p.product_type or '—'}")
+                    if p.tags:
+                        st.caption("Tags: " + ", ".join(p.tags[:12]))
+                with c2:
+                    dims = st.text_input(
+                        "Verified dimensions (optional)",
+                        key=f"bda_dims::{p.sku}",
+                        placeholder='e.g. 10" L x 3" W x 6" H',
+                    )
+                    material = st.text_input(
+                        "Verified material/details (optional)",
+                        key=f"bda_material::{p.sku}",
+                        placeholder="e.g. Leather, Fabric Lining, Gold-Tone Hardware",
+                    )
+                    sources_raw = st.text_area(
+                        "Measurement/detail source links (optional)",
+                        key=f"bda_sources_input::{p.sku}",
+                        height=80,
+                        placeholder="Paste credible exact-match source URLs, one per line.",
+                    )
+                    if st.button("Generate draft", key=f"bda_generate::{p.sku}"):
+                        sources = [s.strip() for s in sources_raw.splitlines() if s.strip()]
+                        try:
+                            with st.spinner(f"Generating {p.sku}…"):
+                                draft = da.generate_description_draft(
+                                    title=p.title,
+                                    image_url=p.image_url,
+                                    verified_dimensions=dims,
+                                    verified_material=material,
+                                    sources=sources,
+                                )
+                            rendered = da.render_shopify_description(draft)
+                            audit = da.audit_generated_description(rendered)
+                            st.session_state["bda_drafts"][p.sku] = draft
+                            st.session_state["bda_rendered"][p.sku] = rendered
+                            st.session_state["bda_sources"][p.sku] = sources
+                            st.session_state["bda_warnings"][p.sku] = list(draft.warnings) + audit.issues
+                            if audit.passed:
+                                st.success("Draft generated.")
+                            else:
+                                st.warning("Draft generated, but needs review: " + "; ".join(audit.issues))
+                        except Exception as e:  # noqa: BLE001 — show API/image errors to user
+                            st.error(f"Generation failed for {p.sku}: {e}")
+
+    rendered_by_sku: dict = st.session_state.get("bda_rendered") or {}
+    if not rendered_by_sku:
+        return
+
+    st.markdown("### Review & approve")
+    st.caption("Edit drafts before approval. Only approved rows are pushed to Shopify.")
+    approved: list[tuple[da.DropAuditProduct, str]] = []
+    product_by_sku = {p.sku: p for p in products}
+    for sku, rendered in list(rendered_by_sku.items()):
+        p = product_by_sku.get(sku)
+        if not p:
+            continue
+        with st.expander(f"Review {sku} · {p.title}", expanded=True):
+            warnings = st.session_state.get("bda_warnings", {}).get(sku, [])
+            if warnings:
+                st.warning("; ".join(warnings))
+            edited_text = st.text_area(
+                "Generated Shopify description",
+                value=rendered,
+                key=f"bda_edit::{sku}",
+                height=260,
+            )
+            audit = da.audit_generated_description(edited_text)
+            if audit.passed:
+                st.success("Template check passed.")
+            else:
+                st.error("Template check failed: " + "; ".join(audit.issues))
+            approve = st.checkbox(
+                "Approve for Shopify push",
+                key=f"bda_approve::{sku}",
+                disabled=not audit.passed,
+            )
+            st.session_state["bda_rendered"][sku] = edited_text
+            if approve and audit.passed:
+                approved.append((p, edited_text))
+
+    st.divider()
+    if not approved:
+        st.info("No approved descriptions to push yet.")
+        return
+
+    st.warning(
+        f"This will update **{len(approved)}** live Shopify product description(s). "
+        "It will not touch price, inventory, customers, titles, or existing nonblank descriptions."
+    )
+    if st.button(f"Push {len(approved)} approved description(s) to Shopify", type="primary", key="bda_push"):
+        from shopify_push import update_product_body_html
+        import snapshots as _snap
+
+        pids = [p.product_id for p, _ in approved if p.product_id]
+        if pids:
+            with st.spinner(f"Snapshotting {len(pids)} products for Undo…"):
+                sc, sp = _snap.create_snapshot(pids, label="bulk_drop_audit", kind="pre_apply")
+            if sc > 0:
+                st.session_state["undo_snapshot_path"] = str(sp)
+
+        succeeded = 0
+        failed: list[tuple[str, int, dict]] = []
+        log_path = BASE / "logs" / "bulk_drop_audit_writes.jsonl"
+        for p, desc in approved:
+            if not p.product_id:
+                failed.append((p.title or p.sku, 0, {"error": "missing Shopify product ID"}))
+                continue
+            if p.has_description:
+                failed.append((p.title or p.sku, 0, {"error": "description is no longer blank"}))
+                continue
+            html_body = "<p>" + desc.strip().replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+            status, resp = update_product_body_html(p.product_id, html_body)
+            if status == 200:
+                succeeded += 1
+                da.append_audit_log(
+                    log_path,
+                    product=p,
+                    description=desc,
+                    sources=st.session_state.get("bda_sources", {}).get(p.sku, []),
+                    warnings=st.session_state.get("bda_warnings", {}).get(p.sku, []),
+                )
+                st.session_state["bda_rendered"].pop(p.sku, None)
+            else:
+                failed.append((p.title or p.sku, status, resp))
+        if succeeded:
+            st.success(f"Updated {succeeded} listing(s).")
+        if failed:
+            st.error(f"{len(failed)} failure(s):")
+            for title, status, resp in failed[:10]:
+                st.markdown(f"- **{title}** — HTTP {status} — `{resp}`")
+
+
+
 def render_bulk_measurements_tab() -> None:
     """Upload a measurements CSV → match products by barcode/SKU → fill the
     garment's copy template → write the rendered description to the live listing.
@@ -5717,9 +5955,10 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, catalogue_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
     "Shopify audit",
+    "Bulk Drop Audit",
     "Shopify bulk editor",
     "Copy formats",
     "Pricing",
@@ -5728,6 +5967,9 @@ home_tab, catalogue_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tab
 
 with catalogue_tab:
     render_shopify_catalogue_tab()
+
+with drop_audit_tab:
+    render_bulk_drop_audit_tab()
 
 with bulk_tab:
     render_bulk_measurements_tab()
