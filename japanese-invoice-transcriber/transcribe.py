@@ -247,7 +247,7 @@ def _extract_json(text: str) -> dict:
 def transcribe(path: Path, client: anthropic.Anthropic) -> Invoice:
     with client.messages.stream(
         model=MODEL,
-        max_tokens=16000,
+        max_tokens=32000,
         system=SYSTEM_PROMPT + JSON_INSTRUCTION,
         messages=[
             {
@@ -261,6 +261,15 @@ def transcribe(path: Path, client: anthropic.Anthropic) -> Invoice:
     ) as stream:
         message = stream.get_final_message()
     text = next((b.text for b in message.content if b.type == "text"), "")
+    # A truncated response (hit the output-token ceiling) yields invalid JSON
+    # mid-string — surface that as an actionable error rather than a cryptic
+    # "Unterminated string" from json.loads on a large multi-item invoice.
+    if message.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"Transcription truncated: the model hit its output-token limit "
+            f"before finishing the JSON ({len(text)} chars produced). This "
+            f"invoice likely has many items — split the PDF or raise max_tokens."
+        )
     data = _extract_json(text)
     try:
         invoice = Invoice(**data)

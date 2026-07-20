@@ -44,8 +44,12 @@ import pandas as pd
 import streamlit as st
 from dotenv import find_dotenv, load_dotenv
 
+import commercial_invoice as ci
 from costs import DEFAULT_EXCHANGE_RATE, Invoice, InvoiceView
-from pricing import canon_brand, canon_type, compose_title, price_item
+from pricing import (
+    canon_brand, canon_type, compose_title, price_item,
+    title_backbone_issues, set_learned_titles,
+)
 from transcribe import transcribe as transcribe_pdf
 from heuristics import (
     RULES_PATH,
@@ -271,6 +275,28 @@ details.item-detail .orig { font-family: 'Courier New', monospace; font-size: 0.
 }
 .stRadio > div { flex-direction: row; gap: 1rem; }
 .stRadio [role="radiogroup"] { gap: 1rem; }
+
+/* Commercial invoice tab — grey out the input boxes so it's obvious where
+   each field is. Scoped via the .ci-form marker so the rest of the app keeps
+   its plain editorial fields. */
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stTextInputRootElement"],
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stNumberInputContainer"],
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stTextAreaRootElement"],
+[data-testid="stTabPanel"]:has(.ci-form) div:has(> [data-testid="stDateInputField"]),
+[data-testid="stTabPanel"]:has(.ci-form) .stSelectbox > div > div {
+    background: #ececea !important;
+    border: 1px solid #c9c9c4 !important;
+    border-radius: 0 !important;
+}
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stTextInputRootElement"] input,
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stNumberInputField"],
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stDateInputField"],
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stTextAreaRootElement"] textarea {
+    background: #ececea !important;
+}
+[data-testid="stTabPanel"]:has(.ci-form) [data-testid="stNumberInputContainer"] button {
+    background: #e0e0dc !important;
+}
 
 /* Buttons — high specificity + !important so Streamlit's primary-button
    theme (which would otherwise leave text invisible against its red default)
@@ -568,6 +594,45 @@ def _invoice_searchable_meta(path_str: str, mtime_ns: int) -> tuple[str, str, st
         return ("", "", "")
 
 
+@st.cache_data(show_spinner=False, ttl=60)
+def _invoice_card_meta(path_str: str, mtime_ns: int) -> dict:
+    """Row fields for the consolidated invoice table: date, from, location, totals.
+
+    invoice_date is read straight from the transcribed invoice (not file mtime)
+    and `location` is derived from the vendor address / Buyee origin. Cached on
+    (path, mtime_ns) like _invoice_searchable_meta so re-saves invalidate.
+    """
+    import invoice_index as ii
+
+    blank = {"vendor": "", "date": "", "location": "", "n_items": 0,
+             "total_str": "", "titles": ""}
+    try:
+        data = json.loads(Path(path_str).read_text(encoding="utf-8"))
+    except Exception:
+        return blank
+    vendor = (data.get("vendor_name") or "").strip()
+    date = (data.get("invoice_date") or "").strip()
+    number = (str(data.get("invoice_number")) if data.get("invoice_number") else "").strip()
+    location = ii.from_location(
+        vendor,
+        data.get("vendor_address") or "",
+        data.get("invoice_type") or "",
+        data.get("currency") or "",
+    )
+    items = data.get("items") or []
+    total = data.get("grand_total")
+    cur = (data.get("currency") or "").strip()
+    total_str = f"{total:,.0f} {cur}".strip() if isinstance(total, (int, float)) else ""
+    titles = " ".join(
+        (it.get("override_title")
+         or it.get("description_english")
+         or it.get("description_original")
+         or "") for it in items[:50]
+    )
+    return {"vendor": vendor, "date": date, "number": number, "location": location,
+            "n_items": len(items), "total_str": total_str, "titles": titles}
+
+
 EDITED_PREFIX = "edited_"
 
 
@@ -611,6 +676,36 @@ def _overlay_edits_from_disk(invoice_data: dict) -> dict:
     return on_disk
 
 
+_REPARSE_FIELDS = ("material", "garment_length", "color", "era", "origin",
+                   "pattern", "model_name", "model_size", "style_adjectives")
+
+
+def reparse_descriptions(invoice_data: dict) -> dict:
+    """Re-run the description field extractors on a loaded invoice.
+
+    `extractors.fill_missing_fields` normally runs once at transcribe time. This
+    re-applies it on demand — mining `description_original`/`description_english`
+    for color/model/pattern/material/etc. — so titles for already-transcribed
+    invoices get richer without a re-transcribe. Only BLANK fields are filled
+    (explicit values and override_title are never touched); persists to the
+    edited JSON and returns fill stats.
+    """
+    from extractors import fill_missing_fields
+    inv = Invoice(**{k: v for k, v in invoice_data.items() if not k.startswith("_")})
+    stats = fill_missing_fields(inv)
+    by_sid = {it.source_id: it for it in inv.items}
+    for row in invoice_data.get("items", []):
+        it = by_sid.get(row.get("source_id"))
+        if it is None:
+            continue
+        for f in _REPARSE_FIELDS:
+            val = getattr(it, f, None)
+            if val and not (str(row.get(f) or "").strip()):
+                row[f] = val
+    persist_invoice(invoice_data)
+    return stats
+
+
 def persist_invoice(invoice_data: dict) -> Path:
     """Write the mutated invoice dict to output/edited_<stem>.json.
 
@@ -633,6 +728,28 @@ def persist_invoice(invoice_data: dict) -> Path:
 CORRECTIONS_LOG = BASE / "title_corrections.jsonl"
 
 
+@st.cache_data(show_spinner=False, ttl=30)
+def _learned_titles(mtime_ns: int) -> dict:
+    """Rich, unambiguous computed→override title map from the corrections log.
+
+    Cached on the log's mtime so a fresh correction is picked up after the next
+    save without re-parsing on every rerun.
+    """
+    import title_learning
+    return title_learning.build_learned_titles(CORRECTIONS_LOG)
+
+
+def install_learned_titles() -> int:
+    """Load the learned title map from disk and install it into the composer."""
+    try:
+        m = CORRECTIONS_LOG.stat().st_mtime_ns
+    except OSError:
+        m = 0
+    mapping = _learned_titles(m)
+    set_learned_titles(mapping)
+    return len(mapping)
+
+
 def log_title_correction(item: dict, computed_title: str, override_title: str, source_file: str):
     """Append an override event to a JSONL log — feeds future prompt few-shots.
 
@@ -649,6 +766,13 @@ def log_title_correction(item: dict, computed_title: str, override_title: str, s
         "source_id": item.get("source_id"),
         "brand": item.get("detected_brand"),
         "product_type": item.get("product_type"),
+        # Full field snapshot so future learning can key on a structured
+        # signature, not just the (sometimes sparse) computed title.
+        "model_name": item.get("model_name"),
+        "color": item.get("color"),
+        "pattern": item.get("pattern"),
+        "material": item.get("material"),
+        "era": item.get("era"),
         "computed_title": computed_title,
         "override_title": override_title,
     }
@@ -1067,16 +1191,54 @@ def render_buyee_sync_panel():
     total = len(idx)
     last_sync_h = hours_since_last_sync()
     cfg = load_config()
+    meta = load_meta()
+    # The last sync landed on the login screen (session expired) → flag it in
+    # the collapsed header so the user sees it without opening the panel.
+    session_expired = bool(getattr(meta, "last_sync_login_wall", False))
 
     badge_parts = []
     if total > 0:
         badge_parts.append(f"{downloaded}/{total} downloaded")
     badge_parts.append(f"last sync {humanize_freshness(last_sync_h)}")
+    if session_expired:
+        badge_parts.append("⚠️ session expired — re-login")
     if cfg.telegram_configured:
         badge_parts.append("Telegram bot configured")
     badge = " · " + " · ".join(badge_parts) if badge_parts else ""
 
-    with st.expander(f"Sync invoices from Buyee{badge}", expanded=False):
+    # A just-completed sync stashes its stats here and triggers a rerun, so the
+    # header badge above recomputes from fresh meta (clears a stale "session
+    # expired" the moment a re-login + sync succeed). Peek before the expander
+    # so it stays open to show the result.
+    pending_result = st.session_state.get("_buyee_sync_result")
+    with st.expander(f"Sync invoices from Buyee{badge}",
+                     expanded=session_expired or pending_result is not None):
+        result = st.session_state.pop("_buyee_sync_result", None)
+        if result is not None and not result.get("login_wall"):
+            ok = result["errors"] == 0
+            (st.success if ok else st.warning)(
+                f"Pages: {result['pages_visited']} · "
+                f"Seen: {result['seen']} · New: {result['new']} · "
+                f"Downloaded: {result['downloaded']} · Errors: {result['errors']}"
+            )
+            if result["downloaded"]:
+                st.caption(
+                    f"{result['downloaded']} new invoice(s) → `inputs/buyee/`. "
+                    f"They'll appear in the Incoming PDFs panel below."
+                )
+            if result["seen"] == 0:
+                st.warning(
+                    "No orders parsed. Selectors in `buyee/scraper.py` may need "
+                    "refinement — see `buyee/state/raw_html/shipped_1.html`."
+                )
+
+        if session_expired:
+            st.error(
+                "**Buyee session expired.** The last sync was redirected to the "
+                "login screen, so no orders were read. Re-login in a terminal, "
+                "then Sync now:\n\n"
+                "`uv run --with playwright --with pydantic python -m buyee login`"
+            )
         if not SESSION_PATH.exists():
             st.warning(
                 "**No Buyee session saved.** Run in a terminal once: "
@@ -1118,23 +1280,11 @@ def render_buyee_sync_panel():
                     st.error(f"Sync failed: {e}")
                     st.caption("If session-related, re-run `python -m buyee login` in your terminal.")
                     return
-
-            ok = stats["errors"] == 0
-            (st.success if ok else st.warning)(
-                f"Pages: {stats['pages_visited']} · "
-                f"Seen: {stats['seen']} · New: {stats['new']} · "
-                f"Downloaded: {stats['downloaded']} · Errors: {stats['errors']}"
-            )
-            if stats["downloaded"]:
-                st.caption(
-                    f"{stats['downloaded']} new invoice(s) → `inputs/buyee/`. "
-                    f"They'll appear in the Incoming PDFs panel below."
-                )
-            if stats["seen"] == 0:
-                st.warning(
-                    "No orders parsed. Selectors in `buyee/scraper.py` may need "
-                    "refinement — see `buyee/state/raw_html/shipped_1.html`."
-                )
+            # Stash + rerun so the header badge/banner recompute from the meta
+            # this sync just wrote (login_wall now reflects reality). The result
+            # summary renders at the top of the expander on the next run.
+            st.session_state["_buyee_sync_result"] = stats
+            st.rerun()
 
         # Telegram footer — collapses to one line when configured; the long
         # 4-step setup wall only appears for first-time setup (which the user
@@ -1265,138 +1415,212 @@ def render_incoming_panel():
 def render_source_picker():
     render_buyee_sync_panel()
     render_incoming_panel()
-    col_a, col_b = st.columns([2, 1])
-    with col_a:
-        uploaded = st.file_uploader(
-            "Upload invoice PDF or inventory CSV",
-            type=["pdf", "csv"],
-            help=(
-                "PDF: Buyee auction or vendor invoice — extracted via Claude vision. "
-                "CSV: Shopify-shaped product list (Title / Vendor / Cost per Item / Qty). "
-                "If your CSV costs are already landed, drop Handling/Import rates to 0 "
-                "in the Cost controls after upload."
-            ),
-        )
-    with col_b:
-        existing = list_transcribed()
-        # Group: edited variants first (your working copies), then originals
-        # (raw transcriptions). Visual prefix in the labels makes the
-        # distinction obvious without committing to grouped <optgroup>
-        # which Streamlit's selectbox doesn't support.
-        #
-        # Each labelled entry is (filename, display_label, search_haystack).
-        # The haystack folds in the vendor + invoice date + item titles
-        # pulled via the cached _invoice_searchable_meta helper, so the
-        # search box matches on substance ("burberry trench") not just
-        # filename ("260425-DKC-Past Studies_Second hand__INVOICE.json").
-        labelled = []
-        for p in existing:
+    uploaded = st.file_uploader(
+        "Upload invoice PDF or inventory CSV",
+        type=["pdf", "csv"],
+        help=(
+            "PDF: Buyee auction or vendor invoice — extracted via Claude vision. "
+            "CSV: Shopify-shaped product list (Title / Vendor / Cost per Item / Qty). "
+            "If your CSV costs are already landed, drop Handling/Import rates to 0 "
+            "in the Cost controls after upload."
+        ),
+    )
+    picked = _render_invoice_table()
+    return uploaded, picked
+
+
+def _render_invoice_table():
+    """Consolidated, sortable table of transcribed invoices — one row per order.
+
+    Collapses the raw/edited/buyee stem variants of each order into a single
+    row (see invoice_index.group_invoice_files), shows the invoice date and
+    origin pulled from the invoice itself, and loads the edited working copy
+    when a row is selected — so corrected copies always surface.
+    """
+    import invoice_index as ii
+
+    groups = ii.group_invoice_files(list_transcribed())
+    if not groups:
+        st.caption("No transcribed invoices yet — upload one above or sync from Buyee.")
+        return None
+
+    from datetime import date as _date_cls
+
+    rows = []
+    for g in groups:
+        try:
+            mtime_ns = g.load_path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        m = _invoice_card_meta(str(g.load_path), mtime_ns)
+        status = "✎ edited" if g.has_edits else "○ raw"
+        if g.is_pushed:
+            status += " · pushed"
+
+        # When the invoice was added to the system — the newest file touch across
+        # its variants. Drives the default sort so a freshly-submitted invoice
+        # surfaces at the top even when its printed date is old (common when
+        # catching up on a backlog of past-dated invoices).
+        added_ns = 0
+        for v in g.variants:
             try:
-                mtime_ns = p.stat().st_mtime_ns
+                added_ns = max(added_ns, v.stat().st_mtime_ns)
             except OSError:
-                mtime_ns = 0
-            vendor, date, titles = _invoice_searchable_meta(str(p), mtime_ns)
-            if p.name.startswith("edited_"):
-                label = f"✎  {p.name[len('edited_'):]}"
-            else:
-                label = f"○  {p.name}  (original)"
-            haystack = f"{p.name} {vendor} {date} {titles}".lower()
-            labelled.append((p.name, label, haystack))
+                pass
 
-        # Search box — case-insensitive substring across filename, vendor,
-        # invoice date, and item titles. Placed above the selectbox so
-        # filtering the dropdown's options list is a single keystroke away.
-        search = st.text_input(
-            "Search transcribed invoices",
-            placeholder=f"Search {len(labelled)} invoices by name, vendor, date, or item…",
-            key="picker_search",
-            label_visibility="collapsed",
-        ).strip().lower()
+        # Date column: the shipped/invoice date printed on the invoice; if the
+        # invoice carries no date (e.g. a CSV import), fall back to the date the
+        # order was first added to the system (earliest file mtime).
+        date_val = m["date"]
+        if not date_val:
+            mtimes = []
+            for v in g.variants:
+                try:
+                    mtimes.append(v.stat().st_mtime)
+                except OSError:
+                    pass
+            if mtimes:
+                date_val = _date_cls.fromtimestamp(min(mtimes)).isoformat()
 
-        if search:
-            filtered = [t for t in labelled if search in t[2]]
-        else:
-            filtered = labelled
+        # Package #: the invoice/package reference (W-number for Buyee orders).
+        package = m["number"] or (g.order_key if g.is_buyee else "—")
 
-        options = ["— pick transcribed —"] + [label for _, label, _ in filtered]
-        value_for_label = {label: name for name, label, _ in filtered}
-        value_for_label["— pick transcribed —"] = None
+        rows.append({
+            "group": g,
+            "Added": _date_cls.fromtimestamp(added_ns / 1e9).isoformat() if added_ns else "—",
+            "Date": date_val,
+            "Package #": package,
+            "From": m["vendor"] or ("Buyee" if g.is_buyee else "—"),
+            "Location": m["location"] or "—",
+            "Items": m["n_items"],
+            "Total": m["total_str"],
+            "Status": status,
+            "_added_ns": added_ns,
+            "_hay": f"{g.load_path.name} {m['vendor']} {m['date']} {package} "
+                    f"{m['location']} {m['titles']}".lower(),
+        })
 
-        # URL ?source=<filename.json> deep-links to a transcribed invoice
+    st.markdown(f"#### Transcribed invoices · {len(rows)}")
+    search = st.text_input(
+        "Search transcribed invoices",
+        placeholder="Search by vendor, date, location, order #, or item…",
+        key="picker_search",
+        label_visibility="collapsed",
+    ).strip().lower()
+    if search:
+        rows = [r for r in rows if search in r["_hay"]]
+        if not rows:
+            st.caption(f"No matches for **{search}**.")
+            return None
+
+    # Default sort: most-recently-added first, so a freshly-submitted invoice
+    # (e.g. just sent via Telegram) always surfaces at the top even if its
+    # printed invoice date is old. The printed date stays visible in its column.
+    rows.sort(key=lambda r: r["_added_ns"], reverse=True)
+
+    df = pd.DataFrame([{k: r[k] for k in
+                        ("Added", "Date", "Package #", "From", "Location", "Items", "Total", "Status")}
+                       for r in rows])
+
+    event = st.dataframe(
+        df,
+        hide_index=True,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="single-row",
+        key="invoice_table",
+        column_config={
+            "Added": st.column_config.TextColumn("Added", width="small",
+                                                 help="When this invoice was transcribed/added to the app (drives the default sort)"),
+            "Date": st.column_config.TextColumn("Date", width="small",
+                                                help="Shipped/invoice date printed on the invoice; date added if the invoice has none"),
+            "Package #": st.column_config.TextColumn("Package #", width="small",
+                                                     help="Invoice / Buyee package reference number"),
+            "From": st.column_config.TextColumn("From", width="medium"),
+            "Location": st.column_config.TextColumn("From location", width="small"),
+            "Items": st.column_config.NumberColumn("Items", width="small"),
+            "Total": st.column_config.TextColumn("Total", width="small"),
+            "Status": st.column_config.TextColumn("Status", width="small",
+                                                  help="✎ edited working copy · ○ raw only · pushed to Shopify"),
+        },
+    )
+
+    selection = getattr(event, "selection", None) if event else None
+    if isinstance(selection, dict):
+        sel = list(selection.get("rows") or [])
+    else:
+        sel = list(getattr(selection, "rows", []) or [])
+    picked = None
+    selected_group = None
+    if sel and sel[0] < len(rows):
+        selected_group = rows[sel[0]]["group"]
+        picked = selected_group.load_path.name
+
+    # URL ?source=<filename.json> deep-links to a transcribed invoice even
+    # without a table click — match against the load target or any variant.
+    if picked is None:
         preselected = st.query_params.get("source")
-        default_idx = 0
         if preselected:
-            for i, (name, _, _) in enumerate(filtered, start=1):
-                if name == preselected:
-                    default_idx = i
+            for r in rows:
+                g = r["group"]
+                if preselected == g.load_path.name or any(v.name == preselected for v in g.variants):
+                    picked, selected_group = g.load_path.name, g
                     break
 
-        if search and len(filtered) == 0:
-            # Better feedback than an empty dropdown — caption + skip the
-            # selectbox altogether when there are zero matches.
-            st.caption(f"No matches for **{search}** across {len(labelled)} invoices.")
-            picked = None
-        else:
-            select_label = (
-                f"Or pick a transcribed invoice  ·  showing {len(filtered)} of {len(labelled)}"
-                if search else "Or pick a transcribed invoice"
-            )
-            picked_label = st.selectbox(
-                select_label, options, index=default_idx,
-                help="✎ = edited (your working copy) · ○ = original (raw transcription, kept for audit)",
-            )
-            picked = value_for_label.get(picked_label)
+    if selected_group is not None:
+        _render_selected_invoice_controls(selected_group)
+    else:
+        st.caption("Click a row to load an invoice. Sorted by date — click any column header to re-sort.")
+    return picked
 
-        # Delete-the-picked-invoice control. Two-click confirm so a stray
-        # click doesn't nuke a working copy. Clearing st.cache_data on
-        # cached_transcribe forces a fresh ingest if the same CSV/PDF is
-        # re-uploaded right after.
-        if picked:
-            confirm_key = f"_confirm_delete::{picked}"
-            confirmed = st.session_state.get(confirm_key, False)
-            del_cols = st.columns([3, 2])
-            with del_cols[0]:
-                if not confirmed:
-                    if st.button(
-                        "Delete this transcription",
-                        key=f"del_btn::{picked}",
-                        width="stretch",
-                        help="Removes the JSON file from output/ and clears the "
-                             "ingest cache so re-uploading the same source "
-                             "produces a fresh result.",
-                    ):
-                        st.session_state[confirm_key] = True
-                        st.rerun()
-            with del_cols[1] if not confirmed else del_cols[0]:
-                if confirmed:
-                    if st.button(
-                        f"Confirm delete {picked}",
-                        key=f"del_confirm::{picked}",
-                        type="primary",
-                        width="stretch",
-                    ):
-                        target = OUTPUT / picked
-                        try:
-                            if target.exists():
-                                target.unlink()
-                        except OSError as e:
-                            st.error(f"Couldn't delete: {e}")
-                        else:
-                            # Also wipe the in-memory ingest cache so a
-                            # re-upload doesn't return the deleted bytes.
-                            try:
-                                cached_transcribe.clear()
-                            except Exception:
-                                pass
-                            st.session_state.pop(confirm_key, None)
-                            st.success(f"Deleted {picked}.")
-                            st.rerun()
-            if confirmed:
-                if st.button("Cancel", key=f"del_cancel::{picked}",
-                             type="tertiary", width="content"):
+
+def _render_selected_invoice_controls(g) -> None:
+    """Variants disclosure + two-click delete for the selected invoice row."""
+    picked = g.load_path.name
+    label = "✎ edited working copy" if g.has_edits else "○ raw transcription"
+    st.caption(f"Loading **{picked}**  ·  {label}")
+
+    if len(g.variants) > 1:
+        with st.expander(f"{len(g.variants)} files for this order", expanded=False):
+            for v in g.variants:
+                tag = " ← loading" if v.name == picked else ""
+                st.markdown(f"- `{v.name}`{tag}")
+            if g.is_pushed:
+                st.caption("A `.shopify_pushed.json` snapshot also exists for this order.")
+
+    confirm_key = f"_confirm_delete::{picked}"
+    confirmed = st.session_state.get(confirm_key, False)
+    if not confirmed:
+        if st.button("Delete this transcription", key=f"del_btn::{picked}",
+                     help="Removes just the loaded JSON from output/ and clears the "
+                          "ingest cache. Other variants of this order are left in place."):
+            st.session_state[confirm_key] = True
+            st.rerun()
+    else:
+        dc = st.columns([2, 1])
+        with dc[0]:
+            if st.button(f"Confirm delete {picked}", key=f"del_confirm::{picked}",
+                         type="primary", width="stretch"):
+                target = OUTPUT / picked
+                try:
+                    if target.exists():
+                        target.unlink()
+                except OSError as e:
+                    st.error(f"Couldn't delete: {e}")
+                else:
+                    try:
+                        cached_transcribe.clear()
+                    except Exception:
+                        pass
                     st.session_state.pop(confirm_key, None)
+                    st.session_state.pop("invoice_table", None)  # drop stale row selection
+                    st.success(f"Deleted {picked}.")
                     st.rerun()
-    return uploaded, picked
+        with dc[1]:
+            if st.button("Cancel", key=f"del_cancel::{picked}", type="tertiary",
+                         width="stretch"):
+                st.session_state.pop(confirm_key, None)
+                st.rerun()
 
 
 def render_meta(invoice_data: dict):
@@ -1551,8 +1775,69 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
     ccy = inv.currency
     recon = view.reconciliation()
 
+    # Replay learned title corrections into compose_title for this render.
+    install_learned_titles()
+
     # 1. Reconciliation banner at top — go/no-go
     render_reconciliation(recon, ccy, view.intl_fallback_applied)
+
+    # Two ways to fatten thin titles without a re-transcribe:
+    #  • Re-parse — free/instant regex pass over the descriptions (local).
+    #  • Enrich — the web-search + photo-vision pipeline (buyee.research) for
+    #    items whose title is still thin; parses JA/EN description, searches
+    #    similar listings, and reads the photo with vision. Costs API per item
+    #    (cached after). Both only fill BLANK fields — your edits are untouched.
+    flagged_ids = [it.source_id for it in inv.items if title_backbone_issues(it)]
+    rp1, rp2, rp3 = st.columns([1, 1, 2])
+    with rp1:
+        reparse_clicked = st.button(
+            "Re-parse descriptions", key="reparse_desc", width="stretch",
+            help="Free/instant: mine each item's description text to fill blank "
+                 "color / model / pattern / material / era. Only fills empties.",
+        )
+    with rp2:
+        enrich_clicked = st.button(
+            f"Enrich {len(flagged_ids)} (web + photo)" if flagged_ids else "Enrich (web + photo)",
+            key="enrich_titles", width="stretch", disabled=not flagged_ids,
+            help="For thin-title items only: parse the JA/EN description, web-search "
+                 "similar listings, and read the item photo with vision to fill "
+                 "color / model / material. Costs an Anthropic API call per item "
+                 "(cached after). Fills blanks only.",
+        )
+
+    if reparse_clicked:
+        stats = reparse_descriptions(inv_data_ref)
+        filled = {k.replace("_filled", ""): v for k, v in stats.items()
+                  if k.endswith("_filled") and v}
+        with rp3:
+            if filled:
+                st.success("Filled from text: " + ", ".join(f"{v} {k}" for k, v in filled.items()) + ".")
+            else:
+                st.info("Nothing in the text to fill — try Enrich (web + photo).")
+        if filled:
+            st.rerun()
+
+    if enrich_clicked and flagged_ids:
+        try:
+            with st.spinner(f"Researching {len(flagged_ids)} item(s) — description + web search + photo vision…"):
+                path = persist_invoice(inv_data_ref)
+                from buyee.research import enrich_invoice
+                stats = enrich_invoice(path, only_ids=flagged_ids, max_cost_usd=3.0)
+                fresh = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            with rp3:
+                st.error(f"Enrich failed: {e}")
+        else:
+            preserved = {k: v for k, v in inv_data_ref.items() if k.startswith("__")}
+            inv_data_ref.clear()
+            inv_data_ref.update(fresh)
+            inv_data_ref.update(preserved)
+            with rp3:
+                st.success(
+                    f"Enriched {stats['items_enriched']} of {stats['items_processed']} "
+                    f"item(s) · ${stats['total_cost_usd']:.2f}"
+                )
+            st.rerun()
 
     # 2. Shared inputs card — the invoice-wide numbers split across all items
     #    For BrandStreet, shows the handling + import assumptions (not on the invoice)
@@ -1696,6 +1981,7 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
             "source_id": item.source_id,
             "brand": canon_brand(item.detected_brand) or "Vintage",
             "proposed title": compose_title(item),
+            "title check": ("⚠ add " + ", ".join(_iss)) if (_iss := title_backbone_issues(item)) else "✓",
             "model_name": item.model_name or "",
             "model_size": item.model_size or "",
             "era": item.era or "",
@@ -1769,6 +2055,9 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
                                               help="Editable. Set to 'Vintage' to clear detected brand."),
         "proposed title": st.column_config.TextColumn("proposed title", width="large",
                                                        help="Editable. Per-category template: bags include model/size; coats include length/origin; etc. Saves as override_title."),
+        "title check": st.column_config.TextColumn("title check", width="small",
+                                                    help="SEO backbone check (read-only). ✓ = has brand + type + color (+ model for bags). "
+                                                         "⚠ add … lists the missing fields — fill them in the row and the title fills itself."),
         "model_name": st.column_config.TextColumn("model_name", width="small",
                                                    help="Editable. Luxury model — 'Speedy', 'Neverfull', 'Mamma Baguette', 'Classic Flap', etc."),
         "model_size": st.column_config.TextColumn("model_size", width="small",
@@ -5380,15 +5669,18 @@ def render_pricing_tab() -> None:
 
 
 def render_bulk_drop_audit_tab() -> None:
-    """SKU → bag/accessory description drafts → approved Shopify writes."""
+    """SKU/tag search → bag/accessory description drafts → approved Shopify writes."""
+    from concurrent.futures import ThreadPoolExecutor
+    from urllib.parse import urlparse
+
     import drop_audit as da
     from shopify_inventory import get_shop, is_configured
 
     st.subheader("Bulk Drop Audit")
     st.caption(
-        "Look up bag/accessory SKUs, generate Shopify-template description drafts, "
-        "review/edit, then push approved descriptions only. Existing descriptions "
-        "are skipped by default."
+        "Find bag/accessory listings by SKU or tag, generate Shopify-template "
+        "description drafts, review dimensions/condition per listing, then push "
+        "approved descriptions only. Existing descriptions are skipped."
     )
 
     if not is_configured():
@@ -5397,181 +5689,407 @@ def render_bulk_drop_audit_tab() -> None:
         )
         return
 
-    sku_text = st.text_area(
-        "SKUs",
-        value=st.session_state.get("bda_sku_text", ""),
-        key="bda_sku_text",
-        height=140,
-        placeholder="Paste one SKU per line. Commas are OK too.",
+    # Outline + grey-fill the search box so it's obvious where terms go.
+    st.markdown(
+        """<style>
+        div[data-baseweb="textarea"]:has(textarea[aria-label^="SKUs"]),
+        div[data-baseweb="textarea"]:has(textarea[aria-label^="Tags"]) {
+            border: 1.5px solid #9a9a9a !important;
+            border-radius: 8px;
+            background-color: #f5f5f7;
+        }
+        textarea[aria-label^="SKUs"], textarea[aria-label^="Tags"] {
+            background-color: #f5f5f7 !important;
+        }
+        </style>""",
+        unsafe_allow_html=True,
     )
-    skus = da.parse_skus(sku_text)
-    st.caption(f"Parsed {len(skus)} unique SKU(s).")
 
-    if st.button("Lookup SKUs", type="primary", width="stretch", disabled=not skus):
+    mode_col, terms_col = st.columns([1, 3])
+    with mode_col:
+        mode = st.selectbox("Search Shopify by", ["SKUs", "Tags"], key="bda_search_mode")
+    unit = "SKU" if mode == "SKUs" else "tag"
+    with terms_col:
+        terms_text = st.text_area(
+            f"{mode} — one per line, commas OK",
+            key=f"bda_terms::{mode}",
+            height=120,
+            placeholder=(
+                "Paste one SKU per line. Commas are OK too."
+                if mode == "SKUs"
+                else "e.g. drop-7 — one tag per line, commas OK."
+            ),
+        )
+    terms = da.parse_skus(terms_text)
+    st.caption(f"Parsed {len(terms)} unique {unit}(s)." if terms else f"Paste {unit}s above to search.")
+
+    if st.button(f"Search by {unit}", type="primary", width="stretch", disabled=not terms, key="bda_search"):
         shop = get_shop() or ""
-        with st.spinner(f"Looking up {len(skus)} SKU(s) in Shopify…"):
-            products = da.lookup_products_by_skus(skus, shop=shop)
+        with st.spinner(f"Searching Shopify for {len(terms)} {unit}(s)…"):
+            if mode == "SKUs":
+                products = da.lookup_products_by_skus(terms, shop=shop)
+            else:
+                products = da.lookup_products_by_tags(terms, shop=shop)
         st.session_state["bda_products"] = products
         st.session_state["bda_drafts"] = {}
-        st.session_state["bda_rendered"] = {}
         st.session_state["bda_sources"] = {}
         st.session_state["bda_warnings"] = {}
+        st.session_state["bda_pushed"] = set()
+        st.session_state["bda_gen_attempted"] = set()
+        st.session_state["bda_gen_errors"] = {}
+        for k in [
+            k for k in st.session_state
+            if isinstance(k, str) and k.startswith(("bda_prefilled::", "bda_dim_suggestion::"))
+        ]:
+            del st.session_state[k]
 
     products = st.session_state.get("bda_products") or []
     if not products:
-        st.info("Paste SKUs and click **Lookup SKUs** to begin.")
+        st.info("Pick a search mode, paste terms, and click **Search** to begin.")
         return
 
-    rows = da.plan_products(products)
+    # Plan twice: the base plan feeds the force-include options; the final
+    # plan honors whatever the user has force-included so far.
+    base_rows = da.plan_products(products)
+    not_eligible_skus = [r.product.sku for r in base_rows if r.status == "Not eligible"]
+    forced = set(st.session_state.get("bda_force_eligible") or [])
+    rows = da.plan_products(products, force_eligible=forced) if forced else base_rows
+
+    ready = [r for r in rows if r.status == "Ready to generate"]
+    cards = [r for r in rows if r.status in ("Ready to generate", "Has description")]
+    skipped = [r for r in rows if r.status not in ("Ready to generate", "Has description")]
     status_counts = {status: sum(1 for r in rows if r.status == status) for status in sorted({r.status for r in rows})}
     if status_counts:
         st.markdown(" · ".join(f"**{k}:** {v}" for k, v in status_counts.items()))
 
-    preview_df = pd.DataFrame([
-        {
-            "Generate": r.selected_by_default,
-            "SKU": r.product.sku,
-            "Title": r.product.title,
-            "Status": r.status,
-            "Price": r.product.price,
-            "Product status": r.product.status,
-            "Type": r.product.product_type,
-            "Warnings": "; ".join(r.warnings),
-            "Admin": r.product.admin_url,
-        }
-        for r in rows
-    ])
-    edited = st.data_editor(
-        preview_df,
-        hide_index=True,
-        width="stretch",
-        key="bda_lookup_editor",
-        column_config={
-            "Generate": st.column_config.CheckboxColumn(
-                "Generate", help="Only ready, blank-description rows should be selected."
-            ),
-            "Admin": st.column_config.LinkColumn("Admin", display_text="open"),
-        },
-        disabled=["SKU", "Title", "Status", "Price", "Product status", "Type", "Warnings", "Admin"],
-    )
+    if skipped or not_eligible_skus:
+        with st.expander(f"Skipped ({len(skipped)}) — not found / not eligible", expanded=not cards):
+            if skipped:
+                st.dataframe(
+                    pd.DataFrame([
+                        {
+                            "SKU": r.product.sku,
+                            "Title": r.product.title,
+                            "Status": r.status,
+                            "Warnings": "; ".join(r.warnings),
+                            "Admin": r.product.admin_url,
+                        }
+                        for r in skipped
+                    ]),
+                    hide_index=True,
+                    width="stretch",
+                    column_config={"Admin": st.column_config.LinkColumn("Admin", display_text="open")},
+                )
+            if not_eligible_skus:
+                st.multiselect(
+                    "Wrongly marked not eligible? Force-include as bag/accessory:",
+                    not_eligible_skus,
+                    key="bda_force_eligible",
+                )
 
-    selected_skus = set(
-        edited.loc[edited["Generate"].astype(bool), "SKU"].astype(str).tolist()
-        if not edited.empty else []
-    )
-    ready_by_sku = {r.product.sku: r for r in rows if r.status == "Ready to generate"}
-    invalid_selected = selected_skus - set(ready_by_sku)
-    if invalid_selected:
-        st.warning(
-            "Some selected rows are not ready and will be ignored: "
-            + ", ".join(sorted(invalid_selected))
-        )
-    selected_ready = [ready_by_sku[sku] for sku in selected_skus if sku in ready_by_sku]
-
-    st.markdown("### Generate drafts")
-    st.caption(
-        "Measurements must come from a verified matching source. If you leave dimensions "
-        "blank, the description will say `Needs review`. Details stay capped at 3-4 lines."
-    )
-
-    if not selected_ready:
-        st.info("Select ready rows above to generate drafts.")
-    else:
-        for row in selected_ready:
-            p = row.product
-            with st.expander(f"{p.sku} · {p.title}", expanded=False):
-                c1, c2 = st.columns([1, 2])
-                with c1:
-                    if p.image_url:
-                        st.image(p.image_url, caption="First Shopify image", use_container_width=True)
-                    st.caption(f"Product type: {p.product_type or '—'}")
-                    if p.tags:
-                        st.caption("Tags: " + ", ".join(p.tags[:12]))
-                with c2:
-                    dims = st.text_input(
-                        "Verified dimensions (optional)",
-                        key=f"bda_dims::{p.sku}",
-                        placeholder='e.g. 10" L x 3" W x 6" H',
-                    )
-                    material = st.text_input(
-                        "Verified material/details (optional)",
-                        key=f"bda_material::{p.sku}",
-                        placeholder="e.g. Leather, Fabric Lining, Gold-Tone Hardware",
-                    )
-                    sources_raw = st.text_area(
-                        "Measurement/detail source links (optional)",
-                        key=f"bda_sources_input::{p.sku}",
-                        height=80,
-                        placeholder="Paste credible exact-match source URLs, one per line.",
-                    )
-                    if st.button("Generate draft", key=f"bda_generate::{p.sku}"):
-                        sources = [s.strip() for s in sources_raw.splitlines() if s.strip()]
-                        try:
-                            with st.spinner(f"Generating {p.sku}…"):
-                                draft = da.generate_description_draft(
-                                    title=p.title,
-                                    image_url=p.image_url,
-                                    verified_dimensions=dims,
-                                    verified_material=material,
-                                    sources=sources,
-                                )
-                            rendered = da.render_shopify_description(draft)
-                            audit = da.audit_generated_description(rendered)
-                            st.session_state["bda_drafts"][p.sku] = draft
-                            st.session_state["bda_rendered"][p.sku] = rendered
-                            st.session_state["bda_sources"][p.sku] = sources
-                            st.session_state["bda_warnings"][p.sku] = list(draft.warnings) + audit.issues
-                            if audit.passed:
-                                st.success("Draft generated.")
-                            else:
-                                st.warning("Draft generated, but needs review: " + "; ".join(audit.issues))
-                        except Exception as e:  # noqa: BLE001 — show API/image errors to user
-                            st.error(f"Generation failed for {p.sku}: {e}")
-
-    rendered_by_sku: dict = st.session_state.get("bda_rendered") or {}
-    if not rendered_by_sku:
+    if not cards:
+        st.info("No listings to work on (needs a bag/accessory with at least one photo).")
         return
 
-    st.markdown("### Review & approve")
-    st.caption("Edit drafts before approval. Only approved rows are pushed to Shopify.")
+    st.markdown("### Listings")
+    st.caption(
+        "First drafts generate automatically — dimensions come from a web search of same-model "
+        "listings, condition is the AI's best guess from all listing photos. Edit the fields, "
+        "flag anything doubtful, and approve when the preview looks right. Listings that "
+        "already have a description keep it unless you tick **Re-prompt**."
+    )
+
+    drafts: dict = st.session_state.setdefault("bda_drafts", {})
+    pushed: set = st.session_state.setdefault("bda_pushed", set())
+    st.session_state.setdefault("bda_sources", {})
+    st.session_state.setdefault("bda_warnings", {})
+
+    def _wants_generation(row) -> bool:
+        sku = row.product.sku
+        if sku in drafts or sku in pushed:
+            return False
+        if row.status == "Has description":
+            return bool(st.session_state.get(f"bda_reprompt::{sku}"))
+        return True
+
+    attempted: set = st.session_state.setdefault("bda_gen_attempted", set())
+    gen_errors: dict = st.session_state.setdefault("bda_gen_errors", {})
+
+    _UNSEARCHED = object()
+
+    def _gen_inputs(p):
+        """Snapshot per-SKU inputs from session state on the main thread —
+        worker threads must not touch st.session_state."""
+        dims_val = (st.session_state.get(f"bda_dims::{p.sku}") or "").strip()
+        material_val = st.session_state.get(f"bda_material::{p.sku}", "")
+        sources = [s.strip() for s in (st.session_state.get(f"bda_sources_input::{p.sku}") or "").splitlines() if s.strip()]
+        sugg_key = f"bda_dim_suggestion::{p.sku}"
+        cached = st.session_state[sugg_key] if sugg_key in st.session_state else _UNSEARCHED
+        return dims_val, material_val, sources, cached
+
+    def _gen_worker(p, dims_val, material_val, sources, cached_sugg):
+        """Pure network work: dimension web-search (unless cached) + draft."""
+        sugg = None if cached_sugg is _UNSEARCHED else cached_sugg
+        search_err = None
+        dims_from_search = False
+        if not dims_val and cached_sugg is _UNSEARCHED:
+            first_img = next((u for u in (p.image_urls or [p.image_url]) if u), "")
+            try:
+                sugg = da.suggest_dimensions_via_web_search(title=p.title, image_url=first_img)
+            except Exception as e:  # noqa: BLE001 — search is best-effort, not fatal
+                sugg, search_err = None, str(e)
+        if not dims_val and sugg and sugg.dimensions:
+            dims_val = sugg.dimensions
+            sources = sources + [u for u in sugg.sources if u not in sources]
+            dims_from_search = True
+        draft = da.generate_description_draft(
+            title=p.title,
+            image_urls=[u for u in (p.image_urls or [p.image_url]) if u][: da.MAX_GENERATION_IMAGES],
+            verified_dimensions=dims_val,
+            verified_material=material_val,
+            sources=sources,
+        )
+        return {"draft": draft, "sugg": sugg, "sources": sources,
+                "search_err": search_err, "dims_from_search": dims_from_search}
+
+    def _apply_result(p, res) -> None:
+        drafts[p.sku] = res["draft"]
+        st.session_state["bda_sources"][p.sku] = res["sources"]
+        if res["sugg"] is not None or res["search_err"] is not None:
+            st.session_state[f"bda_dim_suggestion::{p.sku}"] = res["sugg"]
+        warns = list(res["draft"].warnings)
+        if res["search_err"]:
+            warns.append(f"dimension search failed: {res['search_err']}")
+        elif res["dims_from_search"]:
+            warns.append(f"dimensions via web search ({res['sugg'].confidence} confidence) — verify sources")
+        st.session_state["bda_warnings"][p.sku] = warns
+        st.session_state.pop(f"bda_prefilled::{p.sku}", None)
+        gen_errors.pop(p.sku, None)
+
+    for sku, msg in gen_errors.items():
+        st.error(f"Generation failed for {sku}: {msg} — use ↻ Regenerate on the card to retry.")
+
+    # Auto-generate in parallel batches; finished cards appear (and stay
+    # interactive) after each batch while the rest of the queue continues.
+    GEN_BATCH = 5
+    ungenerated = [r for r in cards if _wants_generation(r) and r.product.sku not in attempted]
+    if ungenerated:
+        batch = [r.product for r in ungenerated[:GEN_BATCH]]
+        done = sum(1 for r in cards if r.product.sku in drafts or r.product.sku in pushed)
+        st.progress(
+            done / max(done + len(ungenerated), 1),
+            text=f"Generating {len(batch)} draft(s) in parallel — {len(ungenerated)} remaining…",
+        )
+        inputs = {p.sku: _gen_inputs(p) for p in batch}
+        with ThreadPoolExecutor(max_workers=len(batch)) as ex:
+            futures = {p.sku: ex.submit(_gen_worker, p, *inputs[p.sku]) for p in batch}
+        for p in batch:
+            try:
+                _apply_result(p, futures[p.sku].result())
+            except Exception as e:  # noqa: BLE001 — surfaced above the cards
+                gen_errors[p.sku] = str(e)
+            attempted.add(p.sku)
+        st.rerun()
+
     approved: list[tuple[da.DropAuditProduct, str]] = []
-    product_by_sku = {p.sku: p for p in products}
-    for sku, rendered in list(rendered_by_sku.items()):
-        p = product_by_sku.get(sku)
-        if not p:
+
+    COL_SPEC = [1.0, 1.4, 1.5, 0.55]
+    header_cols = st.columns(COL_SPEC, gap="medium")
+    for hc, label in zip(header_cols, ("Photos", "Dimensions & condition", "Description preview", "Approve")):
+        with hc:
+            st.markdown(f"**{label}**")
+
+    for r in cards:
+        p = r.product
+        sku = p.sku
+        has_desc = r.status == "Has description"
+        draft = drafts.get(sku)
+        gen_images = (p.image_urls or [p.image_url])[: da.MAX_GENERATION_IMAGES]
+        gen_images = [u for u in gen_images if u]
+
+        if sku in pushed:
+            with st.container(border=True):
+                st.markdown(f"✅ **{sku}** · {p.title} — pushed to Shopify")
             continue
-        with st.expander(f"Review {sku} · {p.title}", expanded=True):
-            warnings = st.session_state.get("bda_warnings", {}).get(sku, [])
-            if warnings:
-                st.warning("; ".join(warnings))
-            edited_text = st.text_area(
-                "Generated Shopify description",
-                value=rendered,
-                key=f"bda_edit::{sku}",
-                height=260,
+
+        # Prefill the editable fields from a fresh draft. Must happen before
+        # the widgets below are instantiated for this run.
+        if draft and not st.session_state.get(f"bda_prefilled::{sku}"):
+            gen_dims = (draft.dimensions or "").strip()
+            if gen_dims and gen_dims.lower() != "needs review":
+                st.session_state[f"bda_dims::{sku}"] = gen_dims
+            st.session_state[f"bda_cond::{sku}"] = (draft.condition_notes or "").strip()
+            gen_material = (draft.material or "").strip()
+            st.session_state[f"bda_material::{sku}"] = "" if gen_material.lower() == "needs review" else gen_material
+            st.session_state[f"bda_details::{sku}"] = "\n".join(
+                da.clean_detail_line(d) for d in draft.details[:4] if da.clean_detail_line(d)
             )
-            audit = da.audit_generated_description(edited_text)
-            if audit.passed:
-                st.success("Template check passed.")
-            else:
-                st.error("Template check failed: " + "; ".join(audit.issues))
-            approve = st.checkbox(
-                "Approve for Shopify push",
-                key=f"bda_approve::{sku}",
-                disabled=not audit.passed,
-            )
-            st.session_state["bda_rendered"][sku] = edited_text
-            if approve and audit.passed:
-                approved.append((p, edited_text))
+            if draft.sources and not (st.session_state.get(f"bda_sources_input::{sku}") or "").strip():
+                st.session_state[f"bda_sources_input::{sku}"] = "\n".join(draft.sources)
+            st.session_state[f"bda_prefilled::{sku}"] = True
+
+        with st.container(border=True):
+            price = f" — ${p.price}" if p.price else ""
+            admin = f" · [open in Shopify]({p.admin_url})" if p.admin_url else ""
+            status_note = f" · {p.status}" if p.status and p.status != "ACTIVE" else ""
+            desc_note = " · has description" if has_desc else ""
+            flag_note = " · 🚩 flagged" if st.session_state.get(f"bda_flag::{sku}") else ""
+            st.markdown(f"**{sku}** · {p.title}{price}{status_note}{desc_note}{admin}{flag_note}")
+
+            if has_desc:
+                with st.expander("Current description — kept unless you approve a replacement"):
+                    st.markdown(p.description_html or "", unsafe_allow_html=True)
+                reprompt = st.checkbox(
+                    "Re-prompt — generate a replacement (overwrites the current description only when you approve and push)",
+                    key=f"bda_reprompt::{sku}",
+                    disabled=not gen_images,
+                    help=None if gen_images else "No photos on this listing — can't generate.",
+                )
+                if not reprompt:
+                    continue
+
+            img_col, field_col, prev_col, appr_col = st.columns(COL_SPEC, gap="medium")
+
+            with img_col:
+                if gen_images:
+                    st.image(da.shopify_image_url(gen_images[0], 640), use_container_width=True)
+                    extra = gen_images[1:5]
+                    if extra:
+                        for tc, u in zip(st.columns(len(extra)), extra):
+                            with tc:
+                                st.image(da.shopify_image_url(u, 240), use_container_width=True)
+                st.caption(f"{len(gen_images)} photo(s) used for condition")
+
+            with field_col:
+                dims = st.text_input("Dimensions", key=f"bda_dims::{sku}", placeholder='10" L x 3" W x 6" H')
+                suggestion = st.session_state.get(f"bda_dim_suggestion::{sku}")
+                if suggestion is not None:
+                    if suggestion.dimensions:
+                        hosts = ", ".join(sorted(
+                            {urlparse(u).netloc.removeprefix("www.") for u in suggestion.sources[:5]} - {""}
+                        ))
+                        if suggestion.dimensions == dims.strip():
+                            st.caption(f"✓ Web search ({suggestion.confidence} confidence){' · ' + hosts if hosts else ''}")
+                        else:
+
+                            def _apply_dims(sku=sku, s=suggestion):
+                                st.session_state[f"bda_dims::{sku}"] = s.dimensions
+                                existing = st.session_state.get(f"bda_sources_input::{sku}", "")
+                                merged = [u for u in existing.splitlines() if u.strip()]
+                                merged += [u for u in s.sources if u not in merged]
+                                st.session_state[f"bda_sources_input::{sku}"] = "\n".join(merged)
+
+                            st.button(
+                                f'Use web result: {suggestion.dimensions} ({suggestion.confidence})',
+                                key=f"bda_dimapply::{sku}",
+                                on_click=_apply_dims,
+                            )
+                    else:
+                        st.caption("Web search found no same-model dimensions — try 🔎 Reverse image search below, then type them in.")
+
+                cond = st.text_input(
+                    "Condition",
+                    key=f"bda_cond::{sku}",
+                    placeholder="8/10 – Light wear. Interior clean.",
+                )
+                material = st.text_input(
+                    "Material",
+                    key=f"bda_material::{sku}",
+                    placeholder="Leather, Fabric Lining, Gold-Tone Hardware",
+                )
+                details_text = st.text_area(
+                    "Details — one bullet per line",
+                    key=f"bda_details::{sku}",
+                    height=100,
+                )
+                st.text_area(
+                    "Sources — URLs, one per line",
+                    key=f"bda_sources_input::{sku}",
+                    height=68,
+                    placeholder="Auto-filled from the dimension search; add exact-match URLs.",
+                )
+                link_col1, link_col2 = st.columns(2)
+                with link_col1:
+                    if gen_images:
+                        st.link_button(
+                            "🔎 Reverse image search",
+                            da.reverse_image_search_url(da.shopify_image_url(gen_images[0], 800)),
+                            width="stretch",
+                            help="Opens Google Lens in a new tab with this listing's photo — same-model listings, any colorway.",
+                        )
+                with link_col2:
+                    st.link_button(
+                        "🔍 Listings by title",
+                        da.title_listing_search_url(p.title),
+                        width="stretch",
+                        help="Opens a Google search for this title + dimensions in a new tab.",
+                    )
+                regen_clicked = st.button(
+                    "↻ Regenerate" if draft else "Generate",
+                    key=f"bda_generate::{sku}",
+                    width="stretch",
+                )
+                if regen_clicked:
+                    try:
+                        with st.spinner(f"Generating {sku}…"):
+                            res = _gen_worker(p, *_gen_inputs(p))
+                        _apply_result(p, res)
+                        attempted.add(sku)
+                        st.rerun()
+                    except Exception as e:  # noqa: BLE001 — show API/image errors to user
+                        gen_errors[sku] = str(e)
+                        st.error(f"Generation failed for {sku}: {e}")
+
+            with prev_col:
+                if not draft:
+                    st.info("No draft yet — generate one to preview the description.")
+                else:
+                    final = da.DescriptionDraft(
+                        dimensions=dims.strip() or None,
+                        details=[ln for ln in details_text.splitlines() if ln.strip()],
+                        material=material.strip(),
+                        condition_notes=cond.strip(),
+                    )
+                    rendered = da.render_shopify_description(final)
+                    audit = da.audit_generated_description(rendered)
+                    warnings = st.session_state.get("bda_warnings", {}).get(sku, [])
+                    if warnings:
+                        st.warning("; ".join(warnings))
+                    st.markdown(da.shopify_description_html(rendered), unsafe_allow_html=True)
+                    if not audit.passed:
+                        st.error("Template check: " + "; ".join(audit.issues))
+
+            with appr_col:
+                if not draft:
+                    st.caption("—")
+                else:
+                    flagged = bool(st.session_state.get(f"bda_flag::{sku}"))
+                    if flagged and st.session_state.get(f"bda_approve::{sku}"):
+                        st.session_state[f"bda_approve::{sku}"] = False
+                    approve = st.checkbox(
+                        "Approve",
+                        key=f"bda_approve::{sku}",
+                        disabled=(not audit.passed) or flagged,
+                        help="Approve this description for the Shopify push.",
+                    )
+                    if approve and audit.passed and not flagged:
+                        approved.append((p, rendered))
+                    st.checkbox(
+                        "🚩 Flag",
+                        key=f"bda_flag::{sku}",
+                        help="Flag for another look; flagged listings can't be approved.",
+                    )
 
     st.divider()
     if not approved:
         st.info("No approved descriptions to push yet.")
         return
 
+    overwrites = sum(1 for p, _ in approved if p.has_description)
     st.warning(
-        f"This will update **{len(approved)}** live Shopify product description(s). "
-        "It will not touch price, inventory, customers, titles, or existing nonblank descriptions."
+        f"This will update **{len(approved)}** live Shopify product description(s)"
+        + (f", including **{overwrites}** overwrite(s) of existing descriptions you opted to re-prompt" if overwrites else "")
+        + ". It will not touch price, inventory, customers, or titles."
     )
     if st.button(f"Push {len(approved)} approved description(s) to Shopify", type="primary", key="bda_push"):
         from shopify_push import update_product_body_html
@@ -5591,10 +6109,10 @@ def render_bulk_drop_audit_tab() -> None:
             if not p.product_id:
                 failed.append((p.title or p.sku, 0, {"error": "missing Shopify product ID"}))
                 continue
-            if p.has_description:
-                failed.append((p.title or p.sku, 0, {"error": "description is no longer blank"}))
+            if p.has_description and not st.session_state.get(f"bda_reprompt::{p.sku}"):
+                failed.append((p.title or p.sku, 0, {"error": "has an existing description and re-prompt was not enabled"}))
                 continue
-            html_body = "<p>" + desc.strip().replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+            html_body = da.shopify_description_html(desc)
             status, resp = update_product_body_html(p.product_id, html_body)
             if status == 200:
                 succeeded += 1
@@ -5605,7 +6123,8 @@ def render_bulk_drop_audit_tab() -> None:
                     sources=st.session_state.get("bda_sources", {}).get(p.sku, []),
                     warnings=st.session_state.get("bda_warnings", {}).get(p.sku, []),
                 )
-                st.session_state["bda_rendered"].pop(p.sku, None)
+                drafts.pop(p.sku, None)
+                pushed.add(p.sku)
             else:
                 failed.append((p.title or p.sku, status, resp))
         if succeeded:
@@ -5947,6 +6466,254 @@ def render_bulk_measurements_tab() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Commercial invoice tab — describe items → customs line items → emailable CSV
+# ---------------------------------------------------------------------------
+
+CI_HEADER_PATH = OUTPUT / "commercial_invoice_header.json"
+
+CI_HEADER_DEFAULTS = {
+    "supplier_name": "Kosuke Yamamoto",
+    "supplier_address": "4-22-35-12 Nango, Chigasaki",
+    "supplier_city": "Kanagawa",
+    "supplier_country": "Japan",
+    "importer_name": "Past Studies",
+    "importer_address": "213 N Morgan unit 2G, 60607",
+    "importer_city": "Chicago IL",
+    "importer_country": "U.S.",
+    "country_of_origin": "Japan",
+    "currency": "JPY",
+}
+
+
+def _ci_load_header() -> dict:
+    """Saved header defaults, falling back to the invoice-83 values.
+
+    Exchange rates are kept per currency so switching JPY ⇄ EUR restores the
+    rate last used for that currency.
+    """
+    vals = dict(CI_HEADER_DEFAULTS)
+    vals["rates"] = dict(ci.DEFAULT_RATES)
+    if CI_HEADER_PATH.exists():
+        try:
+            data = json.loads(CI_HEADER_PATH.read_text())
+        except Exception:
+            data = {}
+        legacy_jpy = data.pop("jpy_per_usd", None)  # pre-currency file format
+        rates = data.pop("rates", {})
+        vals.update(data)
+        vals["rates"].update(rates)
+        if legacy_jpy and "JPY" not in rates:
+            vals["rates"]["JPY"] = float(legacy_jpy)
+    return vals
+
+
+def render_commercial_invoice_tab() -> None:
+    """Commercial invoice generator.
+
+    Describe the shipment in plain words; Claude formats customs line items
+    (codes kept, brands stripped, HS codes by shop convention); the download
+    is a CSV in the manual spreadsheet's exact layout, ready to email.
+    """
+    saved = _ci_load_header()
+
+    # .ci-form marks this tab's panel so the CSS block can grey out its
+    # input boxes without touching the rest of the app.
+    st.markdown('<div class="section-label ci-form">Invoice header</div>', unsafe_allow_html=True)
+    h1, h2, h3, h4 = st.columns([2, 2, 1, 2])
+    with h1:
+        inv_number = st.text_input("Invoice number", key="ci_number", placeholder="84")
+    with h2:
+        inv_date = st.date_input("Invoice date", value=_date.today(), key="ci_date")
+    with h3:
+        currencies = list(ci.CURRENCIES)
+        saved_ccy = saved.get("currency", "JPY")
+        currency = st.selectbox(
+            "Currency", currencies,
+            index=currencies.index(saved_ccy) if saved_ccy in currencies else 0,
+            key="ci_currency",
+            help="Currency the items were bought in — drives the Unit Value column.",
+        )
+    with h4:
+        rates = dict(ci.DEFAULT_RATES)
+        rates.update(saved.get("rates", {}))
+        rate = st.number_input(
+            f"Exchange rate ({currency} per 1 USD)",
+            min_value=0.01,
+            step=0.5 if currency == "JPY" else 0.01,
+            value=float(rates.get(currency, ci.DEFAULT_RATES[currency])),
+            key=f"ci_rate_{currency}",  # per-currency key: switching keeps both rates
+            help="Drives the whole USD column. Line totals round to whole dollars.",
+        )
+
+    sc, ic = st.columns(2)
+    with sc:
+        st.markdown("**Supplier information**")
+        s_name = st.text_input("Name", value=saved["supplier_name"], key="ci_s_name")
+        s_addr = st.text_input("Address", value=saved["supplier_address"], key="ci_s_addr")
+        s_city = st.text_input("City", value=saved["supplier_city"], key="ci_s_city")
+        s_country = st.text_input("Country", value=saved["supplier_country"], key="ci_s_country")
+    with ic:
+        st.markdown("**Importer of record**")
+        i_name = st.text_input("Company", value=saved["importer_name"], key="ci_i_name")
+        i_addr = st.text_input("Address", value=saved["importer_address"], key="ci_i_addr")
+        i_city = st.text_input("City", value=saved["importer_city"], key="ci_i_city")
+        i_country = st.text_input("Country", value=saved["importer_country"], key="ci_i_country")
+
+    origin = st.text_input("Country of origin", value=saved["country_of_origin"],
+                           key="ci_origin")
+
+    # Persist header edits so the next invoice starts from these values.
+    current = {
+        "supplier_name": s_name, "supplier_address": s_addr,
+        "supplier_city": s_city, "supplier_country": s_country,
+        "importer_name": i_name, "importer_address": i_addr,
+        "importer_city": i_city, "importer_country": i_country,
+        "country_of_origin": origin, "currency": currency,
+        "rates": {**rates, currency: rate},
+    }
+    if current != saved:
+        CI_HEADER_PATH.write_text(json.dumps(current, indent=2))
+
+    st.divider()
+    st.markdown('<div class="section-label">Describe items</div>', unsafe_allow_html=True)
+    desc = st.text_area(
+        f"One item per line — code, what it is, size if shoes, price per item in {currency}",
+        key="ci_describe", height=140,
+        placeholder=(
+            "06-220 leather shoulder bag 5248\n"
+            "16127 black rubber sandals size 37 womens 787\n"
+            "B086-6 canvas handbag 1604"
+        ),
+    )
+    if st.button("Generate line items", type="primary", key="ci_generate",
+                 disabled=not desc.strip()):
+        try:
+            with st.spinner("Formatting line items…"):
+                client = anthropic.Anthropic(timeout=180.0, max_retries=2)
+                items = ci.generate_items(desc, client, currency=currency)
+        except Exception as e:
+            st.error(f"Generation failed: {e}")
+        else:
+            st.session_state.setdefault("ci_items", [])
+            for item in items:
+                row = item.model_dump()
+                # Store the full dropdown option so the HS selectbox shows it.
+                row["hs_code"] = ci.hs_option_for(row["hs_code"])
+                st.session_state["ci_items"].append(row)
+            st.session_state["ci_flash"] = f"Added {len(items)} line item(s) — review below."
+            st.rerun()
+
+    st.divider()
+    if st.session_state.get("ci_flash"):
+        st.success(st.session_state.pop("ci_flash"))
+    rows = st.session_state.setdefault("ci_items", [])
+    st.markdown(
+        f'<div class="section-label">Line items ({len(rows)})</div>',
+        unsafe_allow_html=True,
+    )
+
+    item_cols = ["quantity", "description", "material_content", "hs_code", "unit_value"]
+    df = pd.DataFrame(rows, columns=item_cols)
+    df.insert(0, "PO #", range(1, len(df) + 1))
+    df["total (USD)"] = [
+        ci.line_total_usd(ci.CommercialLineItem(**r), rate) for r in rows
+    ]
+    # Blackship-style product-type dropdown: curated HS6 list, plus any
+    # already-entered value not on the list so nothing is silently dropped.
+    hs_options = list(ci.HS_OPTIONS)
+    hs_options += sorted(
+        {r["hs_code"] for r in rows if r["hs_code"] and r["hs_code"] not in hs_options}
+    )
+    symbol = ci.CURRENCY_SYMBOLS.get(currency, "")
+    unit_fmt = f"{symbol}%d" if currency == "JPY" else f"{symbol}%.2f"
+    edited = st.data_editor(
+        df,
+        width="stretch",
+        hide_index=True,
+        num_rows="dynamic",
+        key="ci_editor",
+        disabled=["PO #", "total (USD)"],
+        column_config={
+            "PO #": st.column_config.NumberColumn("PO #", width="small"),
+            "quantity": st.column_config.NumberColumn("Qty", min_value=1, step=1, width="small"),
+            "description": st.column_config.TextColumn("Product Description", width="large"),
+            "material_content": st.column_config.TextColumn("Material", width="small"),
+            "hs_code": st.column_config.SelectboxColumn(
+                "HS code / product type", options=hs_options, width="medium",
+                help="HS6 product type printed on the invoice — only the code is exported.",
+            ),
+            "unit_value": st.column_config.NumberColumn(
+                f"Unit Value ({currency})", format=unit_fmt, min_value=0,
+                help="Price per individual item — the USD total multiplies by Qty.",
+            ),
+            "total (USD)": st.column_config.NumberColumn("Total (USD)", format="$%d", width="small"),
+        },
+    )
+
+    # Write edits straight back; rerun so PO #s and USD totals recompute.
+    # Cells in freshly added dynamic rows come back as None/NaN.
+    def _cell_num(v, default: float) -> float:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return default
+        return default if pd.isna(f) else f
+
+    def _cell_str(v) -> str:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return ""
+        return str(v)
+
+    new_rows = []
+    for r in edited.to_dict("records"):
+        new_rows.append({
+            "quantity": max(1, int(_cell_num(r.get("quantity"), 1))),
+            "description": _cell_str(r.get("description")),
+            "material_content": _cell_str(r.get("material_content")),
+            "hs_code": _cell_str(r.get("hs_code")),
+            "unit_value": _cell_num(r.get("unit_value"), 0.0),
+        })
+    if new_rows != rows:
+        st.session_state["ci_items"] = new_rows
+        st.rerun()
+
+    total = sum(ci.line_total_usd(ci.CommercialLineItem(**r), rate) for r in rows)
+    st.markdown(f"**Estimated total value of all goods: ${total:,}**")
+
+    b1, b2 = st.columns([1, 4])
+    with b1:
+        if st.button("Clear all items", key="ci_clear", disabled=not rows):
+            st.session_state["ci_items"] = []
+            st.rerun()
+    with b2:
+        if not inv_number.strip():
+            st.caption("Enter an invoice number to enable the CSV download.")
+        elif not rows:
+            st.caption("Generate or add line items to enable the CSV download.")
+        else:
+            invoice = ci.CommercialInvoice(
+                invoice_number=inv_number.strip(),
+                invoice_date=inv_date.isoformat(),
+                supplier=ci.CommercialParty(
+                    name=s_name, address=s_addr, city=s_city, country=s_country),
+                importer=ci.CommercialParty(
+                    name=i_name, address=i_addr, city=i_city, country=i_country),
+                country_of_origin=origin,
+                currency=currency,
+                rate_per_usd=rate,
+                items=[ci.CommercialLineItem(**r) for r in rows],
+            )
+            st.download_button(
+                "Download invoice CSV",
+                data=ci.to_invoice_csv(invoice),
+                file_name=f"commercial-invoice-{inv_number.strip()}.csv",
+                mime="text/csv",
+                type="primary",
+                key="ci_download",
+            )
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -5955,8 +6722,9 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
+    "Commercial invoice",
     "Shopify audit",
     "Bulk Drop Audit",
     "Shopify bulk editor",
@@ -5964,6 +6732,9 @@ home_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowle
     "Pricing",
     "Notes & rules",
 ])
+
+with commercial_tab:
+    render_commercial_invoice_tab()
 
 with catalogue_tab:
     render_shopify_catalogue_tab()
