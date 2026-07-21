@@ -9,7 +9,8 @@
       "Read(//Users/kat/workspace/hot-girl-shopify/=== grep ps tools /**)",
       "Bash(grep -nA12 \"def update_product_body_html\" shopify_push.py)",
       "Bash(sed -n '1162,1205p' shopify_push.py)",
-      "Bash(sed -n '530,560p' shopify_push.py)"
+      "Bash(sed -n '530,560p' shopify_push.py)",
+      "Bash(uv run *)"
     ]
   }
 }

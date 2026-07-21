@@ -16,6 +16,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "better-sqlite3": "^11.5.0",
     "hono": "^4.12.14",
+    "nodemailer": "^9.0.3",
     "react": "^18.3.1",
     "satori": "^0.11.3",
     "sharp": "^0.34.5"
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^18.3.12",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"

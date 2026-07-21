@@ -17,8 +17,8 @@ templates:
   min_length: null
   max_length: null
   template: "<p><strong>DIMENSIONS:</strong><br></p>\n<p><strong>DETAILS:</strong></p>\n<ul>\n  <li></li>\n\
-    \  <li></li>\n  <li></li>\n  <li></li>\n  <li></li>\n  <li></li>\n</ul>\n<p><strong>MATERIAL:</strong><br></p>\n\
-    <p><strong>CONDITION NOTES:</strong></p>\n"
+    \  <li></li>\n  <li></li>\n  <li></li>\n</ul>\n<p><strong>MATERIAL:</strong><br></p>\n<p><strong>CONDITION\
+    \ NOTES:</strong></p>\n"
   notes: ''
   shopify_category_gid: ''
 - name: Clothing

@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,10 +6,12 @@ import sharp from 'sharp'
 import {
   openDb,
   getProductByHandle,
+  getProductById,
   getDraft,
   getDrop,
   getDropItems,
   updateDrop,
+  listAllVendors,
   type Post,
   type Draft,
   type Drop,
@@ -18,7 +20,7 @@ import {
 } from './db.js'
 import { renderStoryPng, renderCoverPng } from './render.js'
 import { uploadStoryImage } from './upload.js'
-import { postStoryFromUrl } from './instagram.js'
+import { postStoryFromUrl, getPublishingLimit } from './instagram.js'
 import { brand } from './brand.js'
 import { categorize, getLookSettings, type Category } from './look-settings.js'
 
@@ -212,12 +214,36 @@ export async function renderForHandle(
   return outPaths
 }
 
+// Product data changed since this thumb was rendered? The hourly sync bumps
+// products.updated_at on any Shopify edit (including media), so comparing it
+// against the thumb file's mtime re-renders exactly the products that changed.
+// This replaced wiping the whole render cache after every sync, which caused a
+// 200-thumb render storm on the next page load.
+function thumbIsStale(handle: string, thumbPath: string): boolean {
+  const db = openDb()
+  try {
+    const row = db
+      .prepare(`SELECT updated_at FROM products WHERE handle = ?`)
+      .get(handle) as { updated_at: string | null } | undefined
+    const updatedMs = row?.updated_at ? Date.parse(row.updated_at) : NaN
+    if (!Number.isFinite(updatedMs)) return false
+    return statSync(thumbPath).mtimeMs < updatedMs
+  } catch {
+    return false
+  } finally {
+    db.close()
+  }
+}
+
 // Fast path for the review-UI card thumb. Avoids loading/serving the 3 MB
 // full-resolution PNG when we just need a 50 KB JPEG at display size.
 // Returns the path to the JPEG on disk; renders on demand if needed.
 export async function renderThumbForHandle(handle: string): Promise<string> {
   const thumbPath = thumbPathFor(handle)
-  if (existsSync(thumbPath)) return thumbPath
+  if (existsSync(thumbPath)) {
+    if (!thumbIsStale(handle, thumbPath)) return thumbPath
+    invalidateRenderedFrames(handle)
+  }
   // No thumb yet — generate the full PNG (which also writes the thumb).
   await renderForHandle(handle)
   if (existsSync(thumbPath)) return thumbPath
@@ -502,6 +528,49 @@ export interface ResolvedDrop {
   drop: Drop
   items: Array<DropItem & { totalImages: number }>
   frames: DropFrame[]
+  // Handles the drop lists that are no longer in the catalog (sold/removed/
+  // renamed in Shopify). They're skipped rather than fatal so the rest of the
+  // drop still renders and posts.
+  missing: string[]
+}
+
+const MEDIA_CACHE_DIR = path.join(ROOT, '.cache/media')
+const IMG_EXT = /\.(jpe?g|png|webp)$/i
+
+// Cached images for a handle still on disk, even if the product has left the
+// catalog. Returns ROOT-relative paths matching media.local_path.
+function diskMediaFor(handle: string): string[] {
+  const dir = path.join(MEDIA_CACHE_DIR, handle)
+  if (!existsSync(dir)) return []
+  try {
+    return readdirSync(dir)
+      .filter((f) => IMG_EXT.test(f))
+      .sort()
+      .map((f) => path.join('.cache/media', handle, f))
+  } catch {
+    return []
+  }
+}
+
+// Best-effort brand + display title from a bare handle, for a legacy item with
+// no snapshot and no live product. stripBrandPrefix trims the vendor at render.
+function deriveFromHandle(handle: string, vendors: string[]): { title: string; vendor: string | null } {
+  const spaced = handle.replace(/-/g, ' ').trim()
+  const title = spaced.replace(/\b\w/g, (c) => c.toUpperCase())
+  const lc = ' ' + spaced.toLowerCase() + ' '
+  let vendor: string | null = null
+  for (const v of vendors) {
+    if (lc.includes(' ' + v.toLowerCase() + ' ')) { vendor = v; break }
+  }
+  return { title, vendor }
+}
+
+interface ItemRender {
+  title: string
+  vendor: string | null
+  price: string | null
+  productType: string | null
+  media: string[]
 }
 
 export function resolveDrop(dropId: number): ResolvedDrop {
@@ -510,31 +579,72 @@ export function resolveDrop(dropId: number): ResolvedDrop {
     const drop = getDrop(db, dropId)
     if (!drop) throw new Error(`Drop ${dropId} not found`)
     const items = getDropItems(db, dropId)
+    const vendors = listAllVendors(db)
     const frames: DropFrame[] = []
 
-    frames.push({
-      kind: 'cover',
-      role: 'opening',
-      outName: `drop-${dropId}-1-cover-open`,
-      body: drop.cover_body,
-      footer: drop.cover_footer,
-      trailingArrow: drop.trailing_arrow,
-      linkUrl: drop.cover_cta_url,
-    })
+    if (drop.include_opening) {
+      frames.push({
+        kind: 'cover',
+        role: 'opening',
+        outName: `drop-${dropId}-1-cover-open`,
+        body: drop.cover_body,
+        footer: drop.cover_footer,
+        trailingArrow: drop.trailing_arrow,
+        linkUrl: drop.cover_cta_url,
+      })
+    }
 
     const hydratedItems: Array<DropItem & { totalImages: number }> = []
-    let frameIdx = 2
+    const missing: string[] = []
+    let frameIdx = frames.length + 1
     for (const item of items) {
-      const bundle = getProductByHandle(db, item.handle)
-      if (!bundle) throw new Error(`Drop ${dropId} references missing product: ${item.handle}`)
-      const total = bundle.media.length
+      // Resolve the item's render data, most-current first, so a sold / removed
+      // / renamed product never blanks the drop:
+      //   live by handle → live by product_id (rename) → frozen snapshot →
+      //   on-disk cached images (brand/title derived) → truly gone.
+      let render: ItemRender | null = null
+      let bundle = getProductByHandle(db, item.handle)
+      if ((!bundle || !bundle.media.length) && item.product_id) {
+        const byId = getProductById(db, item.product_id)
+        if (byId && byId.media.length) bundle = byId
+      }
+      if (bundle && bundle.media.length) {
+        render = {
+          title: bundle.product.title,
+          vendor: bundle.product.vendor,
+          price: bundle.variant?.price ?? null,
+          productType: bundle.product.product_type,
+          media: bundle.media.map((m) => m.local_path).filter((p): p is string => !!p),
+        }
+      } else if (item.snapshot && item.snapshot.media.length) {
+        render = {
+          title: item.snapshot.title,
+          vendor: item.snapshot.vendor,
+          price: item.snapshot.price,
+          productType: item.snapshot.product_type,
+          media: item.snapshot.media,
+        }
+      } else {
+        const disk = diskMediaFor(item.handle)
+        if (disk.length) {
+          const d = deriveFromHandle(item.handle, vendors)
+          render = { title: d.title, vendor: d.vendor, price: null, productType: null, media: disk }
+        }
+      }
+
+      if (!render || !render.media.length) {
+        missing.push(item.handle)
+        continue
+      }
+
+      const total = render.media.length
       const start = Math.min(Math.max(0, item.image_start), Math.max(0, total - 1))
       const count = Math.max(1, Math.min(item.image_count, total - start))
       hydratedItems.push({ ...item, image_start: start, image_count: count, totalImages: total })
 
-      const vendor = bundle.product.vendor || ''
-      const name = stripBrandPrefix(bundle.product.title, vendor)
-      const price = formatPrice(bundle.variant?.price)
+      const vendor = render.vendor || ''
+      const name = stripBrandPrefix(render.title, render.vendor)
+      const price = formatPrice(render.price)
       const productUrl = brand.productUrlTemplate(item.handle)
       const itemDraft = getDraft(db, item.handle)
       for (let i = 0; i < count; i++) {
@@ -545,10 +655,10 @@ export function resolveDrop(dropId: number): ResolvedDrop {
           brand: vendor,
           name,
           price,
-          imagePath: bundle.media[start + i].local_path,
+          imagePath: render.media[start + i],
           linkUrl: productUrl,
-          productType: bundle.product.product_type,
-          rawTitle: bundle.product.title,
+          productType: render.productType,
+          rawTitle: render.title,
           lookCategoryOverride: itemDraft?.look_category ?? null,
         })
         frameIdx++
@@ -567,7 +677,7 @@ export function resolveDrop(dropId: number): ResolvedDrop {
       })
     }
 
-    return { drop, items: hydratedItems, frames }
+    return { drop, items: hydratedItems, frames, missing }
   } finally {
     db.close()
   }
@@ -629,9 +739,41 @@ export async function publishDrop(dropId: number): Promise<PublishDropResult> {
     if (existing.status === 'published') throw new Error(`Drop ${dropId} already published`)
     if (existing.status === 'publishing') throw new Error(`Drop ${dropId} is currently publishing`)
 
-    updateDrop(db, dropId, { status: 'publishing', error: null })
+    // Atomic claim: the scheduler loop and a manual "Post now" can race, so
+    // the status flip doubles as a lock — whoever loses the UPDATE bails here.
+    const claim = db
+      .prepare(
+        `UPDATE drops SET status = 'publishing', error = NULL, updated_at = ?
+         WHERE id = ? AND status IN ('draft', 'scheduled', 'failed')`,
+      )
+      .run(new Date().toISOString(), dropId)
+    if (claim.changes === 0) throw new Error(`Drop ${dropId} is already being published`)
 
     try {
+      // Refuse upfront if the drop won't fit in IG's rolling 24h publishing
+      // quota — otherwise it dies midway with half the sequence live.
+      const { frames, missing } = resolveDrop(dropId)
+      if (missing.length) {
+        console.warn(`[publish] drop ${dropId} skipping ${missing.length} missing product(s): ${missing.join(', ')}`)
+      }
+      if (!frames.length) {
+        throw new Error(
+          `Drop ${dropId} has nothing to post — all ${missing.length} product(s) are missing from the catalog` +
+            `${missing.length ? ` (${missing.join(', ')})` : ''}. Re-add current products.`,
+        )
+      }
+      let quotaError: string | null = null
+      try {
+        const { quota_usage, quota_total } = await getPublishingLimit()
+        const remaining = Math.max(0, quota_total - quota_usage)
+        if (frames.length > remaining) {
+          quotaError = `Drop needs ${frames.length} story posts but only ${remaining} remain in IG's 24h publishing quota (${quota_usage}/${quota_total} used). Trim images per item or wait for the quota to roll over.`
+        }
+      } catch {
+        // Quota check is best-effort — don't block publishing if the API hiccups.
+      }
+      if (quotaError) throw new Error(quotaError)
+
       const outPaths = await renderDropAll(dropId)
       const stamp = Date.now()
       const r2Urls: string[] = []
@@ -643,7 +785,6 @@ export async function publishDrop(dropId: number): Promise<PublishDropResult> {
         r2Urls.push(url)
       }
 
-      const { frames } = resolveDrop(dropId)
       const containerIds: string[] = []
       const mediaIds: string[] = []
       for (let i = 0; i < r2Urls.length; i++) {

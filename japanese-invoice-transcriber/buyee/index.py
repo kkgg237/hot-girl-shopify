@@ -127,6 +127,7 @@ class IndexMeta(BaseModel):
     last_sync_downloaded: Optional[int] = None
     last_sync_errors: Optional[int] = None
     last_sync_error_msg: Optional[str] = None
+    last_sync_login_wall: bool = False
     sync_count: int = 0
 
 

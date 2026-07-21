@@ -5331,10 +5331,16 @@ def render_rules_tab() -> None:
                         height=80,
                     )
                 with c2:
+                    # Tolerate any legacy/unknown status value (e.g. an older
+                    # "resolved") by surfacing it as an extra option instead of
+                    # crashing the whole tab on .index().
+                    _status_opts = ["pending", "applied", "rejected", "deferred"]
+                    if n.status not in _status_opts:
+                        _status_opts = _status_opts + [n.status]
                     new_status = st.selectbox(
                         "Set status",
-                        ["pending", "applied", "rejected", "deferred"],
-                        index=["pending", "applied", "rejected", "deferred"].index(n.status),
+                        _status_opts,
+                        index=_status_opts.index(n.status),
                         key=f"st_{n.id}",
                     )
                     if st.button("Update", key=f"upd_{n.id}", width="stretch"):

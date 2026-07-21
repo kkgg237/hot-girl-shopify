@@ -757,6 +757,108 @@ def smart_title(s: str) -> str:
     return " ".join(out)
 
 
+# Categories where a model_name is a core SEO term (buyers search "Speedy 25",
+# "Classic Flap"). Mirrors the BAG template selector in compose_title.
+_MODEL_CRITICAL_TYPES = {
+    "Handbag", "Shoulder Bag", "Clutch Bag", "Tote Bag", "Hobo Bag",
+    "Duffle Bag", "Duffel Bag", "Boston Bag", "Travel Bag", "Weekender",
+    "Backpack", "Crossbody Bag", "Pouch", "Belt Bag", "Bag", "Clutch",
+}
+
+# Learned title replay: computed_title -> approved override, built from the
+# user's past corrections (only rich, unambiguous 1:1 mappings — see
+# title_learning.build_learned_titles). Empty by default so pricing stays pure
+# and testable; the app injects the map via set_learned_titles().
+_LEARNED_TITLES: dict[str, str] = {}
+
+
+def set_learned_titles(mapping: Optional[dict] = None) -> None:
+    """Install the learned computed→override title map (from title corrections)."""
+    global _LEARNED_TITLES
+    _LEARNED_TITLES = dict(mapping or {})
+
+
+def title_backbone_issues(item: "LineItem") -> list[str]:
+    """Which SEO-backbone fields are missing from what compose_title will emit.
+
+    Presence-only check (the field ORDER is compose_title's job): every title
+    needs a real brand + a product type + a colour, and bags additionally need
+    a model name. Returns the missing field names ([] means the backbone is
+    complete). Honors an existing override_title (a manual title is never
+    flagged).
+    """
+    if getattr(item, "override_title", None):
+        return []
+    issues: list[str] = []
+    if not canon_brand(getattr(item, "detected_brand", None)):  # would fall back to "Vintage"
+        issues.append("brand")
+    ptype = canon_type(getattr(item, "product_type", None)) or (getattr(item, "product_type", None) or "")
+    if not str(ptype).strip():
+        issues.append("type")
+    if not (getattr(item, "color", None) or "").strip():
+        issues.append("color")
+    if ptype in _MODEL_CRITICAL_TYPES and not (getattr(item, "model_name", None) or "").strip():
+        issues.append("model")
+    return issues
+
+
+# Shoe sizing isn't a structured field — the transcriber records it in free
+# text (condition_notes / descriptions) as "EU 39, 24.5cm" or "size 37.5C". Shoe
+# titles surface the EUROPEAN size (37, 36.5), NEVER the cm foot-length. Every
+# candidate is gated to the EU shoe range [34, 47]; Japanese cm foot-lengths
+# (~22-28) all fall below 34, so a cm value — even "size 24.5cm" — can never be
+# mistaken for a size.
+_EU_SIZE_MIN, _EU_SIZE_MAX = 34.0, 47.0
+# A half-size, written any of the ways the invoices use it: 37.5 / 37 1/2 / 37½.
+_HALF = r"(?:\.5|\s*1/2|\s*½)"
+_SHOE_SIZE_EU = re.compile(rf"\bEU\s*(\d{{2}})({_HALF})?", re.I)
+_SHOE_SIZE_LABELED = re.compile(rf"\bsizes?\s*[:#]?\s*(\d{{2}})({_HALF})?", re.I)
+_SHOE_SIZE_BARE = re.compile(rf"(?<![\d.])(3[4-9]|4[0-7])({_HALF})?(?![\d.])")
+
+
+def _norm_eu_size(int_part: str, half: Optional[str]) -> str:
+    """"36" + a half-token → "36.5"; "36" + None → "36"."""
+    return f"{int_part}.5" if half else int_part
+
+
+def _in_eu_shoe_range(num: str) -> bool:
+    try:
+        return _EU_SIZE_MIN <= float(num) <= _EU_SIZE_MAX
+    except (TypeError, ValueError):
+        return False
+
+
+def _extract_shoe_size(item) -> str:
+    """Pull the EU shoe size (e.g. "37", "36.5") from an item's free text.
+
+    Priority of sources: condition_notes (LLM-normalized) → description_english
+    → description_original. "EU N" and "size N" labels are unambiguous even
+    inside raw Japanese, so they're tried on every source; a bare in-range number
+    is only trusted on the LLM-clean fields (raw Japanese is full of model
+    numbers). EVERY candidate must land in the EU shoe range so a cm foot-length
+    is never emitted. Returns "" when no valid EU size is present.
+    """
+    cond = getattr(item, "condition_notes", None) or ""
+    en = getattr(item, "description_english", None) or ""
+    orig = getattr(item, "description_original", None) or ""
+    # Explicit EU / "size" markers — validated against the EU range, so a
+    # labeled cm value ("size 24.5cm") is rejected rather than emitted.
+    for text in (cond, en, orig):
+        for rx in (_SHOE_SIZE_EU, _SHOE_SIZE_LABELED):
+            for m in rx.finditer(text):
+                size = _norm_eu_size(m.group(1), m.group(2))
+                if _in_eu_shoe_range(size):
+                    return size
+    # Bare in-range number — only on LLM-clean fields (the regex already bounds
+    # it to 34-47, the range gate is belt-and-suspenders).
+    for text in (cond, en):
+        for m in _SHOE_SIZE_BARE.finditer(text):
+            size = _norm_eu_size(m.group(1), m.group(2))
+            if _in_eu_shoe_range(size):
+                return size
+    return ""
+
+
 def compose_title(item: LineItem) -> str:
     """Build a Shopify-ready product title using per-category templates (#7).
 
@@ -766,7 +868,7 @@ def compose_title(item: LineItem) -> str:
       Sunglasses  [Era] Brand [Model] [Frame color] [Pattern] Sunglasses
       Coats       [Era] Brand [Color] [Pattern] [Material] [Length] [Origin] Coat
       Dresses     [Era] Brand [Color] [Pattern] [Material] [Length] [Origin] Dress
-      Shoes       [Era] Brand [Model] [Color] [Material] Shoes
+      Shoes       [Era] Brand [Model] [Color] [Material] Shoes-type [Size N]
       Default     [Era] Brand [Model] [Color] [Pattern] [Material] [Origin] [Length] Category
 
     Fills `era` from the MODEL_ERA DB if we have brand + model but no era yet.
@@ -853,6 +955,7 @@ def compose_title(item: LineItem) -> str:
 
     # Build ordered segment list per template — None/empty entries skipped
     segments: list[Optional[str]] = []
+    size_suffix_tokens = 0  # protected tail beyond ptype (e.g. shoe "Size 37")
 
     if template == "BAG":
         segments = [
@@ -896,6 +999,12 @@ def compose_title(item: LineItem) -> str:
             ptype,
         ]
     elif template == "SHOES":
+        # Shoe size (EU) goes at the very end — "Chanel Black Leather Sandals
+        # Size 36.5" — so unidentifiable listings ("Chanel Shoes") still get a
+        # distinguishing "Size N" when the invoice records one.
+        shoe_size = _extract_shoe_size(item)
+        if shoe_size:
+            size_suffix_tokens = 2  # "Size" + the number
         segments = [
             era_for_title, brand,
             smart_title(model) if model else None,
@@ -903,6 +1012,7 @@ def compose_title(item: LineItem) -> str:
             style if style else None,
             smart_title(material) if material else None,
             ptype,
+            f"Size {shoe_size}" if shoe_size else None,
         ]
     else:  # DEFAULT — covers Top, Shirt, Blouse, T-Shirt, Skirt, Pants, etc.
         segments = [
@@ -922,7 +1032,10 @@ def compose_title(item: LineItem) -> str:
     # Product-type tokens are sacred — never dedup them away. "Ballet Flats"
     # would otherwise lose "Ballet" if the title contains "Ballerina" earlier.
     ptype_tokens = len(ptype.split()) if ptype else 0
-    return _dedup_title_tokens(title, protected_tail=ptype_tokens)
+    built = _dedup_title_tokens(title, protected_tail=ptype_tokens + size_suffix_tokens)
+    # Learned replay: if this exact composed title was corrected before (and the
+    # correction is rich + unambiguous), emit your approved version instead.
+    return _LEARNED_TITLES.get(built, built)
 
 
 def _dedup_title_tokens(title: str, protected_tail: int = 0) -> str:

@@ -551,8 +551,8 @@ regression_anchors:
     expected_title: "Celine Black Long Sleeve Tailored Button-front Set"
     note: "Wool dropped 2026-05-11 by deluxe-material gate. Color + style adjectives preserved."
   - source_id: l1215704505
-    expected_title: "Chanel Ballerina Pink Lambskin Ballet Flats"
-    note: "Lambskin IS deluxe — preserved. User-edited 2026-05-05: stripped 'Ribbon Detail Coco Mark' style adjectives."
+    expected_title: "Chanel Ballerina Pink Lambskin Ballet Flats Size 37.5"
+    note: "Lambskin IS deluxe — preserved. User-edited 2026-05-05: stripped 'Ribbon Detail Coco Mark' style adjectives. Size 37.5 appended 2026-06-18 per shoe-size rule."
   - source_id: s1207984114
     expected_title: "Paola Frani Multicolor Long Sleeve Wrap Top"
     note: "Nylon dropped 2026-05-11 by deluxe-material gate. Pattern 'Floral' dropped earlier."

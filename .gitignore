@@ -37,3 +37,8 @@ shop-photo-editor/data/*.db-journal
 # Raw camera-card source JPGs used during crop work — kept local only,
 # they're large (>17 MB each) and not referenced by application code.
 test-content/before/
+
+# Japanese invoice transcriber — runtime data (PDFs, generated JSONs, logs)
+japanese-invoice-transcriber/inputs/
+japanese-invoice-transcriber/output/
+japanese-invoice-transcriber/logs/

@@ -31,6 +31,12 @@ import {
   updateDrop,
   deleteDrop,
   setDropItems,
+  backfillDropItemSnapshots,
+  listScheduledGrids,
+  getScheduledGrid,
+  createScheduledGrid,
+  updateScheduledGrid,
+  deleteScheduledGrid,
   type Layout,
   type DropItem,
 } from './db.js'
@@ -45,6 +51,8 @@ import {
   type Category,
   type LookSettings,
 } from './look-settings.js'
+import { renderDropGridJpeg, postDropGridStory, publishScheduledGrid, parseGridPreset, parseGridFormat } from './grid.js'
+import { notifyScheduledFailure } from './notify.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -242,6 +250,10 @@ const STYLES = `
   .drop-topbar label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
   .drop-topbar select, .drop-topbar input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 13px; background: #fff; color: #111; }
   .drop-topbar button { padding: 8px 12px; font-size: 11px; }
+  .drop-missing { background: #fff6e5; border: 1px solid #f0dca8; color: #8a6100; border-radius: 8px; padding: 10px 14px; font-size: 12px; line-height: 1.45; }
+  .drop-missing strong { font-weight: 700; }
+  .drop-missing button { margin-left: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; border: 1px solid #e0c98a; background: #fff; border-radius: 5px; cursor: pointer; color: #8a6100; }
+  .drop-missing button:hover { background: #fbf1da; }
   .drop-status { margin-left: auto; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.08em; }
 
   .drop-grid { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(360px, 1fr); gap: 24px; }
@@ -251,8 +263,24 @@ const STYLES = `
   .picker-tabs { display: inline-flex; gap: 4px; background: #f4f4f4; border-radius: 8px; padding: 4px; margin-bottom: 10px; }
   .picker-tab { padding: 6px 12px; background: transparent; border: none; border-radius: 6px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; color: #555; }
   .picker-tab.on { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-  .picker-controls { display: flex; gap: 8px; margin-bottom: 12px; }
-  .picker-controls input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 13px; }
+  .picker-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .picker-controls input { flex: 1; min-width: 140px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 13px; }
+  .picker-controls select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 12px; background: #fff; color: #111; max-width: 220px; }
+  .picker-controls .imgs-per { display: flex; align-items: center; gap: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #888; white-space: nowrap; }
+  .picker-controls button { flex: 0 0 auto; }
+  .picker-hint { font-size: 10.5px; color: #888; letter-spacing: 0.03em; margin: -4px 0 10px; line-height: 1.5; }
+  .picker-hint .warn { color: #b88500; }
+
+  .grid-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .grid-controls select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 12px; background: #fff; color: #111; }
+  .grid-controls button { flex: 0 0 auto; padding: 9px 14px; }
+  .btn-like { display: inline-block; padding: 9px 14px; border: 1px solid #111; border-radius: 6px; background: #fff; color: #111; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; text-decoration: none; }
+  .btn-like:hover { background: #f4f4f4; }
+
+  .drop-schedule { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .drop-schedule .sched-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+  .drop-schedule input[type=datetime-local] { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 12px; background: #fff; color: #111; }
+  .drop-schedule button { flex: 0 0 auto; padding: 9px 14px; }
 
   .picker-list { max-height: 520px; overflow-y: auto; border: 1px solid #f0f0f0; border-radius: 8px; padding: 4px; }
   .picker-row { display: grid; grid-template-columns: 22px 56px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
@@ -289,20 +317,106 @@ const STYLES = `
   .drop-actions { display: flex; gap: 8px; margin-top: 18px; }
   .drop-actions button { flex: 1; padding: 11px; }
   .drop-actions .secondary { flex: 0 0 auto; }
+
+  /* Calendar tab */
+  .cal-shell { max-width: 1100px; margin: 0 auto; }
+  .cal-bar { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .cal-nav { display: flex; align-items: center; gap: 4px; }
+  .cal-nav button { width: 34px; height: 34px; padding: 0; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #111; font-size: 15px; cursor: pointer; line-height: 1; }
+  .cal-nav button:hover { background: #f4f4f4; }
+  .cal-today-btn { height: 34px; padding: 0 14px; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #111; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .cal-today-btn:hover { background: #f4f4f4; }
+  .cal-label { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; min-width: 210px; }
+  .cal-views { display: flex; gap: 4px; background: #f4f4f4; border-radius: 8px; padding: 4px; margin-left: auto; }
+  .cal-view-btn { padding: 7px 14px; background: transparent; border: none; border-radius: 6px; font: inherit; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; }
+  .cal-view-btn.on { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .cal-summary { font-size: 12px; color: #888; letter-spacing: 0.03em; }
+
+  .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
+  .cal-dow > div { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #aaa; text-align: left; padding-left: 4px; }
+  .cal-weeks { display: flex; flex-direction: column; gap: 6px; }
+  .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal-day { min-height: 104px; border: 1px solid #ececec; border-radius: 8px; background: #fff; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .cal-day.out { background: #fafaf9; opacity: 0.55; }
+  .cal-day.past { background: #fbfbfa; }
+  .cal-day.today { border-color: #111; box-shadow: inset 0 0 0 1px #111; }
+  .cal-daynum { font-size: 11px; font-weight: 600; color: #888; padding: 1px 3px; }
+  .cal-day.today .cal-daynum { color: #111; }
+  .cal-chip { display: block; width: 100%; text-align: left; border: none; border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 11px; line-height: 1.25; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-chip.scheduled { background: #eef4ff; color: #1b4fa0; }
+  .cal-chip.scheduled:hover { background: #dfe9fb; }
+  .cal-chip.published { background: #eef7f0; color: #2a7a4a; }
+  .cal-chip.published:hover { background: #e2f1e7; }
+  .cal-chip.publishing { background: #fff5e6; color: #a86500; }
+  .cal-chip.publishing:hover { background: #ffedd0; }
+  .cal-chip.failed { background: #fdecec; color: #b3261e; }
+  .cal-chip.failed:hover { background: #f9dcdc; }
+  .cal-chip.grid { border-left: 3px solid currentColor; padding-left: 4px; }
+  .cal-kind { opacity: 0.6; font-size: 9px; margin-right: 1px; }
+  .cal-chip-time { font-weight: 700; }
+  .cal-legend { display: flex; gap: 16px; margin-top: 16px; font-size: 11px; color: #888; align-items: center; flex-wrap: wrap; }
+  .cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .cal-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .cal-legend i.scheduled { background: #cfe0fb; }
+  .cal-legend i.published { background: #d3ecdb; }
+  .cal-legend i.publishing { background: #ffd8a0; }
+  .cal-legend i.failed { background: #f3b4b0; }
+  .cal-legend .cal-hint { margin-left: auto; color: #bbb; }
+  .cal-empty { text-align: center; color: #aaa; font-size: 13px; padding: 40px 0; }
+
+  /* Cross-tab failure banner */
+  .alert-banner { background: #b3261e; color: #fff; padding: 11px 22px; font-size: 13px; display: flex; align-items: center; gap: 14px; cursor: pointer; }
+  .alert-banner strong { font-weight: 700; white-space: nowrap; }
+  .alert-banner .alert-detail { color: #ffd9d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alert-banner .alert-cta { margin-left: auto; text-decoration: underline; white-space: nowrap; font-weight: 600; }
+
+  /* Calendar event modal (create + detail) */
+  .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .cal-modal-backdrop.open { display: flex; }
+  .cal-modal { background: #fff; border-radius: 12px; width: min(540px, 92vw); max-height: 90vh; overflow: auto; padding: 24px; position: relative; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+  .cal-modal .close-x { position: absolute; top: 12px; right: 14px; border: none; background: transparent; font-size: 22px; cursor: pointer; color: #999; line-height: 1; }
+  .cal-modal h3 { margin: 0 0 4px; font-size: 17px; }
+  .cal-modal .cm-sub { font-size: 12px; color: #888; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .cal-modal label { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin: 12px 0 5px; }
+  .cal-modal input[type=text], .cal-modal input[type=datetime-local], .cal-modal select { width: 100%; padding: 9px 11px; border: 1px solid #ddd; border-radius: 6px; font: inherit; font-size: 13px; background: #fff; color: #111; }
+  .cm-row { display: flex; gap: 10px; }
+  .cm-row > div { flex: 1; }
+  .cm-preview { margin-top: 14px; text-align: center; background: #f4f4f4; border-radius: 8px; padding: 12px; min-height: 60px; }
+  .cm-preview img { max-height: 300px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+  .cm-shuffle-btn { margin-top: 8px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: #fff; font: inherit; font-size: 12px; cursor: pointer; }
+  .cm-shuffle-btn:hover { background: #f4f4f4; }
+  .cm-actions { display: flex; gap: 8px; margin-top: 20px; }
+  .cm-actions button { padding: 10px 14px; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #ddd; background: #fff; color: #111; }
+  .cm-actions button:hover { background: #f4f4f4; }
+  .cm-actions .primary { background: #111; color: #fff; border-color: #111; flex: 1; }
+  .cm-actions .primary:hover { background: #333; }
+  .cm-actions .danger { color: #b3261e; border-color: #f0d0d0; margin-left: auto; }
+  .cm-status { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .cm-status.scheduled { background: #eef4ff; color: #1b4fa0; }
+  .cm-status.publishing { background: #fff5e6; color: #a86500; }
+  .cm-status.published { background: #eef7f0; color: #2a7a4a; }
+  .cm-status.failed { background: #fdecec; color: #b3261e; }
+  .cm-error { margin-top: 12px; background: #fdecec; color: #b3261e; padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.4; }
 `
 
 const FLOWS = [
+  {
+    slug: 'product-drop',
+    title: 'Product drop',
+    description: 'Cover card + multiple products posted as one continuous story sequence.',
+    status: 'ready',
+  },
+  {
+    slug: 'calendar',
+    title: 'Calendar',
+    description: 'Two-week and month views of what drops are scheduled to post.',
+    status: 'ready',
+  },
   {
     slug: 'single-product',
     title: 'Single product',
     description: 'Pick a product and post a sequence of story photos with caption.',
     status: 'ready',
-  },
-  {
-    slug: 'product-drop',
-    title: 'Product drop',
-    description: 'Cover card + multiple products posted as one continuous story sequence.',
-    status: 'wip',
   },
   {
     slug: 'studio-event',
@@ -411,6 +525,7 @@ app.get('/', (c) => {
 <style>${STYLES}</style>
 </head>
 <body>
+<div class="alert-banner" id="alert-banner" hidden></div>
 <header>
   <h1>past studies</h1>
   <div class="flow-tabs" id="flow-tabs">
@@ -427,6 +542,8 @@ app.get('/', (c) => {
       <option value="">all brands</option>
       ${vendors.map((v) => `<option value="${escape(v.toLowerCase())}">${escape(v)}</option>`).join('')}
     </select>
+  </div>
+  <div class="filters" id="sync-controls">
     <button id="sync-btn" class="sync-btn" type="button" title="Re-fetch products + media from Shopify">↻ Refresh</button>
     <span id="sync-meta" class="sync-meta" data-last="${lastSyncIso ?? ''}">${lastSyncIso ? '' : 'never synced'}</span>
   </div>
@@ -455,6 +572,8 @@ app.get('/', (c) => {
         <span class="drop-status" id="drop-status"></span>
       </div>
 
+      <div class="drop-missing" id="drop-missing" hidden></div>
+
       <div class="drop-grid">
         <section class="drop-picker">
           <h3>Add products</h3>
@@ -463,10 +582,20 @@ app.get('/', (c) => {
             <button data-mode="tag" class="picker-tab">By tag</button>
           </div>
           <div class="picker-controls">
-            <input id="picker-tag" type="text" placeholder="tag (e.g. 2025_Cavalli)" style="display:none" />
+            <select id="picker-tag" style="display:none"><option value="">— pick a tag —</option></select>
             <input id="picker-query" type="text" placeholder="search title/vendor" />
-            <button id="picker-add" class="primary">Add selected</button>
+            <label class="imgs-per">imgs/item
+              <select id="picker-imgs-per">
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </label>
+            <button id="picker-add" class="secondary">Add selected</button>
+            <button id="picker-add-all" class="primary">Add all</button>
           </div>
+          <div class="picker-hint" id="picker-hint"></div>
           <div class="picker-list" id="picker-list"></div>
         </section>
 
@@ -475,6 +604,7 @@ app.get('/', (c) => {
           <div class="drop-items" id="drop-items"></div>
 
           <h3 style="margin-top:24px">Opening cover</h3>
+          <label class="row-checkbox"><input id="cover-include" type="checkbox" /> Include opening cover at start of sequence</label>
           <label>Body (one line per textarea row)</label>
           <textarea id="cover-body" rows="4"></textarea>
           <label>Footer</label>
@@ -499,11 +629,65 @@ app.get('/', (c) => {
             </div>
           </div>
 
+          <h3 style="margin-top:24px" id="grid-heading">Promo grid</h3>
+          <div class="grid-controls" id="grid-controls">
+            <select id="grid-size">
+              <option value="2x2">2 × 2</option>
+              <option value="2x3" selected>2 × 3</option>
+              <option value="3x3">3 × 3</option>
+              <option value="3x4">3 × 4</option>
+              <option value="4x4">4 × 4</option>
+            </select>
+            <select id="grid-format">
+              <option value="story" selected>Story 9:16</option>
+              <option value="post">Post 4:5</option>
+              <option value="square">Square 1:1</option>
+            </select>
+            <button id="grid-shuffle" class="secondary" type="button">↻ Shuffle</button>
+            <a id="grid-download" class="btn-like" href="#" download>Download</a>
+            <button id="grid-post" class="secondary" type="button">Post as story</button>
+          </div>
+          <div class="drop-preview" id="grid-preview-wrap">
+            <img id="grid-preview-img" alt="promo grid preview" />
+          </div>
+
           <div class="drop-actions">
             <button class="secondary" id="drop-delete">Delete drop</button>
-            <button class="primary" id="drop-publish">Publish drop</button>
+            <button class="primary" id="drop-publish">Post now</button>
+          </div>
+          <div class="drop-schedule">
+            <span class="sched-label">or schedule for</span>
+            <input id="drop-schedule-at" type="datetime-local" />
+            <button class="secondary" id="drop-schedule-btn">Schedule</button>
+            <button class="secondary" id="drop-unschedule-btn" style="display:none">Cancel schedule</button>
           </div>
         </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-panel" id="panel-calendar" hidden>
+    <div class="cal-shell">
+      <div class="cal-bar">
+        <div class="cal-nav">
+          <button type="button" id="cal-prev" title="Previous">‹</button>
+          <button type="button" id="cal-next" title="Next">›</button>
+        </div>
+        <button type="button" id="cal-today" class="cal-today-btn">Today</button>
+        <div class="cal-label" id="cal-label"></div>
+        <span class="cal-summary" id="cal-summary"></span>
+        <div class="cal-views">
+          <button type="button" class="cal-view-btn on" data-view="month">Month</button>
+          <button type="button" class="cal-view-btn" data-view="twoweek">2 weeks</button>
+        </div>
+      </div>
+      <div id="cal-grid"></div>
+      <div class="cal-legend">
+        <span><i class="scheduled"></i> Scheduled</span>
+        <span><i class="publishing"></i> Posting…</span>
+        <span><i class="failed"></i> Failed</span>
+        <span><i class="published"></i> Posted</span>
+        <span class="cal-hint">▦ grid · ❖ story sequence — click a day to schedule a grid</span>
       </div>
     </div>
   </div>
@@ -589,6 +773,13 @@ app.get('/', (c) => {
     </div>
   </div>
 </main>
+
+<div class="cal-modal-backdrop" id="cal-modal-backdrop">
+  <div class="cal-modal" id="cal-modal">
+    <button class="close-x" id="cal-modal-close">×</button>
+    <div id="cal-modal-body"></div>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="modal-backdrop">
   <div class="modal" id="modal">
@@ -941,19 +1132,24 @@ if (syncBtn) {
 }
 
 // ---- Flow tabs ----
-const FLOW_SLUGS = ['single-product', 'product-drop', 'studio-event', 'look']
+const FLOW_SLUGS = ['single-product', 'product-drop', 'calendar', 'studio-event', 'look']
 function showFlow(slug) {
-  if (!FLOW_SLUGS.includes(slug)) slug = 'single-product'
+  if (!FLOW_SLUGS.includes(slug)) slug = 'product-drop'
   FLOW_SLUGS.forEach(s => {
     const panel = document.getElementById('panel-' + s)
     if (panel) panel.hidden = s !== slug
   })
   $$('.flow-tab').forEach(b => b.classList.toggle('active', b.dataset.flow === slug))
-  // Filters/counts only relevant for the single-product flow.
+  // Filters/counts only relevant for the single-product flow. Sync controls
+  // stay visible everywhere — drop day is exactly when a fresh Shopify pull
+  // is needed.
   const filters = $('#flow-filters')
   const counts = $('#counts')
   if (filters) filters.style.display = slug === 'single-product' ? '' : 'none'
   if (counts) counts.style.display = slug === 'single-product' ? '' : 'none'
+  // Calendar reads live drop state — refetch every time it's opened so a just-
+  // scheduled drop shows up without a page reload.
+  if (slug === 'calendar') calLoad()
 }
 $$('.flow-tab').forEach(b => {
   b.addEventListener('click', async () => {
@@ -970,7 +1166,8 @@ window.addEventListener('hashchange', () => {
   flushPendingLookSave()
   showFlow(location.hash.replace(/^#/, ''))
 })
-showFlow(location.hash.replace(/^#/, '') || 'single-product')
+// Product drop is the primary flow — land there unless the hash says otherwise.
+showFlow(location.hash.replace(/^#/, '') || 'product-drop')
 
 // ═══════════════════════════════════════════════════════════════════════
 // Product drop flow
@@ -1007,7 +1204,7 @@ async function dropLoadAll() {
     drop.state.currentId = null
   }
   if (drop.state.currentId) await dropLoad(drop.state.currentId)
-  else { drop.state.items = []; drop.state.cover = null; dropRender() }
+  else { drop.state.items = []; drop.state.cover = null; dropRender(); gridRefresh() }
 }
 
 async function dropLoad(id) {
@@ -1023,11 +1220,70 @@ async function dropLoad(id) {
   $('#cover-footer').value = j.drop.cover_footer || ''
   $('#cover-cta-url').value = j.drop.cover_cta_url || ''
   $('#cover-arrow').checked = !!j.drop.trailing_arrow
+  $('#cover-include').checked = !!j.drop.include_opening
   $('#closing-body').value = (j.drop.closing_body || []).join('\\n')
   $('#closing-include').checked = !!j.drop.include_closing
-  $('#drop-status').textContent = j.drop.status
+  updateScheduleUi(j.drop)
+  dropRenderMissing(j.missing || [])
   dropRender()
   dropRefreshPreview()
+  gridRefresh()
+}
+
+// Warn when a drop lists products that have since left the catalog (sold /
+// removed / renamed). They're skipped on publish, so offer a one-click purge.
+function dropRenderMissing(missing) {
+  const el = $('#drop-missing')
+  if (!el) return
+  if (!missing.length) { el.hidden = true; el.innerHTML = ''; return }
+  el.hidden = false
+  const list = missing.map(h => escapeHtml(h)).join(', ')
+  el.innerHTML = '<strong>⚠ ' + missing.length + ' item' + (missing.length > 1 ? 's have' : ' has') +
+    ' no photos on file</strong> — the product is gone and no saved copy exists, so ' +
+    (missing.length > 1 ? 'they' : 'it') + ' will be skipped when posting: ' + list +
+    '<button type="button" id="drop-missing-remove">Remove them</button>'
+  const btn = $('#drop-missing-remove')
+  if (btn) btn.addEventListener('click', async () => {
+    const keep = drop.state.items.filter(it => missing.indexOf(it.handle) === -1)
+    const r = await fetch('/drops/' + drop.state.currentId + '/items', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: keep.map(it => ({ handle: it.handle, image_start: it.image_start, image_count: it.image_count })) }),
+    })
+    const jj = await r.json()
+    if (!jj.ok) { alert('Could not remove: ' + (jj.error || '')); return }
+    await dropLoad(drop.state.currentId)
+  })
+}
+
+function fmtLocal(iso) {
+  const t = new Date(iso)
+  if (isNaN(t.getTime())) return iso
+  return t.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// Reflect the drop's status + schedule into the topbar and the schedule row.
+function updateScheduleUi(d) {
+  const status = $('#drop-status')
+  const schedInput = $('#drop-schedule-at')
+  const schedBtn = $('#drop-schedule-btn')
+  const unschedBtn = $('#drop-unschedule-btn')
+  const publishBtn = $('#drop-publish')
+  const isScheduled = d.status === 'scheduled' && d.scheduled_at
+  if (isScheduled) {
+    status.textContent = 'scheduled · ' + fmtLocal(d.scheduled_at)
+    const t = new Date(d.scheduled_at)
+    const pad = (n) => String(n).padStart(2, '0')
+    schedInput.value = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()) + 'T' + pad(t.getHours()) + ':' + pad(t.getMinutes())
+  } else if (d.status === 'failed') {
+    status.textContent = 'failed · ' + (d.error || 'unknown error')
+  } else {
+    status.textContent = d.status
+  }
+  unschedBtn.style.display = isScheduled ? '' : 'none'
+  schedBtn.textContent = isScheduled ? 'Reschedule' : 'Schedule'
+  const locked = d.status === 'publishing' || d.status === 'published'
+  publishBtn.disabled = locked
+  schedBtn.disabled = locked
 }
 
 function dropRender() {
@@ -1088,6 +1344,7 @@ async function dropSaveItems(items) {
     drop.state.frame = 1
     dropRender()
     dropRefreshPreview()
+    gridRefresh()
   }
 }
 
@@ -1107,6 +1364,7 @@ async function dropSaveCover() {
     cover_cta_url: $('#cover-cta-url').value || null,
     trailing_arrow: $('#cover-arrow').checked,
     closing_body: closingBody,
+    include_opening: $('#cover-include').checked,
     include_closing: $('#closing-include').checked,
   }
   const r = await fetch('/drops/' + drop.state.currentId, {
@@ -1138,7 +1396,76 @@ async function dropRefreshPreview() {
   $('#drop-preview-img').src = '/drops/' + drop.state.currentId + '/preview/' + drop.state.frame + '?t=' + Date.now()
 }
 
+// ── Promo grid ──
+// Seeded so the preview, download link, and "Post as story" all reference
+// the exact grid the user is looking at. Shuffle = new seed.
+drop.state.gridSeed = Math.floor(Math.random() * 1e9)
+
+function gridParams() {
+  return 'grid=' + $('#grid-size').value + '&format=' + $('#grid-format').value + '&seed=' + drop.state.gridSeed
+}
+
+function gridRefresh() {
+  const img = $('#grid-preview-img')
+  const hasItems = !!(drop.state.currentId && drop.state.items.length)
+  ;['grid-heading', 'grid-controls', 'grid-preview-wrap'].forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.style.display = hasItems ? '' : 'none'
+  })
+  if (!hasItems) { img.removeAttribute('src'); return }
+  const base = '/drops/' + drop.state.currentId + '/grid.jpg?' + gridParams()
+  img.src = base
+  $('#grid-download').href = base + '&download=1'
+  $('#grid-post').style.display = $('#grid-format').value === 'story' ? '' : 'none'
+}
+
+$('#grid-size').addEventListener('change', gridRefresh)
+$('#grid-format').addEventListener('change', gridRefresh)
+$('#grid-shuffle').addEventListener('click', () => {
+  drop.state.gridSeed = Math.floor(Math.random() * 1e9)
+  gridRefresh()
+})
+$('#grid-post').addEventListener('click', async () => {
+  if (!drop.state.currentId) return
+  if (!confirm('Post this promo grid to Instagram stories now?')) return
+  const btn = $('#grid-post')
+  const orig = btn.textContent
+  btn.disabled = true
+  btn.textContent = 'Posting…'
+  try {
+    const r = await fetch('/drops/' + drop.state.currentId + '/grid/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grid: $('#grid-size').value, seed: drop.state.gridSeed }),
+    })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || 'post failed')
+    alert('Promo grid posted to stories!')
+  } catch (e) {
+    alert('Post failed: ' + (e.message || e))
+  } finally {
+    btn.disabled = false
+    btn.textContent = orig
+  }
+})
+
 // ── Picker ──
+// Populate the tag dropdown from the catalogue so tag drops start from a
+// pick-list instead of a blind text field.
+async function dropTagsLoad() {
+  try {
+    const r = await fetch('/tags')
+    const j = await r.json()
+    const sel = $('#picker-tag')
+    const cur = sel.value
+    sel.innerHTML = '<option value="">— pick a tag —</option>' +
+      (j.tags || []).map(t =>
+        '<option value="' + escapeHtml(t.tag) + '">' + escapeHtml(t.tag) + ' (' + t.count + ')</option>'
+      ).join('')
+    if (cur) sel.value = cur
+  } catch (e) { /* tags are a convenience; picker still works via search */ }
+}
+
 async function dropPickerLoad() {
   const params = new URLSearchParams()
   if (drop.state.pickerMode === 'newest') params.set('sort', 'newest')
@@ -1173,6 +1500,28 @@ function dropPickerRender() {
       cb.closest('.picker-row').classList.toggle('picked', cb.checked)
     })
   })
+  dropPickerHint()
+}
+
+// The picker only lists items that are in stock AND have photos synced
+// locally. On drop day, freshly-tagged items often haven't had photos
+// uploaded/synced yet — say so instead of silently showing fewer items.
+function dropPickerHint() {
+  const el = $('#picker-hint')
+  if (!el) return
+  const n = drop.state.pickerResults.length
+  let html = n + ' item' + (n === 1 ? '' : 's') + ' available (in stock · photos synced)'
+  if (drop.state.pickerMode === 'tag') {
+    const sel = $('#picker-tag')
+    const opt = sel.options[sel.selectedIndex]
+    const m = sel.value && opt ? opt.textContent.match(/\\((\\d+)\\)\\s*$/) : null
+    const tagged = m ? parseInt(m[1], 10) : null
+    if (tagged && tagged > n) {
+      html += ' <span class="warn">— ' + (tagged - n) + ' more tagged item' + (tagged - n === 1 ? '' : 's') +
+        ' missing photos or stock. If Shopify was just updated, hit ↻ Refresh.</span>'
+    }
+  }
+  el.innerHTML = html
 }
 
 $$('.picker-tab').forEach(b => {
@@ -1183,18 +1532,50 @@ $$('.picker-tab').forEach(b => {
     dropPickerLoad()
   })
 })
-$('#picker-tag').addEventListener('input', () => clearTimeout(drop.saveTimer) || setTimeout(dropPickerLoad, 300))
+$('#picker-tag').addEventListener('change', dropPickerLoad)
 $('#picker-query').addEventListener('input', () => clearTimeout(drop.saveTimer) || setTimeout(dropPickerLoad, 300))
 
-$('#picker-add').addEventListener('click', async () => {
+function imgsPerItem() {
+  return parseInt($('#picker-imgs-per').value, 10) || 2
+}
+
+// If the drop hasn't been named yet, borrow the active tag — a tag drop's
+// name is almost always the tag itself.
+function maybeNameDropFromTag() {
+  if ($('#drop-name').value) return
+  if (drop.state.pickerMode !== 'tag') return
+  const tag = $('#picker-tag').value
+  if (!tag) return
+  $('#drop-name').value = tag
+  dropScheduleSave()
+}
+
+async function dropAddHandles(handles) {
   if (!drop.state.currentId) { alert('Create a drop first'); return }
-  if (!drop.state.picked.size) return
   const inDrop = new Set(drop.state.items.map(it => it.handle))
-  const additions = Array.from(drop.state.picked).filter(h => !inDrop.has(h))
-  const newItems = drop.state.items.concat(additions.map(h => ({ handle: h, image_start: 0, image_count: 4 })))
+  const additions = handles.filter(h => !inDrop.has(h))
+  if (!additions.length) return
+  const per = imgsPerItem()
+  const byHandle = new Map(drop.state.pickerResults.map(p => [p.handle, p]))
+  const newItems = drop.state.items.concat(additions.map(h => {
+    const p = byHandle.get(h)
+    const available = p && p.image_count ? p.image_count : per
+    return { handle: h, image_start: 0, image_count: Math.max(1, Math.min(per, available)) }
+  }))
+  maybeNameDropFromTag()
   drop.state.picked.clear()
   await dropSaveItems(newItems)
   dropPickerRender()
+}
+
+$('#picker-add').addEventListener('click', async () => {
+  if (!drop.state.picked.size) return
+  await dropAddHandles(Array.from(drop.state.picked))
+})
+
+$('#picker-add-all').addEventListener('click', async () => {
+  if (!drop.state.pickerResults.length) { alert('No products in the list to add'); return }
+  await dropAddHandles(drop.state.pickerResults.map(p => p.handle))
 })
 
 $('#drop-new').addEventListener('click', async () => {
@@ -1216,8 +1597,44 @@ $('#cover-body').addEventListener('input', dropScheduleSave)
 $('#cover-footer').addEventListener('input', dropScheduleSave)
 $('#cover-cta-url').addEventListener('input', dropScheduleSave)
 $('#cover-arrow').addEventListener('change', dropScheduleSave)
+$('#cover-include').addEventListener('change', dropScheduleSave)
 $('#closing-body').addEventListener('input', dropScheduleSave)
 $('#closing-include').addEventListener('change', dropScheduleSave)
+
+// ── Scheduling ──
+$('#drop-schedule-btn').addEventListener('click', async () => {
+  if (!drop.state.currentId) return
+  if (!drop.state.items.length) { alert('Add some products first'); return }
+  const v = $('#drop-schedule-at').value
+  if (!v) { alert('Pick a date and time first'); return }
+  const when = new Date(v)
+  if (!(when.getTime() > Date.now())) { alert('Scheduled time must be in the future'); return }
+  const r = await fetch('/drops/' + drop.state.currentId + '/schedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scheduled_at: when.toISOString() }),
+  })
+  const j = await r.json()
+  if (!j.ok) { alert('Schedule failed: ' + (j.error || '')); return }
+  drop.state.cover = j.drop
+  updateScheduleUi(j.drop)
+  dropRefreshSelectLabel(j.drop)
+})
+
+$('#drop-unschedule-btn').addEventListener('click', async () => {
+  if (!drop.state.currentId) return
+  const r = await fetch('/drops/' + drop.state.currentId + '/schedule', { method: 'DELETE' })
+  const j = await r.json()
+  if (!j.ok) { alert('Cancel failed: ' + (j.error || '')); return }
+  drop.state.cover = j.drop
+  updateScheduleUi(j.drop)
+  dropRefreshSelectLabel(j.drop)
+})
+
+function dropRefreshSelectLabel(d) {
+  const opt = $('#drop-select').querySelector('option[value="' + d.id + '"]')
+  if (opt) opt.textContent = (d.name || ('Drop #' + d.id)) + ' · ' + d.status
+}
 
 $('#drop-frame-prev').addEventListener('click', () => {
   if (drop.state.frame > 1) { drop.state.frame--; dropRefreshPreview() }
@@ -1234,38 +1651,69 @@ $('#drop-delete').addEventListener('click', async () => {
   await dropLoadAll()
 })
 
+// Poll a drop's status until it lands on published/failed (publishing runs in
+// the background and can take minutes). Returns the final drop, or the last
+// known state if it's still going after the timeout.
+async function pollDropStatus(id, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 12 * 60 * 1000)
+  let last = { status: 'publishing' }
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 3000))
+    try {
+      const r = await fetch('/drops/' + id)
+      const j = await r.json()
+      if (j.ok && j.drop) {
+        last = j.drop
+        if (j.drop.status === 'published' || j.drop.status === 'failed') return j.drop
+      }
+    } catch (e) { /* transient — keep polling */ }
+  }
+  return last
+}
+
 $('#drop-publish').addEventListener('click', async () => {
   if (!drop.state.currentId) return
   if (!drop.state.items.length) { alert('Add some products first'); return }
   if (!confirm('Publish ' + drop.state.frameTotal + ' stories to Instagram?')) return
+  const id = drop.state.currentId
   $('#drop-publish').disabled = true
   $('#drop-publish').textContent = 'Publishing…'
   try {
-    const r = await fetch('/drops/' + drop.state.currentId + '/publish', { method: 'POST' })
+    const r = await fetch('/drops/' + id + '/publish', { method: 'POST' })
     const j = await r.json()
     if (!j.ok) throw new Error(j.error || 'publish failed')
-    alert('Published! ' + (j.drop.ig_media_ids ? j.drop.ig_media_ids.length : 0) + ' stories live.')
+    // Server posts in the background now — watch status rather than the request.
+    const d = await pollDropStatus(id)
+    if (d.status === 'published') {
+      alert('Published! ' + (d.ig_media_ids ? d.ig_media_ids.length : 0) + ' stories live.')
+    } else if (d.status === 'failed') {
+      alert('Publish failed: ' + (d.error || 'unknown error'))
+    } else {
+      alert('Still publishing in the background — this is a big drop. Check the Calendar tab or refresh in a minute for the final status.')
+    }
     await dropLoadAll()
   } catch (e) {
     alert('Publish failed: ' + (e.message || e))
   } finally {
     $('#drop-publish').disabled = false
-    $('#drop-publish').textContent = 'Publish drop'
+    $('#drop-publish').textContent = 'Post now'
   }
 })
 
 // Boot the drop UI if we land on (or switch to) that flow
 window.addEventListener('hashchange', () => {
-  if (location.hash === '#product-drop') { dropLoadAll(); dropPickerLoad() }
+  if (location.hash === '#product-drop') { dropLoadAll(); dropPickerLoad(); dropTagsLoad() }
 })
-if (location.hash.replace(/^#/, '') === 'product-drop') {
+const bootFlow = location.hash.replace(/^#/, '') || 'product-drop'
+if (bootFlow === 'product-drop') {
   dropLoadAll()
   dropPickerLoad()
+  dropTagsLoad()
 } else {
   // Lazy-init when user clicks the tab
   $$('.flow-tab').forEach(b => {
     if (b.dataset.flow === 'product-drop') {
-      b.addEventListener('click', () => { if (!drop.state.drops.length) { dropLoadAll(); dropPickerLoad() } }, { once: true })
+      b.addEventListener('click', () => { if (!drop.state.drops.length) { dropLoadAll(); dropPickerLoad(); dropTagsLoad() } }, { once: true })
     }
   })
 }
@@ -1564,6 +2012,342 @@ function closeModal() {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && backdrop.classList.contains('open')) closeModal()
 })
+
+// ═══════════════════════════════════════════════════════════════════════
+// Posting calendar — scheduled drops + grid posts, queue + failure states
+// ═══════════════════════════════════════════════════════════════════════
+const cal = { view: 'month', anchor: calStartOfToday(), drops: [], grids: [] }
+const calForm = { seed: 1 }
+const CAL_PRESETS = ['2x2', '2x3', '3x3', '3x4', '4x4']
+
+function calStartOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
+function calAddDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+function calSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate() }
+// Sunday-start weeks.
+function calStartOfWeek(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - x.getDay()); return x }
+function calFmtTime(t) { return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\\s/g, '').toLowerCase() }
+function calPad(n) { return String(n).padStart(2, '0') }
+function calLocalInput(d) { return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()) + 'T' + calPad(d.getHours()) + ':' + calPad(d.getMinutes()) }
+function calStatusBadge(s) { return '<span class="cm-status ' + s + '">' + s + '</span>' }
+
+async function calLoad() {
+  try {
+    const [dr, gr] = await Promise.all([
+      fetch('/drops').then(r => r.json()),
+      fetch('/scheduled-grids').then(r => r.json()),
+    ])
+    cal.drops = dr.drops || []
+    cal.grids = gr.grids || []
+  } catch (e) { cal.drops = []; cal.grids = [] }
+  calRender()
+}
+
+// Which day a drop lands on: its scheduled slot, else when it posted, else
+// (for a failure with no schedule) when it last changed.
+function calDropSlot(d) {
+  if (d.scheduled_at) return new Date(d.scheduled_at)
+  if (d.published_at) return new Date(d.published_at)
+  if (d.status === 'failed') return new Date(d.updated_at)
+  return null
+}
+
+// Every drop + grid event landing on a given day, earliest first.
+function calEventsForDay(day) {
+  const out = []
+  for (const d of cal.drops) {
+    if (!(d.status === 'scheduled' || d.status === 'publishing' || d.status === 'published' || d.status === 'failed')) continue
+    const when = calDropSlot(d)
+    if (when && !isNaN(when) && calSameDay(when, day)) {
+      out.push({ kind: 'drop', id: d.id, name: d.name || ('Drop #' + d.id), when: when, status: d.status })
+    }
+  }
+  for (const g of cal.grids) {
+    const when = new Date(g.scheduled_at)
+    if (!isNaN(when) && calSameDay(when, day)) {
+      out.push({ kind: 'grid', id: g.id, name: g.title || ('Grid #' + g.id), when: when, status: g.status })
+    }
+  }
+  out.sort((a, b) => a.when - b.when)
+  return out
+}
+
+// First visible day + how many week-rows to draw for the current view.
+function calRange() {
+  if (cal.view === 'twoweek') return { start: calStartOfWeek(cal.anchor), weeks: 2 }
+  const first = new Date(cal.anchor.getFullYear(), cal.anchor.getMonth(), 1)
+  const start = calStartOfWeek(first)
+  const last = new Date(cal.anchor.getFullYear(), cal.anchor.getMonth() + 1, 0)
+  const endWeek = calStartOfWeek(last)
+  const weeks = Math.round((endWeek - start) / (7 * 86400000)) + 1
+  return { start, weeks }
+}
+
+function calRender() {
+  const grid = $('#cal-grid')
+  if (!grid) return
+  const { start, weeks } = calRange()
+  const today = calStartOfToday()
+
+  const label = $('#cal-label')
+  if (label) {
+    if (cal.view === 'month') {
+      label.textContent = cal.anchor.toLocaleDateString([], { month: 'long', year: 'numeric' })
+    } else {
+      const end = calAddDays(start, 13)
+      label.textContent = start.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' +
+        end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+  }
+
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  let html = '<div class="cal-dow">' + dow.map(d => '<div>' + d + '</div>').join('') + '</div>'
+  html += '<div class="cal-weeks">'
+  let scheduledCount = 0
+  for (let w = 0; w < weeks; w++) {
+    html += '<div class="cal-week">'
+    for (let i = 0; i < 7; i++) {
+      const day = calAddDays(start, w * 7 + i)
+      const inMonth = cal.view === 'twoweek' || day.getMonth() === cal.anchor.getMonth()
+      const isToday = calSameDay(day, today)
+      const past = day < today
+      const evs = calEventsForDay(day)
+      scheduledCount += evs.filter(e => e.status === 'scheduled').length
+      const cls = 'cal-day' + (inMonth ? '' : ' out') + (isToday ? ' today' : '') + (past ? ' past' : '')
+      html += '<div class="' + cls + '" data-ts="' + day.getTime() + '"><div class="cal-daynum">' + day.getDate() + '</div>'
+      for (const e of evs) {
+        const glyph = e.kind === 'grid' ? '▦' : '❖'
+        html += '<button class="cal-chip ' + e.status + (e.kind === 'grid' ? ' grid' : '') + '" data-kind="' + e.kind + '" data-id="' + e.id + '" title="' +
+          escapeHtml(e.name) + ' · ' + calFmtTime(e.when) + ' · ' + e.status + '">' +
+          '<span class="cal-kind">' + glyph + '</span> <span class="cal-chip-time">' + calFmtTime(e.when) + '</span> ' + escapeHtml(e.name) + '</button>'
+      }
+      html += '</div>'
+    }
+    html += '</div>'
+  }
+  html += '</div>'
+  grid.innerHTML = html
+
+  const sum = $('#cal-summary')
+  if (sum) sum.textContent = scheduledCount === 1 ? '1 scheduled in view' : scheduledCount + ' scheduled in view'
+
+  // Click a blank part of a day → schedule a new grid post there.
+  grid.querySelectorAll('.cal-day').forEach(cell => {
+    cell.addEventListener('click', (e) => {
+      if (e.target.closest('.cal-chip')) return
+      calOpenCreate(new Date(Number(cell.dataset.ts)))
+    })
+  })
+  // Click an event → its detail/edit popup.
+  grid.querySelectorAll('.cal-chip').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation()
+      calOpenChip(b.dataset.kind, parseInt(b.dataset.id, 10))
+    })
+  })
+}
+
+function calNav(dir) {
+  if (cal.view === 'month') {
+    cal.anchor = new Date(cal.anchor.getFullYear(), cal.anchor.getMonth() + dir, 1)
+  } else {
+    cal.anchor = calAddDays(cal.anchor, dir * 14)
+  }
+  calRender()
+}
+
+function calSetView(v) {
+  cal.view = v
+  $$('.cal-view-btn').forEach(b => b.classList.toggle('on', b.dataset.view === v))
+  calRender()
+}
+
+// Open an existing drop in the Product drop tab.
+async function calJumpToDrop(id) {
+  location.hash = 'product-drop'
+  showFlow('product-drop')
+  drop.state.currentId = id
+  const sel = $('#drop-select')
+  if (sel) sel.value = String(id)
+  await dropLoad(id)
+}
+
+// ── Event modal (create + detail) ────────────────────────────────────────
+const calBackdrop = document.getElementById('cal-modal-backdrop')
+const calBody = document.getElementById('cal-modal-body')
+function calShowModal(html) { calBody.innerHTML = html; calBackdrop.classList.add('open') }
+function calCloseModal() { calBackdrop.classList.remove('open'); calBody.innerHTML = '' }
+document.getElementById('cal-modal-close').addEventListener('click', calCloseModal)
+calBackdrop.addEventListener('click', (e) => { if (e.target === calBackdrop) calCloseModal() })
+
+function calDropOptions(sel) {
+  if (!cal.drops.length) return '<option value="">(no drops yet)</option>'
+  return cal.drops.map(d => '<option value="' + d.id + '"' + (d.id === sel ? ' selected' : '') + '>' + escapeHtml(d.name || ('Drop #' + d.id)) + '</option>').join('')
+}
+function calPresetOptions(sel) {
+  return CAL_PRESETS.map(p => '<option value="' + p + '"' + (p === sel ? ' selected' : '') + '>' + p + '</option>').join('')
+}
+
+// Shared grid-post form (title / when / layout / drop / live preview / shuffle).
+function calGridFormFields(o) {
+  return ''
+    + '<label>Title</label>'
+    + '<input type="text" id="cm-title" placeholder="e.g. Friday teaser grid" value="' + escapeHtml(o.title || '') + '" />'
+    + '<div class="cm-row">'
+    + '<div><label>When</label><input type="datetime-local" id="cm-when" value="' + o.whenInput + '" /></div>'
+    + '<div><label>Layout</label><select id="cm-preset">' + calPresetOptions(o.preset) + '</select></div>'
+    + '</div>'
+    + '<label>Content — photos pulled from this drop</label>'
+    + '<select id="cm-drop">' + calDropOptions(o.dropId) + '</select>'
+    + '<div class="cm-preview"><img id="cm-preview-img" alt="grid preview" /></div>'
+    + '<div style="text-align:center"><button type="button" class="cm-shuffle-btn" id="cm-shuffle">↻ Shuffle layout</button></div>'
+}
+
+function calFormPreviewRefresh() {
+  const img = document.getElementById('cm-preview-img')
+  if (!img) return
+  const dropSel = document.getElementById('cm-drop')
+  const presetSel = document.getElementById('cm-preset')
+  if (!dropSel || !dropSel.value) { img.removeAttribute('src'); return }
+  img.src = '/drops/' + dropSel.value + '/grid.jpg?grid=' + presetSel.value + '&format=story&seed=' + calForm.seed
+}
+
+function calWireGridForm() {
+  const d = document.getElementById('cm-drop')
+  const p = document.getElementById('cm-preset')
+  const s = document.getElementById('cm-shuffle')
+  if (d) d.addEventListener('change', calFormPreviewRefresh)
+  if (p) p.addEventListener('change', calFormPreviewRefresh)
+  if (s) s.addEventListener('click', () => { calForm.seed = Math.floor(Math.random() * 1e9); calFormPreviewRefresh() })
+  calFormPreviewRefresh()
+}
+
+function calOpenCreate(dayDate) {
+  if (!cal.drops.length) { alert('Make a drop first (Product drop tab) — a grid post pulls its photos from a drop.'); return }
+  const when = new Date(dayDate); when.setHours(12, 0, 0, 0)
+  calForm.seed = Math.floor(Math.random() * 1e9)
+  const html = '<h3>Schedule a grid post</h3>'
+    + '<div class="cm-sub">Posts a promo grid to your IG story at the chosen time.</div>'
+    + calGridFormFields({ title: '', whenInput: calLocalInput(when), preset: '3x3', dropId: cal.drops[0].id })
+    + '<div class="cm-actions"><button type="button" class="primary" id="cm-save">Schedule it</button>'
+    + '<button type="button" id="cm-cancel">Cancel</button></div>'
+  calShowModal(html)
+  calWireGridForm()
+  document.getElementById('cm-cancel').addEventListener('click', calCloseModal)
+  document.getElementById('cm-save').addEventListener('click', calSaveCreate)
+}
+
+async function calSaveCreate() {
+  const whenVal = document.getElementById('cm-when').value
+  if (!whenVal) { alert('Pick a date & time'); return }
+  const body = {
+    drop_id: Number(document.getElementById('cm-drop').value),
+    title: document.getElementById('cm-title').value.trim(),
+    scheduled_at: new Date(whenVal).toISOString(),
+    grid_preset: document.getElementById('cm-preset').value,
+    grid_seed: calForm.seed,
+  }
+  const r = await fetch('/scheduled-grids', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const j = await r.json()
+  if (!j.ok) { alert('Could not schedule: ' + (j.error || '')); return }
+  calCloseModal(); calLoad(); refreshAlerts()
+}
+
+function calOpenChip(kind, id) {
+  if (kind === 'grid') { const g = cal.grids.find(x => x.id === id); if (g) calOpenGridEvent(g) }
+  else { const d = cal.drops.find(x => x.id === id); if (d) calOpenDropEvent(d) }
+}
+
+function calOpenGridEvent(g) {
+  calForm.seed = g.grid_seed
+  const canPost = g.status !== 'published' && g.status !== 'publishing'
+  const html = '<h3>Grid post</h3>'
+    + '<div class="cm-sub">' + calStatusBadge(g.status) + ' posts as an IG story</div>'
+    + calGridFormFields({ title: g.title, whenInput: calLocalInput(new Date(g.scheduled_at)), preset: g.grid_preset, dropId: g.drop_id })
+    + (g.error ? '<div class="cm-error">' + escapeHtml(g.error) + '</div>' : '')
+    + '<div class="cm-actions">'
+    + '<button type="button" class="primary" id="cm-save">Save changes</button>'
+    + (canPost ? '<button type="button" id="cm-postnow">Post now</button>' : '')
+    + '<button type="button" class="danger" id="cm-delete">Delete</button>'
+    + '</div>'
+  calShowModal(html)
+  calWireGridForm()
+  document.getElementById('cm-save').addEventListener('click', async () => {
+    const body = {
+      drop_id: Number(document.getElementById('cm-drop').value),
+      title: document.getElementById('cm-title').value.trim(),
+      scheduled_at: new Date(document.getElementById('cm-when').value).toISOString(),
+      grid_preset: document.getElementById('cm-preset').value,
+      grid_seed: calForm.seed,
+    }
+    const r = await fetch('/scheduled-grids/' + g.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const j = await r.json()
+    if (!j.ok) { alert('Save failed: ' + (j.error || '')); return }
+    calCloseModal(); calLoad(); refreshAlerts()
+  })
+  document.getElementById('cm-delete').addEventListener('click', async () => {
+    if (!confirm('Delete this scheduled grid post?')) return
+    await fetch('/scheduled-grids/' + g.id, { method: 'DELETE' })
+    calCloseModal(); calLoad(); refreshAlerts()
+  })
+  const postBtn = document.getElementById('cm-postnow')
+  if (postBtn) postBtn.addEventListener('click', async () => {
+    postBtn.disabled = true; postBtn.textContent = 'Posting…'
+    const r = await fetch('/scheduled-grids/' + g.id + '/publish', { method: 'POST' })
+    const j = await r.json()
+    if (!j.ok) { alert('Post failed: ' + (j.error || '')); postBtn.disabled = false; postBtn.textContent = 'Post now'; calLoad(); refreshAlerts(); return }
+    calCloseModal(); calLoad(); refreshAlerts()
+  })
+}
+
+function calOpenDropEvent(d) {
+  const when = calDropSlot(d)
+  const canPost = d.status === 'failed' || d.status === 'scheduled'
+  const html = '<h3>' + escapeHtml(d.name || ('Drop #' + d.id)) + '</h3>'
+    + '<div class="cm-sub">' + calStatusBadge(d.status) + ' story sequence' + (when ? (' · ' + fmtLocal(when.toISOString())) : '') + '</div>'
+    + '<div class="cm-preview"><img src="/drops/' + d.id + '/preview/1" alt="cover" /></div>'
+    + (d.error ? '<div class="cm-error">' + escapeHtml(d.error) + '</div>' : '')
+    + '<div class="cm-actions">'
+    + '<button type="button" class="primary" id="cm-open">Open in Product drop</button>'
+    + (canPost ? '<button type="button" id="cm-retry">' + (d.status === 'failed' ? 'Retry now' : 'Post now') + '</button>' : '')
+    + '</div>'
+  calShowModal(html)
+  document.getElementById('cm-open').addEventListener('click', () => { calCloseModal(); calJumpToDrop(d.id) })
+  const retry = document.getElementById('cm-retry')
+  if (retry) retry.addEventListener('click', async () => {
+    retry.disabled = true; retry.textContent = 'Posting…'
+    const r = await fetch('/drops/' + d.id + '/publish', { method: 'POST' })
+    const j = await r.json()
+    if (!j.ok) { alert('Publish failed: ' + (j.error || '')); retry.disabled = false; calLoad(); refreshAlerts(); return }
+    calCloseModal(); calLoad(); refreshAlerts()
+  })
+}
+
+if ($('#cal-prev')) $('#cal-prev').addEventListener('click', () => calNav(-1))
+if ($('#cal-next')) $('#cal-next').addEventListener('click', () => calNav(1))
+if ($('#cal-today')) $('#cal-today').addEventListener('click', () => { cal.anchor = calStartOfToday(); calRender() })
+$$('.cal-view-btn').forEach(b => b.addEventListener('click', () => calSetView(b.dataset.view)))
+
+// ── Cross-tab failure banner ─────────────────────────────────────────────
+async function refreshAlerts() {
+  const banner = document.getElementById('alert-banner')
+  if (!banner) return
+  try {
+    const r = await fetch('/alerts')
+    const j = await r.json()
+    const fails = j.failures || []
+    if (!fails.length) { banner.hidden = true; banner.innerHTML = ''; return }
+    const n = fails.length
+    const first = fails[0]
+    banner.hidden = false
+    banner.innerHTML = '<strong>⚠ ' + n + (n === 1 ? ' post failed' : ' posts failed') + '</strong>'
+      + '<span class="alert-detail">' + escapeHtml(first.label) + (n > 1 ? (' +' + (n - 1) + ' more') : '') + ' — ' + escapeHtml((first.error || 'unknown error').slice(0, 90)) + '</span>'
+      + '<span class="alert-cta">View in Calendar →</span>'
+  } catch (e) { /* leave banner as-is on a transient fetch error */ }
+}
+const alertBanner = document.getElementById('alert-banner')
+if (alertBanner) alertBanner.addEventListener('click', () => { location.hash = 'calendar'; showFlow('calendar') })
+setInterval(refreshAlerts, 30000)
+refreshAlerts()
 </script>
 </body>
 </html>`)
@@ -1763,7 +2547,11 @@ app.get('/drops/:id', (c) => {
     const drop = getDrop(db, id)
     if (!drop) return c.json({ ok: false, error: 'not found' }, 404)
     const items = getDropItems(db, id)
-    return c.json({ ok: true, drop, items })
+    // Which listed products are no longer in the catalog (sold/removed) — the
+    // composer warns about these since they'll be silently skipped on publish.
+    let missing: string[] = []
+    try { missing = resolveDrop(id).missing } catch { /* resolve is best-effort here */ }
+    return c.json({ ok: true, drop, items, missing })
   } finally {
     db.close()
   }
@@ -1778,6 +2566,7 @@ app.patch('/drops/:id', async (c) => {
     cover_cta_url?: string | null
     trailing_arrow?: boolean
     closing_body?: string[]
+    include_opening?: boolean
     include_closing?: boolean
   }
   const db = openDb()
@@ -1789,6 +2578,7 @@ app.patch('/drops/:id', async (c) => {
     if (body.cover_cta_url !== undefined) patch.cover_cta_url = body.cover_cta_url
     if (body.trailing_arrow !== undefined) patch.trailing_arrow = body.trailing_arrow
     if (body.closing_body !== undefined) patch.closing_body = body.closing_body
+    if (body.include_opening !== undefined) patch.include_opening = body.include_opening
     if (body.include_closing !== undefined) patch.include_closing = body.include_closing
     const drop = updateDrop(db, id, patch)
     return c.json({ ok: true, drop })
@@ -1854,13 +2644,240 @@ app.get('/drops/:id/preview/:idx', async (c) => {
   }
 })
 
-app.post('/drops/:id/publish', async (c) => {
+// Promo grid: a seeded-random collage of the drop's product tiles.
+// Same params → same image, so the preview, download, and post actions all
+// agree on what the user saw.
+app.get('/drops/:id/grid.jpg', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
+  const preset = parseGridPreset(c.req.query('grid')) ?? { cols: 2, rows: 3 }
+  const format = parseGridFormat(c.req.query('format'))
+  const seed = parseInt(c.req.query('seed') ?? '1', 10) || 1
   try {
-    const { drop } = await publishDrop(id)
-    return c.json({ ok: true, drop })
+    const jpeg = await renderDropGridJpeg(id, { ...preset, format, seed })
+    const headers: Record<string, string> = {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'no-cache',
+    }
+    if (c.req.query('download')) {
+      const db = openDb()
+      let name = `drop-${id}`
+      try {
+        const d = getDrop(db, id)
+        if (d?.name) name = d.name.replace(/[^\w-]+/g, '_')
+      } finally {
+        db.close()
+      }
+      headers['Content-Disposition'] = `attachment; filename="${name}-grid-${preset.cols}x${preset.rows}-${format}.jpg"`
+    }
+    return new Response(jpeg as unknown as BodyInit, { status: 200, headers })
+  } catch (e) {
+    return c.text(`grid render failed: ${e instanceof Error ? e.message : String(e)}`, 500)
+  }
+})
+
+app.post('/drops/:id/grid/post', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const body = (await c.req.json().catch(() => ({}))) as { grid?: string; seed?: number }
+  const preset = parseGridPreset(body.grid) ?? { cols: 2, rows: 3 }
+  const seed = Number(body.seed) || 1
+  try {
+    const { mediaId } = await postDropGridStory(id, { ...preset, seed })
+    return c.json({ ok: true, ig_media_id: mediaId })
   } catch (e) {
     return c.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+app.post('/drops/:id/publish', (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const db = openDb()
+  let drop
+  try {
+    drop = getDrop(db, id)
+  } finally {
+    db.close()
+  }
+  if (!drop) return c.json({ ok: false, error: 'not found' }, 404)
+  if (drop.status === 'publishing') return c.json({ ok: false, error: 'already publishing' }, 409)
+  if (drop.status === 'published') return c.json({ ok: false, error: 'already published' }, 409)
+  // Publishing a multi-frame drop posts each story sequentially and can run far
+  // past the reverse-proxy's request timeout (Cloudflare ~100s). Returning here
+  // and letting the client poll drop status avoids a misleading "failed" (an
+  // HTML timeout page) while the server is in fact still posting successfully.
+  publishDrop(id)
+    .then(({ drop: d }) => console.log(`[publish] drop ${id} published (${d.ig_media_ids?.length ?? 0} stories)`))
+    .catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[publish] drop ${id} failed:`, msg)
+      notifyScheduledFailure('drop', drop?.name || `Drop #${id}`, msg)
+    })
+  return c.json({ ok: true, status: 'publishing' })
+})
+
+// Schedule a drop for automatic publishing. The scheduler loop below picks
+// it up once scheduled_at passes.
+app.post('/drops/:id/schedule', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const body = (await c.req.json().catch(() => ({}))) as { scheduled_at?: string }
+  const when = body.scheduled_at ? Date.parse(body.scheduled_at) : NaN
+  if (!Number.isFinite(when)) return c.json({ ok: false, error: 'invalid scheduled_at' }, 400)
+  if (when <= Date.now()) return c.json({ ok: false, error: 'scheduled time must be in the future' }, 400)
+  const db = openDb()
+  try {
+    const existing = getDrop(db, id)
+    if (!existing) return c.json({ ok: false, error: 'not found' }, 404)
+    if (existing.status === 'publishing' || existing.status === 'published') {
+      return c.json({ ok: false, error: `cannot schedule a ${existing.status} drop` }, 400)
+    }
+    const drop = updateDrop(db, id, {
+      status: 'scheduled',
+      scheduled_at: new Date(when).toISOString(),
+      error: null,
+    })
+    return c.json({ ok: true, drop })
+  } finally {
+    db.close()
+  }
+})
+
+app.delete('/drops/:id/schedule', (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const db = openDb()
+  try {
+    const existing = getDrop(db, id)
+    if (!existing) return c.json({ ok: false, error: 'not found' }, 404)
+    if (existing.status !== 'scheduled') {
+      return c.json({ ok: false, error: 'drop is not scheduled' }, 400)
+    }
+    const drop = updateDrop(db, id, { status: 'draft', scheduled_at: null })
+    return c.json({ ok: true, drop })
+  } finally {
+    db.close()
+  }
+})
+
+// ── Scheduled grid posts (calendar events) ───────────────────────────────
+app.get('/scheduled-grids', (c) => {
+  const db = openDb()
+  try {
+    return c.json({ ok: true, grids: listScheduledGrids(db) })
+  } finally {
+    db.close()
+  }
+})
+
+app.post('/scheduled-grids', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    drop_id?: number
+    title?: string
+    scheduled_at?: string
+    grid_preset?: string
+    grid_seed?: number
+  }
+  const dropId = Number(body.drop_id)
+  if (!Number.isFinite(dropId)) return c.json({ ok: false, error: 'drop_id required' }, 400)
+  const when = body.scheduled_at ? Date.parse(body.scheduled_at) : NaN
+  if (!Number.isFinite(when)) return c.json({ ok: false, error: 'invalid scheduled_at' }, 400)
+  if (when <= Date.now()) return c.json({ ok: false, error: 'scheduled time must be in the future' }, 400)
+  if (!parseGridPreset(body.grid_preset)) return c.json({ ok: false, error: 'invalid grid layout' }, 400)
+  const db = openDb()
+  try {
+    if (!getDrop(db, dropId)) return c.json({ ok: false, error: 'drop not found' }, 404)
+    const grid = createScheduledGrid(db, {
+      drop_id: dropId,
+      title: body.title ?? '',
+      scheduled_at: new Date(when).toISOString(),
+      grid_preset: body.grid_preset,
+      grid_seed: Number(body.grid_seed) || 1,
+    })
+    return c.json({ ok: true, grid })
+  } finally {
+    db.close()
+  }
+})
+
+app.patch('/scheduled-grids/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const body = (await c.req.json().catch(() => ({}))) as {
+    title?: string
+    scheduled_at?: string
+    grid_preset?: string
+    grid_seed?: number
+    drop_id?: number
+  }
+  const db = openDb()
+  try {
+    const existing = getScheduledGrid(db, id)
+    if (!existing) return c.json({ ok: false, error: 'not found' }, 404)
+    if (existing.status === 'publishing') return c.json({ ok: false, error: 'currently publishing' }, 400)
+    const patch: Parameters<typeof updateScheduledGrid>[2] = {}
+    if (body.drop_id !== undefined) {
+      const did = Number(body.drop_id)
+      if (!Number.isFinite(did) || !getDrop(db, did)) return c.json({ ok: false, error: 'invalid drop' }, 400)
+      patch.drop_id = did
+    }
+    if (body.title !== undefined) patch.title = body.title
+    if (body.grid_seed !== undefined) patch.grid_seed = Number(body.grid_seed) || 1
+    if (body.grid_preset !== undefined) {
+      if (!parseGridPreset(body.grid_preset)) return c.json({ ok: false, error: 'invalid grid layout' }, 400)
+      patch.grid_preset = body.grid_preset
+    }
+    if (body.scheduled_at !== undefined) {
+      const when = Date.parse(body.scheduled_at)
+      if (!Number.isFinite(when)) return c.json({ ok: false, error: 'invalid scheduled_at' }, 400)
+      if (when <= Date.now()) return c.json({ ok: false, error: 'scheduled time must be in the future' }, 400)
+      patch.scheduled_at = new Date(when).toISOString()
+      // Editing the time re-arms a failed/published event so it fires again.
+      patch.status = 'scheduled'
+      patch.error = null
+    }
+    const grid = updateScheduledGrid(db, id, patch)
+    return c.json({ ok: true, grid })
+  } finally {
+    db.close()
+  }
+})
+
+app.delete('/scheduled-grids/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const db = openDb()
+  try {
+    deleteScheduledGrid(db, id)
+    return c.json({ ok: true })
+  } finally {
+    db.close()
+  }
+})
+
+// Manual "post now" / retry for a scheduled grid.
+app.post('/scheduled-grids/:id/publish', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  try {
+    const { mediaId } = await publishScheduledGrid(id)
+    return c.json({ ok: true, ig_media_id: mediaId })
+  } catch (e) {
+    return c.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})
+
+// Everything currently in a failed state — powers the cross-tab red banner.
+app.get('/alerts', (c) => {
+  const db = openDb()
+  try {
+    const failures: Array<{ kind: string; id: number; label: string; error: string | null; when: string | null }> = []
+    for (const d of listDrops(db)) {
+      if (d.status === 'failed') {
+        failures.push({ kind: 'drop', id: d.id, label: d.name || `Drop #${d.id}`, error: d.error, when: d.scheduled_at ?? d.updated_at })
+      }
+    }
+    for (const g of listScheduledGrids(db)) {
+      if (g.status === 'failed') {
+        failures.push({ kind: 'grid', id: g.id, label: g.title || `Grid #${g.id}`, error: g.error, when: g.scheduled_at })
+      }
+    }
+    return c.json({ ok: true, failures })
+  } finally {
+    db.close()
   }
 })
 
@@ -1967,9 +2984,8 @@ function maybeBootSync(): void {
     console.log(`[sync] last sync ${last ?? 'never'} — running boot sync`)
     runShopifySync().then((r) => {
       console.log(`[sync] boot sync ${r.ok ? 'ok' : 'FAILED'} at ${r.finishedAt ?? 'unknown'}`)
-      // Render output may change after sync (new media, removed items).
-      // Wipe cached thumbs/PNGs so subsequent views reflect the fresh data.
-      invalidateAllRenderedFrames()
+      // Stale renders are detected per-product at serve time (thumb mtime vs
+      // products.updated_at), so no blanket cache wipe is needed here.
     }).catch((e) => console.error('[sync] boot sync error:', e))
   } else {
     console.log(`[sync] last sync ${last} is fresh (${Math.round(ageMs / 60000)}m old); skipping boot sync`)
@@ -1980,8 +2996,81 @@ setInterval(() => {
   console.log('[sync] periodic sync starting')
   runShopifySync().then((r) => {
     console.log(`[sync] periodic sync ${r.ok ? 'ok' : 'FAILED'} at ${r.finishedAt ?? 'unknown'}`)
-    invalidateAllRenderedFrames()
   }).catch((e) => console.error('[sync] periodic sync error:', e))
 }, SYNC_INTERVAL_MS)
 
 maybeBootSync()
+
+// Snapshot existing drop items that are still live, so they keep posting even
+// if their product is later sold/renamed (new adds snapshot automatically).
+try {
+  const sdb = openDb()
+  try {
+    const n = backfillDropItemSnapshots(sdb)
+    if (n) console.log(`[drops] snapshotted ${n} existing drop item(s) for resilience`)
+  } finally {
+    sdb.close()
+  }
+} catch (e) {
+  console.error('[drops] snapshot backfill failed:', e instanceof Error ? e.message : e)
+}
+
+// ── Scheduled drop publisher ─────────────────────────────────────────────
+// Drops with status='scheduled' publish automatically once scheduled_at
+// passes. The launchd agent keeps this process alive, so an in-process loop
+// is reliable enough — no external cron needed. publishDrop's atomic status
+// claim makes double-fires (or a second server instance) harmless.
+const SCHEDULE_TICK_MS = 30 * 1000
+
+setInterval(() => {
+  let due: number[] = []
+  const db = openDb()
+  try {
+    due = (
+      db
+        .prepare(
+          `SELECT id FROM drops
+           WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ?`,
+        )
+        .all(new Date().toISOString()) as Array<{ id: number }>
+    ).map((r) => r.id)
+  } finally {
+    db.close()
+  }
+  for (const id of due) {
+    console.log(`[schedule] drop ${id} is due — publishing`)
+    publishDrop(id)
+      .then(({ drop }) => {
+        console.log(`[schedule] drop ${id} published (${drop.ig_media_ids?.length ?? 0} stories)`)
+      })
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[schedule] drop ${id} failed:`, msg)
+        notifyScheduledFailure('drop', `Drop #${id}`, msg)
+      })
+  }
+
+  // Scheduled grid posts, same due-and-fire pattern.
+  let dueGrids: Array<{ id: number; title: string }> = []
+  const gdb = openDb()
+  try {
+    dueGrids = gdb
+      .prepare(
+        `SELECT id, title FROM scheduled_grids
+         WHERE status = 'scheduled' AND scheduled_at <= ?`,
+      )
+      .all(new Date().toISOString()) as Array<{ id: number; title: string }>
+  } finally {
+    gdb.close()
+  }
+  for (const g of dueGrids) {
+    console.log(`[schedule] grid ${g.id} is due — publishing`)
+    publishScheduledGrid(g.id)
+      .then(({ mediaId }) => console.log(`[schedule] grid ${g.id} published (media ${mediaId})`))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[schedule] grid ${g.id} failed:`, msg)
+        notifyScheduledFailure('grid', g.title || `Grid #${g.id}`, msg)
+      })
+  }
+}, SCHEDULE_TICK_MS)

@@ -245,3 +245,16 @@
   resolution: null
   related_rules: []
   last_reminded_at: null
+- id: fb-2026-06-18-003
+  date: '2026-06-18'
+  topic: titles
+  status: applied
+  quote: For shoes, add the size at the end of the titles if it exists — e.g. "Chanel
+    Shoes Size 37" or "Chanel Black Leather Sandals Size 36.5". Update full titles for
+    shoes to include 'Size' and the number after.
+  resolution: 'compose_title SHOES template appends "Size <EU>" via pricing._extract_shoe_size(),
+    which reads the European size from condition_notes/description (never the cm foot-length),
+    scoped to shoe types only. Anchor l1215704505 updated, snapshots regenerated, 3
+    unit tests added in tests/test_title_rules.py. See RULES.md "Shoe size".'
+  related_rules: []
+  last_reminded_at: null
