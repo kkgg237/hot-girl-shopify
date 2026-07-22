@@ -6455,6 +6455,207 @@ def render_bulk_measurements_tab() -> None:
                 st.markdown(f"- **{title}** — HTTP {status} — `{resp}`")
 
 
+def render_bulk_sku_editor_tab() -> None:
+    """Paste SKUs → edit title/price/tags/status → approved in-app Shopify push."""
+    import bulk_sku_editor as bse
+    from shopify_inventory import get_shop, is_configured
+
+    st.subheader("SKU bulk editor — title, price, tags, status")
+    st.caption(
+        "Paste SKUs separated by spaces. Commas and line breaks also work. The tool "
+        "pulls live Shopify rows, lets you edit selected fields, then pushes only "
+        "approved changed rows after a snapshot."
+    )
+    st.info(
+        "Writes are limited to product title, variant price, product tags, and "
+        "product status. This does not touch images, descriptions, inventory, vendor, "
+        "customers, orders, or handles."
+    )
+
+    if not is_configured():
+        st.warning(
+            "Shopify isn't configured. Connect it in the **Shopify audit** tab first."
+        )
+        return
+
+    raw = st.text_area(
+        "SKUs",
+        key="bse_skus_raw",
+        height=120,
+        placeholder="ABC123 DEF456 GHI789",
+        help="Primary delimiter is a space. Newlines and commas are accepted too.",
+    )
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        search_clicked = st.button(
+            "Search Shopify",
+            type="primary",
+            width="stretch",
+            disabled=not raw.strip(),
+            key="bse_search",
+        )
+    with c2:
+        st.caption("Exact variant SKU match. Input order is preserved.")
+
+    if search_clicked:
+        parsed = bse.parse_sku_terms(raw)
+        if not parsed.terms:
+            st.warning("Paste at least one SKU.")
+            return
+        shop = get_shop() or ""
+        with st.spinner(f"Searching Shopify for {len(parsed.terms)} SKU(s)…"):
+            plan = bse.build_update_plan(
+                parsed.terms,
+                lambda terms: bse.lookup_products_by_skus(terms, shop=shop),
+                duplicates=parsed.duplicates,
+            )
+        st.session_state["bse_lookup_plan"] = plan
+
+    plan = st.session_state.get("bse_lookup_plan")
+    if not plan:
+        return
+
+    if plan.duplicates:
+        st.warning("Duplicate SKU(s) ignored: " + ", ".join(plan.duplicates))
+    if plan.not_found:
+        st.error("Not found: " + ", ".join(plan.not_found))
+    if plan.collisions:
+        st.error(
+            "Blocked SKU collision(s), more than one product matched: "
+            + ", ".join(plan.collisions)
+        )
+    if not plan.records:
+        st.info("No editable products found for that SKU list.")
+        return
+
+    st.markdown("### Edit rows")
+    st.caption(
+        "Leave a field unchanged to skip that field. Untick **Keep** to remove a "
+        "row from the push."
+    )
+    editor_df = pd.DataFrame([
+        {
+            "Keep": True,
+            "SKU": r.sku,
+            "Product ID": r.product_id,
+            "Variant ID": r.variant_id,
+            "Current title": r.title,
+            "Current price": r.price,
+            "Current tags": r.tags,
+            "Current status": r.status,
+            "New title": r.title,
+            "New price": r.price,
+            "New tags": r.tags,
+            "New status": r.status,
+            "Admin": r.admin_url,
+        }
+        for r in plan.records
+    ])
+    edited = st.data_editor(
+        editor_df,
+        hide_index=True,
+        width="stretch",
+        key="bse_editor",
+        column_config={
+            "Keep": st.column_config.CheckboxColumn("Keep", default=True),
+            "SKU": st.column_config.TextColumn("SKU", disabled=True),
+            "Product ID": st.column_config.NumberColumn("Product ID", disabled=True, format="%d"),
+            "Variant ID": st.column_config.NumberColumn("Variant ID", disabled=True, format="%d"),
+            "Current title": st.column_config.TextColumn("Current title", disabled=True, width="medium"),
+            "Current price": st.column_config.TextColumn("Current price", disabled=True),
+            "Current tags": st.column_config.TextColumn("Current tags", disabled=True, width="medium"),
+            "Current status": st.column_config.TextColumn("Current status", disabled=True),
+            "New title": st.column_config.TextColumn("New title", width="medium"),
+            "New price": st.column_config.TextColumn("New price"),
+            "New tags": st.column_config.TextColumn("New tags", width="medium"),
+            "New status": st.column_config.SelectboxColumn(
+                "New status", options=["draft", "active", "archived"], required=True,
+            ),
+            "Admin": st.column_config.LinkColumn("Admin", display_text="open"),
+        },
+    )
+
+    update_plans, errors = bse.rows_to_apply(edited.to_dict("records"))
+    if errors:
+        st.error("Fix these rows before pushing:")
+        for err in errors[:20]:
+            st.markdown(f"- {err}")
+        return
+
+    st.markdown("### Push preview")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Matched", len(plan.records))
+    m2.metric("Changed rows", len(update_plans))
+    m3.metric("Blocked / not found", len(plan.not_found) + len(plan.collisions))
+
+    if not update_plans:
+        st.info("No changed rows selected.")
+        return
+
+    preview_rows = []
+    for p in update_plans:
+        preview_rows.append({
+            "SKU": p.sku,
+            "Product ID": p.product_id,
+            "Variant ID": p.variant_id,
+            "Product fields": ", ".join(p.product_updates) or "—",
+            "Variant fields": ", ".join(p.variant_updates) or "—",
+        })
+    st.dataframe(pd.DataFrame(preview_rows), hide_index=True, width="stretch")
+
+    st.warning(
+        f"This will update **{len(update_plans)}** live Shopify listing(s). "
+        "A snapshot is taken first so you can Undo."
+    )
+    if st.button(
+        f"Push {len(update_plans)} selected update(s) to Shopify",
+        type="primary",
+        width="stretch",
+        key="bse_push",
+    ):
+        import snapshots as _snap
+
+        pids = sorted({p.product_id for p in update_plans})
+        with st.spinner(f"Snapshotting {len(pids)} products for Undo…"):
+            sc, sp = _snap.create_snapshot(pids, label="bulk_sku_editor", kind="pre_apply")
+        if sc > 0:
+            st.session_state["undo_snapshot_path"] = str(sp)
+        else:
+            st.error(f"Snapshot failed: {sp}")
+            return
+
+        succeeded = 0
+        failed: list[tuple[str, int, dict]] = []
+        log_path = BASE / "logs" / "bulk_sku_editor_writes.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        progress = st.progress(0.0, text=f"Writing {len(update_plans)}…")
+        for i, p in enumerate(update_plans):
+            results = bse.apply_update_plan(p)
+            if results and all(r.ok for r in results):
+                succeeded += 1
+                with log_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts": datetime.now().isoformat(timespec="seconds"),
+                        "sku": p.sku,
+                        "product_id": p.product_id,
+                        "variant_id": p.variant_id,
+                        "product_updates": p.product_updates,
+                        "variant_updates": p.variant_updates,
+                    }, ensure_ascii=False) + "\n")
+            else:
+                first = results[0] if results else None
+                failed.append((p.sku, first.status if first else 0, first.response if first else {"error": "no update attempted"}))
+            progress.progress((i + 1) / len(update_plans), text=f"{i+1}/{len(update_plans)} done")
+        progress.empty()
+
+        if succeeded:
+            st.success(f"Updated {succeeded} listing(s).")
+        if failed:
+            st.error(f"{len(failed)} failure(s):")
+            for sku, status, resp in failed[:10]:
+                st.markdown(f"- **{sku}** — HTTP {status} — `{resp}`")
+
+
 # ---------------------------------------------------------------------------
 # Commercial invoice tab — describe items → customs line items → emailable CSV
 # ---------------------------------------------------------------------------
@@ -6712,12 +6913,13 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, sku_bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
     "Commercial invoice",
     "Shopify audit",
     "Bulk Drop Audit",
     "Shopify bulk editor",
+    "SKU bulk editor",
     "Copy formats",
     "Pricing",
     "Notes & rules",
@@ -6734,6 +6936,9 @@ with drop_audit_tab:
 
 with bulk_tab:
     render_bulk_measurements_tab()
+
+with sku_bulk_tab:
+    render_bulk_sku_editor_tab()
 
 with copy_tab:
     render_copy_formats_tab()
