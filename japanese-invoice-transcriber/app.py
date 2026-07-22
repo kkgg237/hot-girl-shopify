@@ -1842,6 +1842,10 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
     # 2. Shared inputs card — the invoice-wide numbers split across all items
     #    For BrandStreet, shows the handling + import assumptions (not on the invoice)
     #    For Buyee, shows the intl shipping + customs splits
+    if getattr(view, "assumed_uplifts_suppressed", False):
+        st.info(
+            "Kanagawa commission detected. Handling % and import tax % are suppressed so the invoice is not double-charged."
+        )
     is_buyee = inv.invoice_type == "buyee_breakdown"
     n = view.n_items
     landed_sum_native = sum(view.breakdown(i)["landed_native"] for i in inv.items)
@@ -1891,8 +1895,8 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
             ef_per_item = view.extra_flat / n if n else 0
             cells.append((
                 f"Extra flat",
-                fmt_dual(view.extra_flat, ccy),
-                f"split equally: {fmt_dual(ef_per_item, ccy)} per item",
+                f"${view.extra_flat:,.2f}",
+                f"split equally: ${ef_per_item:,.2f} per item",
             ))
 
         # Commission line — explicit lump-sum commission (e.g. 5% on DKC).
@@ -1969,10 +1973,6 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
     # 5. THE TABLE — every cost input, one row per item
     st.markdown('<div class="section-label">Cost input table — every column that goes into landed cost</div>', unsafe_allow_html=True)
 
-    # Helper: convert a native-currency amount to USD at the current FX rate
-    def to_usd(native: float) -> float:
-        return native if ccy == "USD" else native * view.exchange_rate
-
     rows = []
     for idx, item in enumerate(inv.items, 1):
         b = view.breakdown(item)
@@ -1994,29 +1994,20 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
             "garment_length": item.garment_length or "",
             "qty": item.quantity,
             f"item price ({ccy})": b["item_price"],
-            "item price (USD)": to_usd(b["item_price"]),
             f"coupon ({ccy})": b["coupon"],
             f"subtotal ({ccy})": b["subtotal"],
-            "subtotal (USD)": to_usd(b["subtotal"]),
         }
         if is_buyee:
             row.update({
                 f"commission ({ccy})": b["commission"],
-                "commission (USD)": to_usd(b["commission"]),
                 f"dom ship ({ccy})": b["domestic_shipping"],
-                "dom ship (USD)": to_usd(b["domestic_shipping"]),
                 f"service ({ccy})": b["service"],
-                "service (USD)": to_usd(b["service"]),
                 f"intl share ({ccy})": b["intl_share"],
-                "intl share (USD)": to_usd(b["intl_share"]),
                 f"customs share ({ccy})": b["customs_share"],
-                "customs share (USD)": to_usd(b["customs_share"]),
             })
         else:
             row[f"handling {view.handling_rate*100:.0f}% ({ccy})"] = b["handling_amount"]
-            row[f"handling {view.handling_rate*100:.0f}% (USD)"] = to_usd(b["handling_amount"])
             row[f"import {view.import_tax_rate*100:.0f}% ({ccy})"] = b["import_amount"]
-            row[f"import {view.import_tax_rate*100:.0f}% (USD)"] = to_usd(b["import_amount"])
             # Commission line — explicit lump-sum commission split per-item.
             # Show even when 0 if the field is configured to keep columns
             # consistent across rows.
@@ -2026,20 +2017,15 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
                     if inv.commission_line_rate else "commission (lump)"
                 )
                 row[f"{rate_label} ({ccy})"] = b["commission_line_share"]
-                row[f"{rate_label} (USD)"] = to_usd(b["commission_line_share"])
             # Generic other_fees fallback — only when other_fees > 0
             if b.get("other_share"):
                 row[f"other share ({ccy})"] = b["other_share"]
-                row["other share (USD)"] = to_usd(b["other_share"])
         # Ad-hoc extras — show whenever set (applies to both Buyee + vendor invoices)
         if view.extra_rate:
             label = f"extra {view.extra_rate*100:.1f}%"
             row[f"{label} ({ccy})"] = b.get("extra_pct_amount", 0)
-            row[f"{label} (USD)"] = to_usd(b.get("extra_pct_amount", 0))
         if view.extra_flat:
-            row[f"extra flat ({ccy})"] = b.get("extra_flat_per_item", 0)
-            row["extra flat (USD)"] = to_usd(b.get("extra_flat_per_item", 0))
-        row[f"landed ({ccy})"] = b["landed_native"]
+            row["extra flat (USD)"] = b.get("extra_flat_usd_per_item", 0)
         row["landed (USD)"] = b["landed_usd"]
         row["unit cost (USD)"] = b["unit_cost_usd"]
         rows.append(row)
@@ -2086,7 +2072,7 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
     for col in df.columns:
         if col in col_config:
             continue
-        if col.startswith("landed (USD)") or col.startswith("unit cost"):
+        if col.endswith("(USD)") or col.startswith("unit cost"):
             col_config[col] = st.column_config.NumberColumn(col, format="$%.2f", width="small")
         elif col.startswith("landed"):
             col_config[col] = st.column_config.NumberColumn(col, format=money_fmt, width="small")
@@ -2893,13 +2879,11 @@ def render_assumed_rates_controls(invoice_currency: str = "JPY") -> tuple[float,
       manual). Buyee invoices have actual fee tables, but the controls still
       render so the user can experiment.
     - Extra %: ad-hoc per-item percentage on top of subtotal (default 0%).
-    - Extra flat: lump-sum amount in invoice currency, split equally across
-      items (default 0). Useful for an extra shipping fee paid separately.
+    - Extra flat: lump-sum amount in USD, split equally across items (default
+      0). Useful for an extra shipping fee paid separately.
     """
     from costs import HANDLING_RATE as _DEF_HANDLING, IMPORT_TAX_RATE as _DEF_IMPORT
     ccy = (invoice_currency or "JPY").upper()
-    flat_step = 100.0 if ccy == "JPY" else 1.0
-    flat_fmt = "%.0f" if ccy == "JPY" else "%.2f"
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         handling = st.number_input(
@@ -2930,12 +2914,12 @@ def render_assumed_rates_controls(invoice_currency: str = "JPY") -> tuple[float,
         )
     with c4:
         extra_flat = st.number_input(
-            f"Extra flat ({ccy})",
+            "Extra flat (USD)",
             min_value=0.0,
             value=float(st.session_state.get("extra_flat", 0.0)),
-            step=flat_step, format=flat_fmt,
-            help=f"Lump-sum extra cost in {ccy}, split evenly across items. "
-                 f"E.g. an additional shipping invoice paid separately. Default 0.",
+            step=1.0, format="%.2f",
+            help="Lump-sum extra cost in USD, split evenly across items. "
+                 "E.g. an additional shipping invoice paid separately. Default 0.",
             key="extra_flat",
         )
     return handling, import_tax, extra_rate, extra_flat
@@ -6950,14 +6934,12 @@ with home_tab:
                     key="extra_rate",
                 )
             with ext_c2:
-                flat_step = 100.0 if currency.upper() == "JPY" else 1.0
-                flat_fmt = "%.0f" if currency.upper() == "JPY" else "%.2f"
                 extra_flat = st.number_input(
-                    f"Extra flat ({currency})",
+                    "Extra flat (USD)",
                     min_value=0.0,
                     value=float(st.session_state.get("extra_flat", 0.0)),
-                    step=flat_step, format=flat_fmt,
-                    help=f"Lump-sum extra cost in {currency}, split evenly across items.",
+                    step=1.0, format="%.2f",
+                    help="Lump-sum extra cost in USD, split evenly across items.",
                     key="extra_flat",
                 )
 

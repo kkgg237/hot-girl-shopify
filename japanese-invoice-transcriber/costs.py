@@ -137,6 +137,22 @@ def _index(fees: list[FeeLine]) -> dict[str, float]:
     return idx
 
 
+def _is_kanagawa_with_commission(invoice: Invoice) -> bool:
+    """True when a Kanagawa vendor invoice already includes commission.
+
+    These invoices should not get additional assumed handling/import uplifts.
+    """
+    vendor_blob = " ".join(
+        str(v or "")
+        for v in (invoice.vendor_name, invoice.vendor_address, invoice.notes)
+    ).lower()
+    has_kanagawa = "kanagawa" in vendor_blob
+    has_commission = bool(invoice.commission_line) or any(
+        fee.amount for fee in invoice.commission_fees
+    )
+    return invoice.invoice_type == "vendor_invoice" and has_kanagawa and has_commission
+
+
 class InvoiceView:
     """Cached indexes + per-item breakdown. Build once per invoice."""
 
@@ -156,12 +172,19 @@ class InvoiceView:
         # Per-invoice override of the assumed import tax / handling rates.
         # Defaults to the module-level constants. UI can pass user-adjusted
         # values for what-if analysis.
-        self.import_tax_rate = import_tax_rate
-        self.handling_rate = handling_rate
+        self.assumed_uplifts_suppressed = _is_kanagawa_with_commission(invoice)
+        if self.assumed_uplifts_suppressed:
+            # Kanagawa invoices already carry an explicit commission fee. Do
+            # not stack our assumed handling/import percentages on top.
+            self.import_tax_rate = 0.0
+            self.handling_rate = 0.0
+        else:
+            self.import_tax_rate = import_tax_rate
+            self.handling_rate = handling_rate
         # Optional ad-hoc cost adjustments — anything not captured by the
         # standard fee fields. Two flavors:
         #   extra_rate: percentage of item subtotal (e.g. 0.05 = 5% surcharge)
-        #   extra_flat: lump sum in invoice currency, split equally per-item
+        #   extra_flat: lump sum in USD, split equally per-item
         # Both default to 0 so adding them is opt-in and never affects existing
         # math unless the user explicitly sets them in the UI.
         self.extra_rate = extra_rate
@@ -213,9 +236,16 @@ class InvoiceView:
 
         # Ad-hoc extras (independent of invoice type — applies to any source).
         # extra_rate is a per-item percentage of subtotal.
-        # extra_flat is a lump sum split equally across items.
+        # extra_flat is a USD lump sum split equally across items, then
+        # converted back to native currency for `landed_native` math.
         extra_pct_amount = subtotal * self.extra_rate
-        extra_flat_per_item = self.extra_flat / self.n_items
+        extra_flat_usd_per_item = self.extra_flat / self.n_items
+        extra_flat_per_item = (
+            extra_flat_usd_per_item
+            if self.inv.currency == "USD"
+            else extra_flat_usd_per_item / self.exchange_rate
+            if self.exchange_rate > 0 else 0.0
+        )
 
         landed_native = (
             subtotal
@@ -249,6 +279,7 @@ class InvoiceView:
             "import_amount": import_amount,
             "extra_pct_amount": extra_pct_amount,
             "extra_flat_per_item": extra_flat_per_item,
+            "extra_flat_usd_per_item": extra_flat_usd_per_item,
             # Backward-compat alias — some callers still read `handling_uplift`
             "handling_uplift": handling_amount + import_amount,
             "landed_native": landed_native,
