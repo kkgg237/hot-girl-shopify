@@ -6913,13 +6913,12 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, sku_bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
     "Commercial invoice",
     "Shopify audit",
     "Bulk Drop Audit",
     "Shopify bulk editor",
-    "SKU bulk editor",
     "Copy formats",
     "Pricing",
     "Notes & rules",
@@ -6935,10 +6934,14 @@ with drop_audit_tab:
     render_bulk_drop_audit_tab()
 
 with bulk_tab:
-    render_bulk_measurements_tab()
-
-with sku_bulk_tab:
-    render_bulk_sku_editor_tab()
+    measurements_subtab, sku_edits_subtab = st.tabs([
+        "Measurements → descriptions",
+        "SKU listing edits",
+    ])
+    with measurements_subtab:
+        render_bulk_measurements_tab()
+    with sku_edits_subtab:
+        render_bulk_sku_editor_tab()
 
 with copy_tab:
     render_copy_formats_tab()
