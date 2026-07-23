@@ -1,0 +1,28 @@
+name: Deploy to paststudies-vm
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 100.104.242.106
+          username: kat
+          key: ${{ secrets.PASTSTUDIES_VM_SSH_KEY }}
+          script: |
+            cd /home/kat/workspace/hot-girl-shopify
+            git pull origin main
+            sudo systemctl restart invoice-streamlit.service
