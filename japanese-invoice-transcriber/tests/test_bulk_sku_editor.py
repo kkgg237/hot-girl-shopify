@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import bulk_sku_editor
 from bulk_sku_editor import (
     ProductSkuRecord,
     build_update_plan,
+    lookup_products_by_skus,
     parse_sku_terms,
     rows_to_apply,
 )
@@ -38,6 +40,36 @@ def test_build_update_plan_preserves_input_order_and_reports_not_found():
 
     assert [r.sku for r in plan.records] == ["ABC123", "DEF456"]
     assert plan.not_found == ["MISSING"]
+
+
+def test_lookup_products_by_skus_matches_shopify_sku_case_insensitively(monkeypatch):
+    def fake_gql(_query, variables):
+        assert variables == {"q": 'sku:"abc123"'}
+        return {
+            "productVariants": {
+                "nodes": [
+                    {
+                        "legacyResourceId": "222",
+                        "sku": "ABC123",
+                        "price": "88.00",
+                        "product": {
+                            "legacyResourceId": "111",
+                            "title": "Old Title",
+                            "tags": ["dress", "archive"],
+                            "status": "DRAFT",
+                        },
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(bulk_sku_editor, "_gql", fake_gql)
+
+    found = lookup_products_by_skus(["abc123"], shop="paststudies.myshopify.com")
+
+    assert found["abc123"].sku == "ABC123"
+    assert found["abc123"].product_id == 111
+    assert found["abc123"].variant_id == 222
 
 
 def test_rows_to_apply_only_keeps_changed_valid_rows():
@@ -86,6 +118,32 @@ def test_rows_to_apply_only_keeps_changed_valid_rows():
         "status": "active",
     }
     assert plans[0].variant_updates == {"price": "120.00"}
+
+
+def test_rows_to_apply_accepts_single_editable_field_columns():
+    rows = [
+        {
+            "Keep": True,
+            "SKU": "ABC123",
+            "Product ID": 111,
+            "Variant ID": 222,
+            "Original title": "Old Title",
+            "Original price": "88.00",
+            "Original tags": "dress, archive",
+            "Original status": "draft",
+            "Title": "Old Title",
+            "Price": "95",
+            "Tags": "dress, archive, sale",
+            "Status": "draft",
+        }
+    ]
+
+    plans, errors = rows_to_apply(rows)
+
+    assert errors == []
+    assert len(plans) == 1
+    assert plans[0].product_updates == {"tags": "dress, archive, sale"}
+    assert plans[0].variant_updates == {"price": "95.00"}
 
 
 def test_rows_to_apply_blocks_bad_price_status_and_missing_ids():

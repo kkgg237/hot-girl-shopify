@@ -157,11 +157,13 @@ def rows_to_apply(rows: Iterable[dict]) -> tuple[list[SkuUpdatePlan], list[str]]
         if not variant_id:
             row_errors.append("missing variant ID")
 
-        new_price, price_err = _normalize_price(row.get("New price"))
+        raw_new_price = row.get("New price") if "New price" in row else row.get("Price")
+        new_price, price_err = _normalize_price(raw_new_price)
         if price_err:
             row_errors.append(price_err)
 
-        new_status = str(row.get("New status") or "").strip().lower()
+        raw_new_status = row.get("New status") if "New status" in row else row.get("Status")
+        new_status = str(raw_new_status or "").strip().lower()
         if new_status not in VALID_STATUSES:
             row_errors.append("invalid status")
 
@@ -169,13 +171,13 @@ def rows_to_apply(rows: Iterable[dict]) -> tuple[list[SkuUpdatePlan], list[str]]
             errors.append(f"{sku}: " + "; ".join(row_errors))
             continue
 
-        current_title = str(row.get("Current title") or "").strip()
-        current_tags = str(row.get("Current tags") or "").strip()
-        current_status = str(row.get("Current status") or "").strip().lower()
-        current_price, _ = _normalize_price(row.get("Current price"))
+        current_title = str(row.get("Current title", row.get("Original title", "")) or "").strip()
+        current_tags = str(row.get("Current tags", row.get("Original tags", "")) or "").strip()
+        current_status = str(row.get("Current status", row.get("Original status", "")) or "").strip().lower()
+        current_price, _ = _normalize_price(row.get("Current price", row.get("Original price", "")))
 
-        new_title = str(row.get("New title") or "").strip()
-        new_tags = str(row.get("New tags") or "").strip()
+        new_title = str(row.get("New title", row.get("Title", "")) or "").strip()
+        new_tags = str(row.get("New tags", row.get("Tags", "")) or "").strip()
 
         product_updates: dict[str, str] = {}
         variant_updates: dict[str, str] = {}
@@ -265,7 +267,11 @@ def lookup_products_by_skus(skus: list[str], *, shop: str = "") -> dict[str, Pro
             out[sku] = ProductSkuRecord(sku=sku, product_id=0, variant_id=0, title="", price="", tags="", status="", error=str(e))
             continue
         nodes = ((data.get("productVariants") or {}).get("nodes")) or []
-        exact = [n for n in nodes if (n.get("sku") or "").strip() == sku]
+        wanted = sku.strip().casefold()
+        exact = [
+            n for n in nodes
+            if (n.get("sku") or "").strip().casefold() == wanted
+        ]
         product_ids = {
             int((n.get("product") or {}).get("legacyResourceId") or 0)
             for n in exact
@@ -282,7 +288,7 @@ def lookup_products_by_skus(skus: list[str], *, shop: str = "") -> dict[str, Pro
         variant_id = int(node.get("legacyResourceId") or 0)
         tags = product.get("tags") or []
         out[sku] = ProductSkuRecord(
-            sku=sku,
+            sku=str(node.get("sku") or sku).strip(),
             product_id=product_id,
             variant_id=variant_id,
             title=product.get("title") or "",

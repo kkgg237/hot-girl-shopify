@@ -6530,8 +6530,8 @@ def render_bulk_sku_editor_tab() -> None:
 
     st.markdown("### Edit rows")
     st.caption(
-        "Leave a field unchanged to skip that field. Untick **Keep** to remove a "
-        "row from the push."
+        "Edit the fields directly. Rows only get added to the push list when a "
+        "value actually changes. Untick **Keep** to skip a SKU."
     )
     editor_df = pd.DataFrame([
         {
@@ -6539,14 +6539,14 @@ def render_bulk_sku_editor_tab() -> None:
             "SKU": r.sku,
             "Product ID": r.product_id,
             "Variant ID": r.variant_id,
-            "Current title": r.title,
-            "Current price": r.price,
-            "Current tags": r.tags,
-            "Current status": r.status,
-            "New title": r.title,
-            "New price": r.price,
-            "New tags": r.tags,
-            "New status": r.status,
+            "Original title": r.title,
+            "Original price": r.price,
+            "Original tags": r.tags,
+            "Original status": r.status,
+            "Title": r.title,
+            "Price": r.price,
+            "Tags": r.tags,
+            "Status": r.status,
             "Admin": r.admin_url,
         }
         for r in plan.records
@@ -6556,20 +6556,15 @@ def render_bulk_sku_editor_tab() -> None:
         hide_index=True,
         width="stretch",
         key="bse_editor",
+        column_order=["Keep", "SKU", "Title", "Price", "Tags", "Status", "Admin"],
         column_config={
             "Keep": st.column_config.CheckboxColumn("Keep", default=True),
             "SKU": st.column_config.TextColumn("SKU", disabled=True),
-            "Product ID": st.column_config.NumberColumn("Product ID", disabled=True, format="%d"),
-            "Variant ID": st.column_config.NumberColumn("Variant ID", disabled=True, format="%d"),
-            "Current title": st.column_config.TextColumn("Current title", disabled=True, width="medium"),
-            "Current price": st.column_config.TextColumn("Current price", disabled=True),
-            "Current tags": st.column_config.TextColumn("Current tags", disabled=True, width="medium"),
-            "Current status": st.column_config.TextColumn("Current status", disabled=True),
-            "New title": st.column_config.TextColumn("New title", width="medium"),
-            "New price": st.column_config.TextColumn("New price"),
-            "New tags": st.column_config.TextColumn("New tags", width="medium"),
-            "New status": st.column_config.SelectboxColumn(
-                "New status", options=["draft", "active", "archived"], required=True,
+            "Title": st.column_config.TextColumn("Title", width="medium"),
+            "Price": st.column_config.TextColumn("Price"),
+            "Tags": st.column_config.TextColumn("Tags", width="medium"),
+            "Status": st.column_config.SelectboxColumn(
+                "Status", options=["draft", "active", "archived"], required=True,
             ),
             "Admin": st.column_config.LinkColumn("Admin", display_text="open"),
         },
