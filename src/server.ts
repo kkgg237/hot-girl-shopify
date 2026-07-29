@@ -332,17 +332,18 @@ const STYLES = `
   .cal-view-btn.on { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .cal-summary { font-size: 12px; color: #888; letter-spacing: 0.03em; }
 
-  .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
-  .cal-dow > div { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #aaa; text-align: left; padding-left: 4px; }
+  .cal-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+  .cal-dow > div { min-width: 0; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #aaa; text-align: left; padding-left: 4px; }
   .cal-weeks { display: flex; flex-direction: column; gap: 6px; }
-  .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-  .cal-day { min-height: 104px; border: 1px solid #ececec; border-radius: 8px; background: #fff; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .cal-day { aspect-ratio: 1 / 1; min-width: 0; min-height: 0; border: 1px solid #ececec; border-radius: 8px; background: #fff; padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
   .cal-day.out { background: #fafaf9; opacity: 0.55; }
   .cal-day.past { background: #fbfbfa; }
   .cal-day.today { border-color: #111; box-shadow: inset 0 0 0 1px #111; }
-  .cal-daynum { font-size: 11px; font-weight: 600; color: #888; padding: 1px 3px; }
+  .cal-daynum { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #888; padding: 1px 3px; }
   .cal-day.today .cal-daynum { color: #111; }
-  .cal-chip { display: block; width: 100%; text-align: left; border: none; border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 11px; line-height: 1.25; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-chip { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; text-align: left; border: none; border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 11px; line-height: 1.25; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-chip:focus-visible { outline: 2px solid #111; outline-offset: 1px; }
   .cal-chip.scheduled { background: #eef4ff; color: #1b4fa0; }
   .cal-chip.scheduled:hover { background: #dfe9fb; }
   .cal-chip.published { background: #eef7f0; color: #2a7a4a; }
@@ -656,7 +657,7 @@ app.get('/', (c) => {
             <button class="primary" id="drop-publish">Post now</button>
           </div>
           <div class="drop-schedule">
-            <span class="sched-label">or schedule for</span>
+            <span class="sched-label">or schedule for (Chicago time)</span>
             <input id="drop-schedule-at" type="datetime-local" />
             <button class="secondary" id="drop-schedule-btn">Schedule</button>
             <button class="secondary" id="drop-unschedule-btn" style="display:none">Cancel schedule</button>
@@ -1255,10 +1256,62 @@ function dropRenderMissing(missing) {
   })
 }
 
-function fmtLocal(iso) {
+const SCHEDULE_TZ = 'America/Chicago'
+const SCHEDULE_TZ_LABEL = 'Chicago time'
+
+function scheduleParts(date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SCHEDULE_TZ,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date)
+  const out = {}
+  for (const p of parts) if (p.type !== 'literal') out[p.type] = p.value
+  return out
+}
+
+function scheduleWallToIso(value) {
+  const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/)
+  if (!m) return null
+  const wanted = {
+    year: Number(m[1]), month: Number(m[2]), day: Number(m[3]),
+    hour: Number(m[4]), minute: Number(m[5]),
+  }
+  const targetAsUtc = Date.UTC(wanted.year, wanted.month - 1, wanted.day, wanted.hour, wanted.minute)
+  let utc = targetAsUtc
+  for (let i = 0; i < 4; i++) {
+    const p = scheduleParts(new Date(utc))
+    const seenAsUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute))
+    const diff = targetAsUtc - seenAsUtc
+    if (diff === 0) break
+    utc += diff
+  }
+  const d = new Date(utc)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+function scheduleIsoToInput(isoOrDate) {
+  const t = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate)
+  if (isNaN(t.getTime())) return ''
+  const p = scheduleParts(t)
+  return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute
+}
+
+function scheduleFmt(iso) {
   const t = new Date(iso)
   if (isNaN(t.getTime())) return iso
-  return t.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return t.toLocaleString([], {
+    timeZone: SCHEDULE_TZ,
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  })
+}
+
+function fmtLocal(iso) {
+  return scheduleFmt(iso)
 }
 
 // Reflect the drop's status + schedule into the topbar and the schedule row.
@@ -1271,9 +1324,7 @@ function updateScheduleUi(d) {
   const isScheduled = d.status === 'scheduled' && d.scheduled_at
   if (isScheduled) {
     status.textContent = 'scheduled · ' + fmtLocal(d.scheduled_at)
-    const t = new Date(d.scheduled_at)
-    const pad = (n) => String(n).padStart(2, '0')
-    schedInput.value = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()) + 'T' + pad(t.getHours()) + ':' + pad(t.getMinutes())
+    schedInput.value = scheduleIsoToInput(d.scheduled_at)
   } else if (d.status === 'failed') {
     status.textContent = 'failed · ' + (d.error || 'unknown error')
   } else {
@@ -1607,12 +1658,13 @@ $('#drop-schedule-btn').addEventListener('click', async () => {
   if (!drop.state.items.length) { alert('Add some products first'); return }
   const v = $('#drop-schedule-at').value
   if (!v) { alert('Pick a date and time first'); return }
-  const when = new Date(v)
-  if (!(when.getTime() > Date.now())) { alert('Scheduled time must be in the future'); return }
+  const iso = scheduleWallToIso(v)
+  const when = iso ? new Date(iso) : new Date(NaN)
+  if (!(when.getTime() > Date.now())) { alert('Scheduled time must be in the future (' + SCHEDULE_TZ_LABEL + ')'); return }
   const r = await fetch('/drops/' + drop.state.currentId + '/schedule', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scheduled_at: when.toISOString() }),
+    body: JSON.stringify({ scheduled_at: iso }),
   })
   const j = await r.json()
   if (!j.ok) { alert('Schedule failed: ' + (j.error || '')); return }
@@ -2023,11 +2075,14 @@ const CAL_PRESETS = ['2x2', '2x3', '3x3', '3x4', '4x4']
 function calStartOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
 function calAddDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 function calSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate() }
+function calCellKey(d) { return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()) }
+function calInstantChicagoKey(d) { const p = scheduleParts(d); return p.year + '-' + p.month + '-' + p.day }
+function calCellNoonInput(d) { return calCellKey(d) + 'T12:00' }
 // Sunday-start weeks.
 function calStartOfWeek(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - x.getDay()); return x }
-function calFmtTime(t) { return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\\s/g, '').toLowerCase() }
+function calFmtTime(t) { return t.toLocaleTimeString([], { timeZone: SCHEDULE_TZ, hour: 'numeric', minute: '2-digit' }).replace(/\s/g, '').toLowerCase() }
 function calPad(n) { return String(n).padStart(2, '0') }
-function calLocalInput(d) { return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()) + 'T' + calPad(d.getHours()) + ':' + calPad(d.getMinutes()) }
+function calLocalInput(d) { return scheduleIsoToInput(d) }
 function calStatusBadge(s) { return '<span class="cm-status ' + s + '">' + s + '</span>' }
 
 async function calLoad() {
@@ -2057,13 +2112,13 @@ function calEventsForDay(day) {
   for (const d of cal.drops) {
     if (!(d.status === 'scheduled' || d.status === 'publishing' || d.status === 'published' || d.status === 'failed')) continue
     const when = calDropSlot(d)
-    if (when && !isNaN(when) && calSameDay(when, day)) {
+    if (when && !isNaN(when) && calInstantChicagoKey(when) === calCellKey(day)) {
       out.push({ kind: 'drop', id: d.id, name: d.name || ('Drop #' + d.id), when: when, status: d.status })
     }
   }
   for (const g of cal.grids) {
     const when = new Date(g.scheduled_at)
-    if (!isNaN(when) && calSameDay(when, day)) {
+    if (!isNaN(when) && calInstantChicagoKey(when) === calCellKey(day)) {
       out.push({ kind: 'grid', id: g.id, name: g.title || ('Grid #' + g.id), when: when, status: g.status })
     }
   }
@@ -2193,7 +2248,7 @@ function calGridFormFields(o) {
     + '<label>Title</label>'
     + '<input type="text" id="cm-title" placeholder="e.g. Friday teaser grid" value="' + escapeHtml(o.title || '') + '" />'
     + '<div class="cm-row">'
-    + '<div><label>When</label><input type="datetime-local" id="cm-when" value="' + o.whenInput + '" /></div>'
+    + '<div><label>When (' + SCHEDULE_TZ_LABEL + ')</label><input type="datetime-local" id="cm-when" value="' + o.whenInput + '" /></div>'
     + '<div><label>Layout</label><select id="cm-preset">' + calPresetOptions(o.preset) + '</select></div>'
     + '</div>'
     + '<label>Content — photos pulled from this drop</label>'
@@ -2223,11 +2278,11 @@ function calWireGridForm() {
 
 function calOpenCreate(dayDate) {
   if (!cal.drops.length) { alert('Make a drop first (Product drop tab) — a grid post pulls its photos from a drop.'); return }
-  const when = new Date(dayDate); when.setHours(12, 0, 0, 0)
+  const whenInput = calCellNoonInput(dayDate)
   calForm.seed = Math.floor(Math.random() * 1e9)
   const html = '<h3>Schedule a grid post</h3>'
     + '<div class="cm-sub">Posts a promo grid to your IG story at the chosen time.</div>'
-    + calGridFormFields({ title: '', whenInput: calLocalInput(when), preset: '3x3', dropId: cal.drops[0].id })
+    + calGridFormFields({ title: '', whenInput, preset: '3x3', dropId: cal.drops[0].id })
     + '<div class="cm-actions"><button type="button" class="primary" id="cm-save">Schedule it</button>'
     + '<button type="button" id="cm-cancel">Cancel</button></div>'
   calShowModal(html)
@@ -2242,7 +2297,7 @@ async function calSaveCreate() {
   const body = {
     drop_id: Number(document.getElementById('cm-drop').value),
     title: document.getElementById('cm-title').value.trim(),
-    scheduled_at: new Date(whenVal).toISOString(),
+    scheduled_at: scheduleWallToIso(whenVal),
     grid_preset: document.getElementById('cm-preset').value,
     grid_seed: calForm.seed,
   }
@@ -2275,7 +2330,7 @@ function calOpenGridEvent(g) {
     const body = {
       drop_id: Number(document.getElementById('cm-drop').value),
       title: document.getElementById('cm-title').value.trim(),
-      scheduled_at: new Date(document.getElementById('cm-when').value).toISOString(),
+      scheduled_at: scheduleWallToIso(document.getElementById('cm-when').value),
       grid_preset: document.getElementById('cm-preset').value,
       grid_seed: calForm.seed,
     }
