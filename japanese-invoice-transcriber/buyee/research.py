@@ -754,3 +754,46 @@ def enrich_invoice(invoice_path: Path, dry_run: bool = False,
         )
 
     return stats
+def scrape_successful_bids(max_pages: int = 5) -> list[dict]:
+    """Scrape successful bids history from Buyee (https://buyee.jp/myorders/bids/successful/1)."""
+    from .auth import with_session
+    from .bidder import parse_jpy_price
+    results = []
+    state_file = HERE / "state" / "successful_bids.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with with_session(headless=True) as (_, _, page):
+        for p in range(1, max_pages + 1):
+            url = f"https://buyee.jp/myorders/bids/successful/{p}"
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(1000)
+                rows = page.query_selector_all("tr.g-table__row, tr:has(td)")
+                if not rows:
+                    break
+                for r in rows:
+                    txt = r.inner_text()
+                    links = r.query_selector_all("a[href*='/item/']")
+                    item_url = links[0].get_attribute("href") if links else ""
+                    title = links[0].inner_text().strip() if links else ""
+                    if not item_url and not title:
+                        continue
+                    # Extract prices from text
+                    prices = [parse_jpy_price(part) for part in txt.split() if parse_jpy_price(part)]
+                    start_price = prices[0] if len(prices) >= 1 else 0
+                    win_price = prices[1] if len(prices) >= 2 else start_price
+                    results.append({
+                        "title": title,
+                        "url": item_url,
+                        "start_price": start_price,
+                        "winning_price": win_price,
+                    })
+            except Exception:
+                break
+
+    try:
+        state_file.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+    return results

@@ -10,6 +10,9 @@
 #   "pandas>=2.2",
 #   "pyyaml>=6.0",
 #   "playwright>=1.45",
+#   "opencv-python-headless",
+#   "numpy",
+#   "rembg",
 # ]
 # ///
 """Past Studies — invoice → Shopify QA tool.
@@ -2026,6 +2029,7 @@ def render_cost_review(view: InvoiceView, inv_data_ref: dict):
             row[f"{label} ({ccy})"] = b.get("extra_pct_amount", 0)
         if view.extra_flat:
             row["extra flat (USD)"] = b.get("extra_flat_usd_per_item", 0)
+        row[f"landed ({ccy})"] = b["landed_native"]
         row["landed (USD)"] = b["landed_usd"]
         row["unit cost (USD)"] = b["unit_cost_usd"]
         rows.append(row)
@@ -5859,26 +5863,32 @@ def render_bulk_drop_audit_tab() -> None:
     for sku, msg in gen_errors.items():
         st.error(f"Generation failed for {sku}: {msg} — use ↻ Regenerate on the card to retry.")
 
-    # Auto-generate in parallel batches; finished cards appear (and stay
-    # interactive) after each batch while the rest of the queue continues.
+    # Auto-generate all missing draft descriptions in parallel batches before rendering
+    # editable cards, so background reruns don't interrupt active editing.
     GEN_BATCH = 5
     ungenerated = [r for r in cards if _wants_generation(r) and r.product.sku not in attempted]
     if ungenerated:
-        batch = [r.product for r in ungenerated[:GEN_BATCH]]
-        done = sum(1 for r in cards if r.product.sku in drafts or r.product.sku in pushed)
-        st.progress(
-            done / max(done + len(ungenerated), 1),
-            text=f"Generating {len(batch)} draft(s) in parallel — {len(ungenerated)} remaining…",
+        total_gen = len(ungenerated)
+        pbar = st.progress(
+            0.0,
+            text=f"Generating draft descriptions (0/{total_gen})…",
         )
-        inputs = {p.sku: _gen_inputs(p) for p in batch}
-        with ThreadPoolExecutor(max_workers=len(batch)) as ex:
-            futures = {p.sku: ex.submit(_gen_worker, p, *inputs[p.sku]) for p in batch}
-        for p in batch:
-            try:
-                _apply_result(p, futures[p.sku].result())
-            except Exception as e:  # noqa: BLE001 — surfaced above the cards
-                gen_errors[p.sku] = str(e)
-            attempted.add(p.sku)
+        for i in range(0, total_gen, GEN_BATCH):
+            batch = [r.product for r in ungenerated[i : i + GEN_BATCH]]
+            pbar.progress(
+                i / total_gen,
+                text=f"Generating draft descriptions ({i}/{total_gen})…",
+            )
+            inputs = {p.sku: _gen_inputs(p) for p in batch}
+            with ThreadPoolExecutor(max_workers=len(batch)) as ex:
+                futures = {p.sku: ex.submit(_gen_worker, p, *inputs[p.sku]) for p in batch}
+            for p in batch:
+                try:
+                    _apply_result(p, futures[p.sku].result())
+                except Exception as e:  # noqa: BLE001 — surfaced above the cards
+                    gen_errors[p.sku] = str(e)
+                attempted.add(p.sku)
+        pbar.empty()
         st.rerun()
 
     approved: list[tuple[da.DropAuditProduct, str]] = []
@@ -6908,8 +6918,9 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, studio_crop_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
+    "Studio Auto-Crop",
     "Commercial invoice",
     "Shopify audit",
     "Bulk Drop Audit",
@@ -6918,6 +6929,10 @@ home_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pri
     "Pricing",
     "Notes & rules",
 ])
+
+with studio_crop_tab:
+    from studio_crop import render_studio_crop_tab
+    render_studio_crop_tab()
 
 with commercial_tab:
     render_commercial_invoice_tab()

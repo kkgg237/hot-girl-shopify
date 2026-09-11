@@ -51,6 +51,13 @@ def _is_original(p) -> bool:
         return False
     if any(p.name.endswith(suffix) for suffix in _SIDECAR_SUFFIXES):
         return False
+    try:
+        import json
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or "invoice_type" not in data or "items" not in data:
+            return False
+    except Exception:
+        return False
     return True
 
 

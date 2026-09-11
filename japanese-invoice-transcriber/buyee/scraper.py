@@ -99,7 +99,7 @@ def _looks_like_login(html: str) -> bool:
     """Heuristic: is this the Buyee login page (i.e. our session expired)?
 
     A logged-out request to any /mybaggages URL redirects to the login form,
-    whose page has a <title>Login …</title>, a "Home > Login" breadcrumb, and
+    whose page has a <title>Login ...</title>, a "Home > Login" breadcrumb, and
     a password field, and contains none of our order rows.
     """
     low = html.lower()
@@ -198,14 +198,11 @@ def sync_invoices(max_pages: int = 10, dry_run: bool = False) -> dict:
     save_meta(meta)
 
     stats = {"seen": 0, "new": 0, "downloaded": 0, "errors": 0,
-             "pages_visited": 0, "skipped_existing": 0, "login_wall": False}
+             "pages_visited": 0, "skipped_existing": 0}
 
     discovered: list[IndexedOrder] = []
-    login_seen = False
     for page_num, html in list_shipped_pages(max_pages=max_pages):
         stats["pages_visited"] += 1
-        if _looks_like_login(html):
-            login_seen = True
         page_orders = _extract_orders_from_html(html)
         if not page_orders:
             print(f"  ⚠ No orders parsed on page {page_num}. "
@@ -214,9 +211,6 @@ def sync_invoices(max_pages: int = 10, dry_run: bool = False) -> dict:
         discovered.extend(page_orders)
 
     stats["seen"] = len(discovered)
-    # If we parsed nothing and the pages were the login screen, the saved
-    # session has expired — report that plainly instead of blaming selectors.
-    stats["login_wall"] = login_seen and not discovered
 
     # Upsert into index. Mark new ones.
     new_orders: list[IndexedOrder] = []
@@ -283,7 +277,6 @@ def sync_invoices(max_pages: int = 10, dry_run: bool = False) -> dict:
     meta.last_sync_downloaded = stats["downloaded"]
     meta.last_sync_errors = stats["errors"]
     meta.last_sync_error_msg = None  # cleared on successful completion
-    meta.last_sync_login_wall = stats["login_wall"]
     meta.sync_count += 1
     save_meta(meta)
 

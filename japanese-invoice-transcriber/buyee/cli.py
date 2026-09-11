@@ -258,6 +258,57 @@ def cmd_list(args):
     return 0
 
 
+def cmd_cdp(args):
+    from .cdp import fetch_open_buyee_tabs
+    from .pricing import calculate_bid
+    success, tabs, msg = fetch_open_buyee_tabs(port=args.port)
+    if not success:
+        print("✗ " + msg)
+        return 1
+    print(f"✓ Found {len(tabs)} open Buyee tab(s):")
+    for idx, t in enumerate(tabs, 1):
+        calc = calculate_bid(20000, "Bags")
+        print(f" [{idx}] {t['title'][:40]} | Start: ~¥20,000 | Rec Bid: ¥{calc['calculated_max_bid']:,} JPY")
+        print(f"     URL: {t['url']}")
+    return 0
+
+
+def cmd_bid(args):
+    from .bidder import process_batch_bids
+    from .pricing import calculate_bid
+    urls = args.url or []
+    if args.file:
+        with open(args.file, "r") as f:
+            urls.extend([line.strip() for line in f if line.strip()])
+
+    if not urls:
+        print("No Buyee URLs provided. Pass --url or --file.")
+        return 1
+
+    item_pairs = []
+    print("\n==========================================================================")
+    print("BUYEE BATCH BIDDING REVIEW")
+    print("==========================================================================")
+    for idx, u in enumerate(urls, 1):
+        calc = calculate_bid(20000, "Bags")
+        amt = calc["calculated_max_bid"]
+        print(f"[{idx}] {u} -> Calculated Bid: ¥{amt:,} JPY")
+        item_pairs.append({"url": u, "bid_amount": amt})
+
+    if args.dry_run:
+        print("\n[DRY RUN] Skipping actual submission.")
+        return 0
+
+    if not args.yes:
+        ans = input("\nProceed with bidding on Buyee? [y/N]: ").strip().lower()
+        if ans != "y":
+            print("Aborted.")
+            return 0
+
+    results = process_batch_bids(item_pairs, dry_run=False, headless=not args.headed)
+    for r in results:
+        print(f"• {r.get('status').upper()}: {r.get('url')} - {r.get('message')}")
+    return 0
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="buyee",
@@ -335,6 +386,17 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--pending", action="store_true", help="Only orders not yet downloaded")
     g.add_argument("--downloaded", action="store_true", help="Only completed downloads")
     pl.set_defaults(func=cmd_list)
+    pcdp = sub.add_parser("cdp", help="Fetch open Buyee tabs from Chrome via remote debugging port")
+    pcdp.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default 9222)")
+    pcdp.set_defaults(func=cmd_cdp)
+
+    pbid = sub.add_parser("bid", help="Calculate and submit batch bids on Buyee auctions")
+    pbid.add_argument("--url", action="append", help="Buyee item URL (repeatable)")
+    pbid.add_argument("--file", help="File containing Buyee item URLs (one per line)")
+    pbid.add_argument("--dry-run", action="store_true", help="Calculate bids without submitting")
+    pbid.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    pbid.add_argument("--headed", action="store_true", help="Show browser window")
+    pbid.set_defaults(func=cmd_bid)
 
     args = p.parse_args(argv)
     return args.func(args) or 0
