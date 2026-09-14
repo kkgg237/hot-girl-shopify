@@ -2,6 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
+Includes a directory browser popup dialog for local folder paths.
 """
 from __future__ import annotations
 
@@ -86,6 +87,71 @@ def format_shopify_title(
     if is_set and not title.endswith("set"):
         title += " set"
     return title
+
+
+def get_directory_info(dir_path: Path) -> tuple[list[Path], list[Path]]:
+    """Return subdirectories and image files inside dir_path."""
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    subdirs = []
+    images = []
+    try:
+        if dir_path.exists() and dir_path.is_dir():
+            for item in dir_path.iterdir():
+                if item.name.startswith("."):
+                    continue
+                if item.is_dir():
+                    subdirs.append(item)
+                elif item.is_file() and item.suffix.lower() in valid_exts:
+                    images.append(item)
+    except Exception:
+        pass
+
+    subdirs.sort(key=lambda x: x.name.lower())
+    images.sort(key=lambda x: x.name.lower())
+    return subdirs, images
+
+
+if hasattr(st, "dialog"):
+    @st.dialog("📁 Select Local Directory Path")
+    def folder_picker_dialog() -> None:
+        if "browse_current_dir" not in st.session_state:
+            st.session_state["browse_current_dir"] = str(Path.home())
+
+        curr = Path(st.session_state["browse_current_dir"]).resolve()
+        st.write(f"**Current Directory:** `{curr}`")
+
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c1:
+            if curr.parent != curr and st.button("⬆️ Up", key="picker_up"):
+                st.session_state["browse_current_dir"] = str(curr.parent)
+                st.rerun()
+        with c2:
+            if st.button("🏠 Home", key="picker_home"):
+                st.session_state["browse_current_dir"] = str(Path.home())
+                st.rerun()
+        with c3:
+            if st.button("💼 Workspace", key="picker_work"):
+                st.session_state["browse_current_dir"] = "/home/kat/workspace"
+                st.rerun()
+
+        subdirs, images = get_directory_info(curr)
+
+        if subdirs:
+            options = ["-- Navigate to Subdirectory --"] + [d.name for d in subdirs]
+            chosen = st.selectbox("Subdirectories", options, key="picker_subdir_select")
+            if chosen != "-- Navigate to Subdirectory --":
+                st.session_state["browse_current_dir"] = str(curr / chosen)
+                st.rerun()
+
+        if images:
+            st.success(f"🖼️ Found **{len(images)}** image file(s) in this directory.")
+        else:
+            st.info("No image files (.jpg, .png, .webp) found in this directory.")
+
+        st.divider()
+        if st.button("✅ Select This Folder", type="primary", key="picker_confirm"):
+            st.session_state["selected_folder_path"] = str(curr)
+            st.rerun()
 
 
 def analyze_garment_image_with_ai(
@@ -290,29 +356,42 @@ def render_reverse_search_tab() -> None:
                 })
 
     elif input_mode == "Local Folder Path":
-        folder_path_str = st.text_input(
-            "Enter path to local directory containing images",
-            value="",
-            placeholder="/home/kat/workspace/looks_folder",
-        )
+        col_input, col_popup = st.columns([3.5, 1.2])
+
+        default_folder = st.session_state.get("selected_folder_path", "")
+
+        with col_input:
+            folder_path_str = st.text_input(
+                "Local directory path containing look photos",
+                value=default_folder,
+                placeholder="/home/kat/workspace/looks_folder",
+                key="folder_path_text_input",
+            )
+            st.session_state["selected_folder_path"] = folder_path_str
+
+        with col_popup:
+            st.write(" ")
+            st.write(" ")
+            if st.button("📁 Browse Directory", key="open_folder_popup", use_container_width=True):
+                if hasattr(st, "dialog"):
+                    folder_picker_dialog()
+
         if folder_path_str:
             p = Path(folder_path_str)
             if p.exists() and p.is_dir():
-                valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
-                img_paths = [f for f in p.iterdir() if f.suffix.lower() in valid_exts]
-                st.info(f"Found {len(img_paths)} image(s) in `{p}`.")
-                if st.button("Load Folder Images"):
-                    for img_p in img_paths:
-                        try:
-                            data_bytes = img_p.read_bytes()
-                            items_to_process.append({
-                                "name": img_p.name,
-                                "bytes": data_bytes,
-                                "mime": f"image/{img_p.suffix.lower().lstrip('.')}",
-                                "url": "",
-                            })
-                        except Exception as ex:
-                            st.error(f"Failed to read {img_p.name}: {ex}")
+                subdirs, img_paths = get_directory_info(p)
+                st.info(f"📁 Selected Folder: `{p}` — Found **{len(img_paths)}** image file(s).")
+                for img_p in img_paths:
+                    try:
+                        data_bytes = img_p.read_bytes()
+                        items_to_process.append({
+                            "name": img_p.name,
+                            "bytes": data_bytes,
+                            "mime": f"image/{img_p.suffix.lower().lstrip('.')}",
+                            "url": "",
+                        })
+                    except Exception as ex:
+                        st.error(f"Failed to read {img_p.name}: {ex}")
             else:
                 st.warning("Directory path does not exist or is not a folder.")
 
@@ -357,10 +436,9 @@ def render_reverse_search_tab() -> None:
 
         for idx, item in enumerate(items_to_process):
             progress_bar.progress((idx) / len(items_to_process), text=f"Analyzing {item['name']}...")
-            
+
             image_bytes = item["bytes"]
             if not image_bytes and item["url"]:
-                # Fetch image from URL if needed
                 try:
                     import urllib.request
                     req = urllib.request.Request(
@@ -385,7 +463,6 @@ def render_reverse_search_tab() -> None:
                     new_results.append(ai_data)
                 except Exception as ex:
                     st.error(f"Error analyzing {item['name']}: {ex}")
-                    # Fallback entry
                     new_results.append({
                         "filename": item["name"],
                         "item_type": "Single",
@@ -408,7 +485,6 @@ def render_reverse_search_tab() -> None:
         st.session_state["reverse_search_results"] = new_results
         st.success(f"Processed {len(new_results)} item(s) successfully!")
 
-    # Display Results
     results = st.session_state.get("reverse_search_results", [])
     if results:
         st.markdown(f"### Research Manifest ({len(results)} items)")

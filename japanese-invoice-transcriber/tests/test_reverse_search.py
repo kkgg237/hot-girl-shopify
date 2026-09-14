@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +14,7 @@ from reverse_search import (
     build_search_urls,
     format_shopify_title,
     generate_manifest_csv,
+    get_directory_info,
 )
 
 
@@ -45,6 +47,28 @@ def test_format_shopify_title():
         is_set=True,
     )
     assert title == "roberto cavalli 2003 mon amour white tiger tattoo graphic denim jacket skirt set"
+
+
+def test_get_directory_info(tmp_path: Path):
+    # Create test directory structure
+    sub_folder = tmp_path / "sub_folder"
+    sub_folder.mkdir()
+
+    img1 = tmp_path / "look1.jpg"
+    img1.write_bytes(b"fake_jpg")
+
+    img2 = tmp_path / "look2.png"
+    img2.write_bytes(b"fake_png")
+
+    txt_file = tmp_path / "notes.txt"
+    txt_file.write_text("hello")
+
+    subdirs, images = get_directory_info(tmp_path)
+
+    assert len(subdirs) == 1
+    assert subdirs[0].name == "sub_folder"
+    assert len(images) == 2
+    assert [i.name for i in images] == ["look1.jpg", "look2.png"]
 
 
 def test_generate_manifest_csv():
