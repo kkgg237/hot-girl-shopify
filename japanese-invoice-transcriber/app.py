@@ -6918,9 +6918,10 @@ render_header()
 # Top-level tabs: keep the homepage focused on invoice work. Knowledge tools
 # (rules, notes), Shopify catalogue tools, and pricing-table inspection all
 # get their own tabs so they're accessible without picking an invoice first.
-home_tab, studio_crop_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
+home_tab, studio_crop_tab, reverse_search_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_tab, copy_tab, pricing_tab, knowledge_tab = st.tabs([
     "Invoices",
     "Studio Auto-Crop",
+    "Reverse Image Search",
     "Commercial invoice",
     "Shopify audit",
     "Bulk Drop Audit",
@@ -6933,6 +6934,10 @@ home_tab, studio_crop_tab, commercial_tab, catalogue_tab, drop_audit_tab, bulk_t
 with studio_crop_tab:
     from studio_crop import render_studio_crop_tab
     render_studio_crop_tab()
+
+with reverse_search_tab:
+    from reverse_search import render_reverse_search_tab
+    render_reverse_search_tab()
 
 with commercial_tab:
     render_commercial_invoice_tab()
