@@ -406,6 +406,10 @@ def render_reverse_search_tab() -> None:
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
+    # Reset native_folder_files if not a list
+    if "native_folder_files" in st.session_state and not isinstance(st.session_state["native_folder_files"], list):
+        st.session_state["native_folder_files"] = []
+
     input_tab_drive, input_tab_server, input_tab_files = st.tabs([
         "📁 Choose Folder (External Drive / Computer)",
         "🖥️ Enter Server Directory Path",
@@ -423,11 +427,15 @@ def render_reverse_search_tab() -> None:
 
         component_results = render_native_folder_picker()
 
-        if component_results and isinstance(component_results, list):
+        if isinstance(component_results, list) and len(component_results) > 0:
             st.session_state["native_folder_files"] = component_results
 
         native_files = st.session_state.get("native_folder_files", [])
-        if native_files and isinstance(native_files, list):
+        if not isinstance(native_files, list):
+            st.session_state["native_folder_files"] = []
+            native_files = []
+
+        if isinstance(native_files, list) and len(native_files) > 0:
             st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
             for item in native_files:
                 try:
