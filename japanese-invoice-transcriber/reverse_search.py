@@ -406,7 +406,6 @@ def render_reverse_search_tab() -> None:
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
-    # Reset native_folder_files if not a list
     if "native_folder_files" in st.session_state and not isinstance(st.session_state["native_folder_files"], list):
         st.session_state["native_folder_files"] = []
 
@@ -449,6 +448,22 @@ def render_reverse_search_tab() -> None:
                     })
                 except Exception as ex:
                     st.error(f"Error decoding {item.get('name')}: {ex}")
+
+        st.divider()
+        uploaded_files = st.file_uploader(
+            "Alternative: Select or Drag & Drop folder files directly",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key="drive_fallback_uploader",
+        )
+        if uploaded_files:
+            for f in uploaded_files:
+                items_to_process.append({
+                    "name": f.name,
+                    "bytes": f.getvalue(),
+                    "mime": f.type or "image/jpeg",
+                    "url": "",
+                })
 
     with input_tab_server:
         col_input, col_popup = st.columns([3.5, 1.2])
