@@ -2,7 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Includes recursive local disk folder crawling, directory picker popup dialog, and
+Supports external drive photo picking, local server directory crawling, and
 an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
@@ -91,7 +91,7 @@ def format_shopify_title(
 
 
 def crawl_local_directory(dir_path: Path, recursive: bool = True) -> tuple[list[dict[str, Any]], list[Path]]:
-    """Crawl local filesystem directory directly on disk. No web upload required.
+    """Crawl filesystem directory directly on disk.
 
     Returns list of item metadata dicts and list of subdirectories found.
     """
@@ -118,7 +118,7 @@ def crawl_local_directory(dir_path: Path, recursive: bool = True) -> tuple[list[
                 crawled_items.append({
                     "name": rel_path,
                     "path": p,
-                    "bytes": None,  # read directly from disk on demand
+                    "bytes": None,
                     "mime": f"image/{p.suffix.lower().lstrip('.')}",
                     "url": "",
                     "size_bytes": p.stat().st_size if p.exists() else 0,
@@ -139,7 +139,7 @@ def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Pat
 
 
 if hasattr(st, "dialog"):
-    @st.dialog("📁 Select Local Directory Path", width="large")
+    @st.dialog("📁 Select Directory Path", width="large")
     def folder_picker_dialog() -> None:
         if "browse_current_dir" not in st.session_state:
             st.session_state["browse_current_dir"] = str(Path.home())
@@ -166,29 +166,29 @@ if hasattr(st, "dialog"):
 
         st.success(f"🖼️ Found **{len(crawled_direct)}** images directly in folder (**{len(crawled_all)}** total across subfolders).")
 
-        if st.button(f"✅ SELECT THIS LOCAL FOLDER (`{curr.name or str(curr)}`)", type="primary", key="picker_confirm_top", use_container_width=True):
+        if st.button(f"✅ SELECT THIS FOLDER (`{curr.name or str(curr)}`)", type="primary", key="picker_confirm_top", use_container_width=True):
             st.session_state["selected_folder_path"] = str(curr)
             st.rerun()
 
         st.divider()
 
-        st.markdown("**Quick Shortcuts:**")
+        st.markdown("**Quick Drive / Folder Shortcuts:**")
         sc1, sc2, sc3, sc4 = st.columns(4)
         with sc1:
             if curr.parent != curr and st.button("⬆️ Parent Dir", key="picker_up", use_container_width=True):
                 st.session_state["browse_current_dir"] = str(curr.parent)
                 st.rerun()
         with sc2:
-            if st.button("🏠 Home", key="picker_home", use_container_width=True):
-                st.session_state["browse_current_dir"] = str(Path.home())
+            if st.button("💾 /media", key="picker_media", use_container_width=True):
+                st.session_state["browse_current_dir"] = "/media"
                 st.rerun()
         with sc3:
-            if st.button("💼 Workspace", key="picker_work", use_container_width=True):
-                st.session_state["browse_current_dir"] = "/home/kat/workspace"
+            if st.button("💾 /mnt", key="picker_mnt", use_container_width=True):
+                st.session_state["browse_current_dir"] = "/mnt"
                 st.rerun()
         with sc4:
-            if st.button("🛍️ Shopify Repo", key="picker_shopify", use_container_width=True):
-                st.session_state["browse_current_dir"] = "/home/kat/workspace/hot-girl-shopify"
+            if st.button("💼 Workspace", key="picker_work", use_container_width=True):
+                st.session_state["browse_current_dir"] = "/home/kat/workspace"
                 st.rerun()
 
         st.divider()
@@ -387,32 +387,53 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Directly crawl local studio photo folders on disk to identify Y2K/designer garments, "
-        "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles. Zero web uploads required."
+        "Scan look photo folders from your external drive or local disk to identify Y2K/designer garments, "
+        "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
-    input_mode = st.radio(
-        "Select Input Source",
-        ["Local Folder Path (Direct Disk Crawler)", "Upload Images", "Paste Image URLs"],
-        horizontal=True,
-    )
+    input_tab_drive, input_tab_server = st.tabs([
+        "📁 Select Folder from External Drive / Computer",
+        "🖥️ Enter Server Directory Path",
+    ])
 
     items_to_process = []
 
-    if input_mode == "Local Folder Path (Direct Disk Crawler)":
-        st.info("🔒 **Direct Local Disk Mode:** Reads files straight from the local server folder. Zero browser file uploads needed.")
+    with input_tab_drive:
+        st.write("### 📁 Select Folder / Photos from External Drive")
+        st.caption(
+            "Click below to open your computer's Finder / File Explorer, navigate to your External Drive, "
+            "and select your photos or drag the folder in!"
+        )
+
+        uploaded_files = st.file_uploader(
+            "Click 'Browse files' -> Navigate to your External Drive -> Select all photos or folder",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key="external_drive_uploader",
+        )
+        if uploaded_files:
+            st.success(f"🖼️ Selected **{len(uploaded_files)}** photo(s) from your external drive!")
+            for f in uploaded_files:
+                items_to_process.append({
+                    "name": f.name,
+                    "bytes": f.getvalue(),
+                    "mime": f.type or "image/jpeg",
+                    "url": "",
+                })
+
+    with input_tab_server:
         col_input, col_popup = st.columns([3.5, 1.2])
 
         default_folder = st.session_state.get("selected_folder_path", "")
 
         with col_input:
             folder_path_str = st.text_input(
-                "Local directory path containing look photos",
+                "Directory path on server disk or mounted drive",
                 value=default_folder,
-                placeholder="/home/kat/workspace/looks_folder",
+                placeholder="/media/external_drive/looks_folder",
                 key="folder_path_text_input",
             )
             st.session_state["selected_folder_path"] = folder_path_str
@@ -420,22 +441,27 @@ def render_reverse_search_tab() -> None:
         with col_popup:
             st.write(" ")
             st.write(" ")
-            if st.button("📁 Browse Directory", key="open_folder_popup", use_container_width=True):
+            if st.button("📁 Browse Server", key="open_folder_popup", use_container_width=True):
                 if hasattr(st, "dialog"):
                     folder_picker_dialog()
 
-        q1, q2, q3 = st.columns(3)
+        st.caption("Mounted Drive / Server Shortcuts:")
+        q1, q2, q3, q4 = st.columns(4)
         with q1:
-            if st.button("💼 /home/kat/workspace", key="preset_work"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace"
+            if st.button("💾 /media", key="preset_media"):
+                st.session_state["selected_folder_path"] = "/media"
                 st.rerun()
         with q2:
-            if st.button("🛍️ hot-girl-shopify", key="preset_shopify"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify"
+            if st.button("💾 /mnt", key="preset_mnt"):
+                st.session_state["selected_folder_path"] = "/mnt"
                 st.rerun()
         with q3:
-            if st.button("📄 japanese-invoice-transcriber", key="preset_inv"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber"
+            if st.button("💼 workspace", key="preset_work"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace"
+                st.rerun()
+        with q4:
+            if st.button("🛍️ hot-girl-shopify", key="preset_shopify"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify"
                 st.rerun()
 
         is_recursive = st.checkbox(
@@ -448,52 +474,21 @@ def render_reverse_search_tab() -> None:
             p = Path(folder_path_str)
             if p.exists() and p.is_dir():
                 crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
-                st.success(f"📁 **Crawled Local Folder:** `{p}` — Found **{len(crawled_items)}** image file(s) across **{len(subdirs)}** directory level(s).")
-                
+                st.success(f"📁 **Server Directory:** `{p}` — Found **{len(crawled_items)}** image file(s) across **{len(subdirs)}** subfolder(s).")
+
                 if crawled_items:
-                    with st.expander(f"📋 View List of Crawled Local Files ({len(crawled_items)} items)"):
+                    with st.expander(f"📋 View List of Crawled Files ({len(crawled_items)} items)"):
                         for item_meta in crawled_items:
                             st.write(f"- `{item_meta['name']}` ({item_meta['size_bytes'] / 1024:.1f} KB)")
-                    
+
                     items_to_process = crawled_items
             else:
                 st.warning("⚠️ Directory path does not exist or is not a folder.")
 
-    elif input_mode == "Upload Images":
-        uploaded_files = st.file_uploader(
-            "Upload look studio photos (JPG, PNG, WEBP)",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-        )
-        if uploaded_files:
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
-
-    elif input_mode == "Paste Image URLs":
-        urls_text = st.text_area(
-            "Paste image URLs (one per line)",
-            placeholder="https://cdn.shopify.com/s/files/1/xxx/products/look1.jpg\nhttps://cdn.shopify.com/s/files/1/xxx/products/look2.jpg",
-            height=120,
-        )
-        if urls_text.strip():
-            raw_urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
-            for i, u in enumerate(raw_urls, 1):
-                items_to_process.append({
-                    "name": f"URL #{i}",
-                    "bytes": None,
-                    "mime": "image/jpeg",
-                    "url": u,
-                })
-
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         run_analysis = st.button(
-            f"🚀 Crawl & Run AI Research ({len(items_to_process)} local files)",
+            f"🚀 Run AI Reverse Research ({len(items_to_process)} photos)",
             type="primary",
             disabled=(not items_to_process),
         )
@@ -521,7 +516,7 @@ def render_reverse_search_tab() -> None:
                 try:
                     image_bytes = item["path"].read_bytes()
                 except Exception as ex:
-                    st.error(f"Failed to read local file {item['name']}: {ex}")
+                    st.error(f"Failed to read file {item['name']}: {ex}")
 
             if not image_bytes and item.get("url"):
                 try:
@@ -568,7 +563,7 @@ def render_reverse_search_tab() -> None:
 
         progress_bar.progress(1.0, text="Done!")
         st.session_state["reverse_search_results"] = new_results
-        st.success(f"Processed {len(new_results)} local file(s) successfully!")
+        st.success(f"Processed {len(new_results)} photo(s) successfully!")
 
     results = st.session_state.get("reverse_search_results", [])
     if results:
@@ -587,7 +582,7 @@ def render_reverse_search_tab() -> None:
                 links = build_search_urls(query, img_url)
 
                 table_rows.append({
-                    "Source": res.get("filename") or res.get("image_url") or "Local File",
+                    "Source": res.get("filename") or res.get("image_url") or "External Drive Photo",
                     "Item Type": res.get("item_type", "Single"),
                     "Designer / Brand": res.get("designer", ""),
                     "Year / Era": res.get("year_era", ""),
@@ -610,7 +605,7 @@ def render_reverse_search_tab() -> None:
                 })
 
             column_config = {
-                "Source": st.column_config.TextColumn("Source / Local Path", width="medium", disabled=True),
+                "Source": st.column_config.TextColumn("Source / Photo Name", width="medium", disabled=True),
                 "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
                 "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
                 "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
