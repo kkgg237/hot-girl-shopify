@@ -2,7 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Includes recursive directory scanning, directory picker popup dialog, and
+Includes recursive local disk folder crawling, directory picker popup dialog, and
 an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
@@ -90,34 +90,51 @@ def format_shopify_title(
     return title
 
 
-def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Path], list[Path]]:
-    """Return subdirectories and image files inside dir_path (optionally recursive)."""
+def crawl_local_directory(dir_path: Path, recursive: bool = True) -> tuple[list[dict[str, Any]], list[Path]]:
+    """Crawl local filesystem directory directly on disk. No web upload required.
+
+    Returns list of item metadata dicts and list of subdirectories found.
+    """
     valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
     subdirs = []
-    images = []
+    crawled_items = []
+
+    if not dir_path.exists() or not dir_path.is_dir():
+        return [], []
+
     try:
-        if dir_path.exists() and dir_path.is_dir():
-            if recursive:
-                for p in dir_path.rglob("*"):
-                    if p.name.startswith("."):
-                        continue
-                    if p.is_dir():
-                        subdirs.append(p)
-                    elif p.is_file() and p.suffix.lower() in valid_exts:
-                        images.append(p)
-            else:
-                for item in dir_path.iterdir():
-                    if item.name.startswith("."):
-                        continue
-                    if item.is_dir():
-                        subdirs.append(item)
-                    elif item.is_file() and item.suffix.lower() in valid_exts:
-                        images.append(item)
+        iterator = dir_path.rglob("*") if recursive else dir_path.iterdir()
+        for p in iterator:
+            if p.name.startswith("."):
+                continue
+            if p.is_dir():
+                subdirs.append(p)
+            elif p.is_file() and p.suffix.lower() in valid_exts:
+                try:
+                    rel_path = str(p.relative_to(dir_path)) if dir_path in p.parents else p.name
+                except ValueError:
+                    rel_path = p.name
+
+                crawled_items.append({
+                    "name": rel_path,
+                    "path": p,
+                    "bytes": None,  # read directly from disk on demand
+                    "mime": f"image/{p.suffix.lower().lstrip('.')}",
+                    "url": "",
+                    "size_bytes": p.stat().st_size if p.exists() else 0,
+                })
     except Exception:
         pass
 
     subdirs.sort(key=lambda x: str(x).lower())
-    images.sort(key=lambda x: str(x).lower())
+    crawled_items.sort(key=lambda x: x["name"].lower())
+    return crawled_items, subdirs
+
+
+def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Path], list[Path]]:
+    """Return subdirectories and image files inside dir_path (optionally recursive)."""
+    items, subdirs = crawl_local_directory(dir_path, recursive=recursive)
+    images = [item["path"] for item in items if item.get("path")]
     return subdirs, images
 
 
@@ -144,12 +161,12 @@ if hasattr(st, "dialog"):
                 else:
                     st.error("Directory path does not exist.")
 
-        subdirs, images = get_directory_info(curr, recursive=False)
-        _, recursive_images = get_directory_info(curr, recursive=True)
+        crawled_direct, subdirs = crawl_local_directory(curr, recursive=False)
+        crawled_all, _ = crawl_local_directory(curr, recursive=True)
 
-        st.success(f"🖼️ Found **{len(images)}** images directly in this folder (**{len(recursive_images)}** total across subfolders).")
+        st.success(f"🖼️ Found **{len(crawled_direct)}** images directly in folder (**{len(crawled_all)}** total across subfolders).")
 
-        if st.button(f"✅ SELECT THIS FOLDER (`{curr.name or str(curr)}`)", type="primary", key="picker_confirm_top", use_container_width=True):
+        if st.button(f"✅ SELECT THIS LOCAL FOLDER (`{curr.name or str(curr)}`)", type="primary", key="picker_confirm_top", use_container_width=True):
             st.session_state["selected_folder_path"] = str(curr)
             st.rerun()
 
@@ -370,8 +387,8 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Batch scan e-commerce studio photo folders to identify Y2K/designer garments, "
-        "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
+        "Directly crawl local studio photo folders on disk to identify Y2K/designer garments, "
+        "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles. Zero web uploads required."
     )
 
     if "reverse_search_results" not in st.session_state:
@@ -379,13 +396,14 @@ def render_reverse_search_tab() -> None:
 
     input_mode = st.radio(
         "Select Input Source",
-        ["Local Folder Path", "Upload Images", "Paste Image URLs"],
+        ["Local Folder Path (Direct Disk Crawler)", "Upload Images", "Paste Image URLs"],
         horizontal=True,
     )
 
     items_to_process = []
 
-    if input_mode == "Local Folder Path":
+    if input_mode == "Local Folder Path (Direct Disk Crawler)":
+        st.info("🔒 **Direct Local Disk Mode:** Reads files straight from the local server folder. Zero browser file uploads needed.")
         col_input, col_popup = st.columns([3.5, 1.2])
 
         default_folder = st.session_state.get("selected_folder_path", "")
@@ -421,7 +439,7 @@ def render_reverse_search_tab() -> None:
                 st.rerun()
 
         is_recursive = st.checkbox(
-            "Recursive Scan (Scan all subdirectories in folder)",
+            "Recursive Scan (Crawl all subdirectories in folder)",
             value=True,
             key="folder_recursive_checkbox",
         )
@@ -429,25 +447,19 @@ def render_reverse_search_tab() -> None:
         if folder_path_str:
             p = Path(folder_path_str)
             if p.exists() and p.is_dir():
-                subdirs, img_paths = get_directory_info(p, recursive=is_recursive)
-                st.success(f"📁 **Selected Folder:** `{p}` — Found **{len(img_paths)}** total image file(s) across folder structure.")
-                for img_p in img_paths:
-                    try:
-                        rel_path = str(img_p.relative_to(p)) if p in img_p.parents else img_p.name
-                        items_to_process.append({
-                            "name": rel_path,
-                            "path": img_p,
-                            "bytes": None,
-                            "mime": f"image/{img_p.suffix.lower().lstrip('.')}",
-                            "url": "",
-                        })
-                    except Exception as ex:
-                        st.error(f"Failed to index {img_p.name}: {ex}")
+                crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
+                st.success(f"📁 **Crawled Local Folder:** `{p}` — Found **{len(crawled_items)}** image file(s) across **{len(subdirs)}** directory level(s).")
+                
+                if crawled_items:
+                    with st.expander(f"📋 View List of Crawled Local Files ({len(crawled_items)} items)"):
+                        for item_meta in crawled_items:
+                            st.write(f"- `{item_meta['name']}` ({item_meta['size_bytes'] / 1024:.1f} KB)")
+                    
+                    items_to_process = crawled_items
             else:
                 st.warning("⚠️ Directory path does not exist or is not a folder.")
 
     elif input_mode == "Upload Images":
-        st.info("💡 You can select multiple images or drag-and-drop an entire set of photos into the box below:")
         uploaded_files = st.file_uploader(
             "Upload look studio photos (JPG, PNG, WEBP)",
             type=["jpg", "jpeg", "png", "webp"],
@@ -481,7 +493,7 @@ def render_reverse_search_tab() -> None:
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         run_analysis = st.button(
-            f"🚀 Run AI Reverse Research ({len(items_to_process)} items)",
+            f"🚀 Crawl & Run AI Research ({len(items_to_process)} local files)",
             type="primary",
             disabled=(not items_to_process),
         )
@@ -509,7 +521,7 @@ def render_reverse_search_tab() -> None:
                 try:
                     image_bytes = item["path"].read_bytes()
                 except Exception as ex:
-                    st.error(f"Failed to read file {item['name']}: {ex}")
+                    st.error(f"Failed to read local file {item['name']}: {ex}")
 
             if not image_bytes and item.get("url"):
                 try:
@@ -556,7 +568,7 @@ def render_reverse_search_tab() -> None:
 
         progress_bar.progress(1.0, text="Done!")
         st.session_state["reverse_search_results"] = new_results
-        st.success(f"Processed {len(new_results)} item(s) successfully!")
+        st.success(f"Processed {len(new_results)} local file(s) successfully!")
 
     results = st.session_state.get("reverse_search_results", [])
     if results:
@@ -575,7 +587,7 @@ def render_reverse_search_tab() -> None:
                 links = build_search_urls(query, img_url)
 
                 table_rows.append({
-                    "Source": res.get("filename") or res.get("image_url") or "Uploaded Image",
+                    "Source": res.get("filename") or res.get("image_url") or "Local File",
                     "Item Type": res.get("item_type", "Single"),
                     "Designer / Brand": res.get("designer", ""),
                     "Year / Era": res.get("year_era", ""),
@@ -598,7 +610,7 @@ def render_reverse_search_tab() -> None:
                 })
 
             column_config = {
-                "Source": st.column_config.TextColumn("Source / Filename", width="medium", disabled=True),
+                "Source": st.column_config.TextColumn("Source / Local Path", width="medium", disabled=True),
                 "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
                 "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
                 "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
