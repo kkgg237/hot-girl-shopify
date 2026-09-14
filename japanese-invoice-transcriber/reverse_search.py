@@ -2,7 +2,8 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Includes a directory browser popup dialog for local folder paths.
+Includes recursive directory scanning, directory picker popup dialog, and
+an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
 
@@ -89,25 +90,34 @@ def format_shopify_title(
     return title
 
 
-def get_directory_info(dir_path: Path) -> tuple[list[Path], list[Path]]:
-    """Return subdirectories and image files inside dir_path."""
+def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Path], list[Path]]:
+    """Return subdirectories and image files inside dir_path (optionally recursive)."""
     valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
     subdirs = []
     images = []
     try:
         if dir_path.exists() and dir_path.is_dir():
-            for item in dir_path.iterdir():
-                if item.name.startswith("."):
-                    continue
-                if item.is_dir():
-                    subdirs.append(item)
-                elif item.is_file() and item.suffix.lower() in valid_exts:
-                    images.append(item)
+            if recursive:
+                for p in dir_path.rglob("*"):
+                    if p.name.startswith("."):
+                        continue
+                    if p.is_dir():
+                        subdirs.append(p)
+                    elif p.is_file() and p.suffix.lower() in valid_exts:
+                        images.append(p)
+            else:
+                for item in dir_path.iterdir():
+                    if item.name.startswith("."):
+                        continue
+                    if item.is_dir():
+                        subdirs.append(item)
+                    elif item.is_file() and item.suffix.lower() in valid_exts:
+                        images.append(item)
     except Exception:
         pass
 
-    subdirs.sort(key=lambda x: x.name.lower())
-    images.sort(key=lambda x: x.name.lower())
+    subdirs.sort(key=lambda x: str(x).lower())
+    images.sort(key=lambda x: str(x).lower())
     return subdirs, images
 
 
@@ -134,7 +144,7 @@ if hasattr(st, "dialog"):
                 st.session_state["browse_current_dir"] = "/home/kat/workspace"
                 st.rerun()
 
-        subdirs, images = get_directory_info(curr)
+        subdirs, images = get_directory_info(curr, recursive=False)
 
         if subdirs:
             options = ["-- Navigate to Subdirectory --"] + [d.name for d in subdirs]
@@ -144,9 +154,9 @@ if hasattr(st, "dialog"):
                 st.rerun()
 
         if images:
-            st.success(f"🖼️ Found **{len(images)}** image file(s) in this directory.")
+            st.success(f"🖼️ Found **{len(images)}** image file(s) in this folder.")
         else:
-            st.info("No image files (.jpg, .png, .webp) found in this directory.")
+            st.info("No image files (.jpg, .png, .webp) found in this folder.")
 
         st.divider()
         if st.button("✅ Select This Folder", type="primary", key="picker_confirm"):
@@ -325,7 +335,7 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Batch process e-commerce studio photos to identify Y2K/designer garments, "
+        "Batch scan e-commerce studio photo folders to identify Y2K/designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
@@ -334,28 +344,13 @@ def render_reverse_search_tab() -> None:
 
     input_mode = st.radio(
         "Select Input Source",
-        ["Upload Images", "Local Folder Path", "Paste Image URLs"],
+        ["Local Folder Path", "Upload Images", "Paste Image URLs"],
         horizontal=True,
     )
 
     items_to_process = []
 
-    if input_mode == "Upload Images":
-        uploaded_files = st.file_uploader(
-            "Upload look studio photos (JPG, PNG, WEBP)",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-        )
-        if uploaded_files:
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
-
-    elif input_mode == "Local Folder Path":
+    if input_mode == "Local Folder Path":
         col_input, col_popup = st.columns([3.5, 1.2])
 
         default_folder = st.session_state.get("selected_folder_path", "")
@@ -376,24 +371,46 @@ def render_reverse_search_tab() -> None:
                 if hasattr(st, "dialog"):
                     folder_picker_dialog()
 
+        is_recursive = st.checkbox(
+            "Recursive Scan (Scan all subdirectories in folder)",
+            value=True,
+            key="folder_recursive_checkbox",
+        )
+
         if folder_path_str:
             p = Path(folder_path_str)
             if p.exists() and p.is_dir():
-                subdirs, img_paths = get_directory_info(p)
-                st.info(f"📁 Selected Folder: `{p}` — Found **{len(img_paths)}** image file(s).")
+                subdirs, img_paths = get_directory_info(p, recursive=is_recursive)
+                st.info(f"📁 Selected Folder: `{p}` — Found **{len(img_paths)}** total image file(s) across folder structure.")
                 for img_p in img_paths:
                     try:
-                        data_bytes = img_p.read_bytes()
+                        rel_path = str(img_p.relative_to(p)) if p in img_p.parents else img_p.name
                         items_to_process.append({
-                            "name": img_p.name,
-                            "bytes": data_bytes,
+                            "name": rel_path,
+                            "path": img_p,
+                            "bytes": None,  # read on demand
                             "mime": f"image/{img_p.suffix.lower().lstrip('.')}",
                             "url": "",
                         })
                     except Exception as ex:
-                        st.error(f"Failed to read {img_p.name}: {ex}")
+                        st.error(f"Failed to index {img_p.name}: {ex}")
             else:
                 st.warning("Directory path does not exist or is not a folder.")
+
+    elif input_mode == "Upload Images":
+        uploaded_files = st.file_uploader(
+            "Upload look studio photos (JPG, PNG, WEBP)",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+        )
+        if uploaded_files:
+            for f in uploaded_files:
+                items_to_process.append({
+                    "name": f.name,
+                    "bytes": f.getvalue(),
+                    "mime": f.type or "image/jpeg",
+                    "url": "",
+                })
 
     elif input_mode == "Paste Image URLs":
         urls_text = st.text_area(
@@ -414,9 +431,9 @@ def render_reverse_search_tab() -> None:
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         run_analysis = st.button(
-            "🚀 Run AI Reverse Research",
+            f"🚀 Run AI Reverse Research ({len(items_to_process)} items)",
             type="primary",
-            disabled=(not items_to_process and not st.session_state["reverse_search_results"]),
+            disabled=(not items_to_process),
         )
     with col_btn2:
         if st.button("🗑️ Clear Results"):
@@ -435,10 +452,16 @@ def render_reverse_search_tab() -> None:
         progress_bar = st.progress(0, text="Processing images...")
 
         for idx, item in enumerate(items_to_process):
-            progress_bar.progress((idx) / len(items_to_process), text=f"Analyzing {item['name']}...")
+            progress_bar.progress((idx) / len(items_to_process), text=f"Analyzing [{idx+1}/{len(items_to_process)}] {item['name']}...")
 
-            image_bytes = item["bytes"]
-            if not image_bytes and item["url"]:
+            image_bytes = item.get("bytes")
+            if not image_bytes and item.get("path"):
+                try:
+                    image_bytes = item["path"].read_bytes()
+                except Exception as ex:
+                    st.error(f"Failed to read file {item['name']}: {ex}")
+
+            if not image_bytes and item.get("url"):
                 try:
                     import urllib.request
                     req = urllib.request.Request(
@@ -489,61 +512,151 @@ def render_reverse_search_tab() -> None:
     if results:
         st.markdown(f"### Research Manifest ({len(results)} items)")
 
-        csv_data = generate_manifest_csv(results)
-        st.download_button(
-            label="📥 Download Manifest as CSV",
-            data=csv_data,
-            file_name="reverse_search_manifest.csv",
-            mime="text/csv",
-        )
+        view_tab_table, view_tab_cards = st.tabs([
+            "📊 Editable Spreadsheet Table",
+            "🖼️ Photo Cards Grid",
+        ])
 
-        for idx, res in enumerate(results):
-            with st.container(border=True):
-                c_img, c_details, c_links = st.columns([1.2, 2.5, 1.8])
+        with view_tab_table:
+            # Build table records
+            table_rows = []
+            for res in results:
+                query = res.get("search_query") or res.get("suggested_title", "")
+                img_url = res.get("image_url", "")
+                links = build_search_urls(query, img_url)
 
-                with c_img:
-                    if res.get("image_bytes"):
-                        st.image(res["image_bytes"], use_container_width=True)
-                    elif res.get("image_url"):
-                        st.image(res["image_url"], use_container_width=True)
-                    st.caption(f"**Source:** {res.get('filename') or 'URL'}")
+                table_rows.append({
+                    "Source": res.get("filename") or res.get("image_url") or "Uploaded Image",
+                    "Item Type": res.get("item_type", "Single"),
+                    "Designer / Brand": res.get("designer", ""),
+                    "Year / Era": res.get("year_era", ""),
+                    "Collection": res.get("collection", ""),
+                    "Print / Color": res.get("print_color", ""),
+                    "Garment Type": res.get("garment_type", ""),
+                    "Fabric": res.get("fabric", ""),
+                    "Shopify Title": res.get("suggested_title", ""),
+                    "Est. Min Price ($)": int(res.get("min_price_usd") or 0),
+                    "Est. Max Price ($)": int(res.get("max_price_usd") or 0),
+                    "Search Query": query,
+                    "Google Lens Link": links.get("Google Lens", ""),
+                    "Grailed Link": links.get("Grailed", ""),
+                    "Vestiaire Link": links.get("Vestiaire Collective", ""),
+                    "1stDibs Link": links.get("1stDibs", ""),
+                    "eBay Link": links.get("eBay", ""),
+                    "The RealReal Link": links.get("The RealReal", ""),
+                    "Depop Link": links.get("Depop", ""),
+                    "Notes": res.get("notes", ""),
+                })
 
-                with c_details:
-                    title_input = st.text_input(
-                        "Shopify Title Formula",
-                        value=res.get("suggested_title", ""),
-                        key=f"title_{idx}",
-                    )
-                    res["suggested_title"] = title_input
+            column_config = {
+                "Source": st.column_config.TextColumn("Source / Filename", width="medium", disabled=True),
+                "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
+                "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
+                "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
+                "Collection": st.column_config.TextColumn("Collection Name", width="medium"),
+                "Print / Color": st.column_config.TextColumn("Print / Colorway", width="medium"),
+                "Garment Type": st.column_config.TextColumn("Garment Type", width="medium"),
+                "Fabric": st.column_config.TextColumn("Fabric / Material", width="small"),
+                "Shopify Title": st.column_config.TextColumn("Generated Shopify Title", width="large"),
+                "Est. Min Price ($)": st.column_config.NumberColumn("Min Price ($)", format="$%d", width="small"),
+                "Est. Max Price ($)": st.column_config.NumberColumn("Max Price ($)", format="$%d", width="small"),
+                "Search Query": st.column_config.TextColumn("Search Query", width="medium"),
+                "Google Lens Link": st.column_config.LinkColumn("Google Lens", display_text="🔎 Lens"),
+                "Grailed Link": st.column_config.LinkColumn("Grailed", display_text="🛍️ Grailed"),
+                "Vestiaire Link": st.column_config.LinkColumn("Vestiaire", display_text="👗 Vestiaire"),
+                "1stDibs Link": st.column_config.LinkColumn("1stDibs", display_text="💎 1stDibs"),
+                "eBay Link": st.column_config.LinkColumn("eBay", display_text="🏷️ eBay"),
+                "The RealReal Link": st.column_config.LinkColumn("The RealReal", display_text="📦 RealReal"),
+                "Depop Link": st.column_config.LinkColumn("Depop", display_text="🛍️ Depop"),
+                "Notes": st.column_config.TextColumn("Notes", width="large"),
+            }
 
-                    c_d1, c_d2 = st.columns(2)
-                    with c_d1:
-                        res["designer"] = st.text_input("Designer/Brand", res.get("designer", ""), key=f"des_{idx}")
-                        res["year_era"] = st.text_input("Year / Era", res.get("year_era", ""), key=f"era_{idx}")
-                        res["item_type"] = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
-                    with c_d2:
-                        res["collection"] = st.text_input("Collection", res.get("collection", ""), key=f"coll_{idx}")
-                        res["print_color"] = st.text_input("Print / Colorway", res.get("print_color", ""), key=f"print_{idx}")
-                        res["garment_type"] = st.text_input("Garment Type", res.get("garment_type", ""), key=f"garment_{idx}")
+            edited_df = st.data_editor(
+                table_rows,
+                column_config=column_config,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="reverse_search_data_editor",
+            )
 
-                    p_col1, p_col2 = st.columns(2)
-                    with p_col1:
-                        res["min_price_usd"] = st.number_input("Est. Min Price ($USD)", value=int(res.get("min_price_usd") or 0), key=f"pmin_{idx}")
-                    with p_col2:
-                        res["max_price_usd"] = st.number_input("Est. Max Price ($USD)", value=int(res.get("max_price_usd") or 0), key=f"pmax_{idx}")
+            # Sync edits back to session state
+            if edited_df is not None:
+                updated_results = []
+                for row, orig in zip(edited_df, results):
+                    item_copy = dict(orig)
+                    item_copy["item_type"] = row.get("Item Type", orig.get("item_type"))
+                    item_copy["designer"] = row.get("Designer / Brand", orig.get("designer"))
+                    item_copy["year_era"] = row.get("Year / Era", orig.get("year_era"))
+                    item_copy["collection"] = row.get("Collection", orig.get("collection"))
+                    item_copy["print_color"] = row.get("Print / Color", orig.get("print_color"))
+                    item_copy["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
+                    item_copy["fabric"] = row.get("Fabric", orig.get("fabric"))
+                    item_copy["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
+                    item_copy["min_price_usd"] = row.get("Est. Min Price ($)", orig.get("min_price_usd"))
+                    item_copy["max_price_usd"] = row.get("Est. Max Price ($)", orig.get("max_price_usd"))
+                    item_copy["search_query"] = row.get("Search Query", orig.get("search_query"))
+                    item_copy["notes"] = row.get("Notes", orig.get("notes"))
+                    updated_results.append(item_copy)
 
-                    if res.get("notes"):
-                        st.caption(f"**Notes:** {res['notes']}")
+                st.session_state["reverse_search_results"] = updated_results
 
-                with c_links:
-                    st.markdown("**🔎 Comp Search Links**")
-                    query = res.get("search_query") or res.get("suggested_title", "")
-                    img_url = res.get("image_url", "")
-                    links = build_search_urls(query, img_url)
+            csv_data = generate_manifest_csv(st.session_state["reverse_search_results"])
+            st.download_button(
+                label="📥 Download Research Manifest as CSV",
+                data=csv_data,
+                file_name="reverse_search_manifest.csv",
+                mime="text/csv",
+                type="primary",
+            )
 
-                    st.link_button("🌐 Google Lens Search", links["Google Lens"], use_container_width=True)
-                    st.link_button("🛍️ Grailed Comps", links["Grailed"], use_container_width=True)
-                    st.link_button("👗 Vestiaire Collective", links["Vestiaire Collective"], use_container_width=True)
-                    st.link_button("💎 1stDibs Comps", links["1stDibs"], use_container_width=True)
-                    st.link_button("🏷️ eBay Search", links["eBay"], use_container_width=True)
-                    st.link_button("📦 The RealReal", links["The RealReal"], use_container_width=True)
+        with view_tab_cards:
+            for idx, res in enumerate(results):
+                with st.container(border=True):
+                    c_img, c_details, c_links = st.columns([1.2, 2.5, 1.8])
+
+                    with c_img:
+                        if res.get("image_bytes"):
+                            st.image(res["image_bytes"], use_container_width=True)
+                        elif res.get("image_url"):
+                            st.image(res["image_url"], use_container_width=True)
+                        st.caption(f"**Source:** {res.get('filename') or 'URL'}")
+
+                    with c_details:
+                        title_input = st.text_input(
+                            "Shopify Title Formula",
+                            value=res.get("suggested_title", ""),
+                            key=f"title_card_{idx}",
+                        )
+                        res["suggested_title"] = title_input
+
+                        c_d1, c_d2 = st.columns(2)
+                        with c_d1:
+                            res["designer"] = st.text_input("Designer/Brand", res.get("designer", ""), key=f"des_card_{idx}")
+                            res["year_era"] = st.text_input("Year / Era", res.get("year_era", ""), key=f"era_card_{idx}")
+                            res["item_type"] = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_card_{idx}")
+                        with c_d2:
+                            res["collection"] = st.text_input("Collection", res.get("collection", ""), key=f"coll_card_{idx}")
+                            res["print_color"] = st.text_input("Print / Colorway", res.get("print_color", ""), key=f"print_card_{idx}")
+                            res["garment_type"] = st.text_input("Garment Type", res.get("garment_type", ""), key=f"garment_card_{idx}")
+
+                        p_col1, p_col2 = st.columns(2)
+                        with p_col1:
+                            res["min_price_usd"] = st.number_input("Est. Min Price ($USD)", value=int(res.get("min_price_usd") or 0), key=f"pmin_card_{idx}")
+                        with p_col2:
+                            res["max_price_usd"] = st.number_input("Est. Max Price ($USD)", value=int(res.get("max_price_usd") or 0), key=f"pmax_card_{idx}")
+
+                        if res.get("notes"):
+                            st.caption(f"**Notes:** {res['notes']}")
+
+                    with c_links:
+                        st.markdown("**🔎 Comp Search Links**")
+                        query = res.get("search_query") or res.get("suggested_title", "")
+                        img_url = res.get("image_url", "")
+                        links = build_search_urls(query, img_url)
+
+                        st.link_button("🌐 Google Lens Search", links["Google Lens"], use_container_width=True)
+                        st.link_button("🛍️ Grailed Comps", links["Grailed"], use_container_width=True)
+                        st.link_button("👗 Vestiaire Collective", links["Vestiaire Collective"], use_container_width=True)
+                        st.link_button("💎 1stDibs Comps", links["1stDibs"], use_container_width=True)
+                        st.link_button("🏷️ eBay Search", links["eBay"], use_container_width=True)
+                        st.link_button("📦 The RealReal", links["The RealReal"], use_container_width=True)
