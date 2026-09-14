@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 4px; background: transparent; }
+    .folder-btn-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .folder-btn {
+      background: linear-gradient(135deg, #ff4b4b 0%, #d93838 100%);
+      color: white;
+      font-weight: 600;
+      padding: 14px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-block;
+      text-align: center;
+      font-size: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      user-select: none;
+      transition: transform 0.1s ease, background 0.2s ease;
+    }
+    .folder-btn:hover {
+      background: linear-gradient(135deg, #d93838 0%, #b82e2e 100%);
+      transform: translateY(-1px);
+    }
+    #status {
+      font-size: 14px;
+      color: #111;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="folder-btn-wrapper">
+    <label class="folder-btn" for="nativeFolderInput">
+      📁 Click Here to Choose Folder from External Drive / Computer
+    </label>
+    <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="processFolder(this.files)">
+    <div id="status"></div>
+  </div>
+
+  <script>
+    function processFolder(files) {
+      const statusDiv = document.getElementById("status");
+      if (!files || files.length === 0) {
+        statusDiv.innerHTML = "No folder selected.";
+        return;
+      }
+
+      const validExts = [".jpg", ".jpeg", ".png", ".webp"];
+      const imageFiles = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const lowerName = file.name.toLowerCase();
+        if (validExts.some(ext => lowerName.endsWith(ext))) {
+          imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length === 0) {
+        statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in selected folder.";
+        return;
+      }
+
+      statusDiv.innerHTML = `⏳ Reading ${imageFiles.length} image(s) from folder...`;
+
+      const results = [];
+      let loadedCount = 0;
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          const b64 = dataUrl.split(",")[1] || "";
+          
+          results.push({
+            name: file.webkitRelativePath || file.name,
+            mime: file.type || "image/jpeg",
+            data_b64: b64,
+            size: file.size
+          });
+
+          loadedCount++;
+          statusDiv.innerHTML = `⏳ Loaded ${loadedCount} / ${imageFiles.length} images...`;
+
+          if (loadedCount === imageFiles.length) {
+            statusDiv.innerHTML = `✅ Selected ${results.length} images from folder!`;
+            Streamlit.setComponentValue(results);
+          }
+        };
+
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function onRender(event) {
+      Streamlit.setFrameHeight(100);
+    }
+
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(100);
+  </script>
+</body>
+</html>

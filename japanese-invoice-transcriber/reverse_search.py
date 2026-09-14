@@ -2,7 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Includes native OS folder picker popup, local server directory crawling, and
+Includes native OS folder picker component, local server directory crawling, and
 an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
@@ -29,6 +29,12 @@ try:
     from PIL import Image
 except ImportError:
     Image = None
+
+COMPONENT_DIR = Path(__file__).parent / "folder_picker_component"
+_native_folder_picker = components.declare_component(
+    "native_folder_picker",
+    path=str(COMPONENT_DIR),
+)
 
 RESALE_PLATFORMS = [
     ("Google Lens", "https://lens.google.com/uploadbyurl?url={url}"),
@@ -139,118 +145,9 @@ def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Pat
     return subdirs, images
 
 
-def render_native_folder_picker_html() -> Any:
-    """Render a native HTML5 folder picker button using webkitdirectory."""
-    html_code = """
-    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.min.js"></script>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 4px; }
-      .folder-btn-wrapper {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-      }
-      .folder-btn {
-        background: linear-gradient(135deg, #ff4b4b 0%, #d93838 100%);
-        color: white;
-        font-weight: 600;
-        padding: 14px 28px;
-        border-radius: 8px;
-        cursor: pointer;
-        display: inline-block;
-        text-align: center;
-        font-size: 16px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-        user-select: none;
-        transition: transform 0.1s ease, background 0.2s ease;
-      }
-      .folder-btn:hover {
-        background: linear-gradient(135deg, #d93838 0%, #b82e2e 100%);
-        transform: translateY(-1px);
-      }
-      #status {
-        font-size: 14px;
-        color: #111;
-        font-weight: 500;
-      }
-    </style>
-
-    <div class="folder-btn-wrapper">
-      <label class="folder-btn" for="nativeFolderInput">
-        📁 Click Here to Choose Folder from External Drive / Computer
-      </label>
-      <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="processFolder(this.files)">
-      <div id="status"></div>
-    </div>
-
-    <script>
-      function processFolder(files) {
-        const statusDiv = document.getElementById("status");
-        if (!files || files.length === 0) {
-          statusDiv.innerHTML = "No folder selected.";
-          return;
-        }
-
-        const validExts = [".jpg", ".jpeg", ".png", ".webp"];
-        const imageFiles = [];
-
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          const lowerName = file.name.toLowerCase();
-          if (validExts.some(ext => lowerName.endsWith(ext))) {
-            imageFiles.push(file);
-          }
-        }
-
-        if (imageFiles.length === 0) {
-          statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in selected folder.";
-          return;
-        }
-
-        statusDiv.innerHTML = `⏳ Reading ${imageFiles.length} image(s) from folder...`;
-
-        const results = [];
-        let loadedCount = 0;
-
-        for (let i = 0; i < imageFiles.length; i++) {
-          const file = imageFiles[i];
-          const reader = new FileReader();
-
-          reader.onload = function(e) {
-            const dataUrl = e.target.result;
-            const b64 = dataUrl.split(",")[1] || "";
-            
-            results.push({
-              name: file.webkitRelativePath || file.name,
-              mime: file.type || "image/jpeg",
-              data_b64: b64,
-              size: file.size
-            });
-
-            loadedCount++;
-            statusDiv.innerHTML = `⏳ Loaded ${loadedCount} / ${imageFiles.length} images...`;
-
-            if (loadedCount === imageFiles.length) {
-              statusDiv.innerHTML = `✅ Selected ${results.length} images from folder!`;
-              if (window.Streamlit) {
-                window.Streamlit.setComponentValue(results);
-              }
-            }
-          };
-
-          reader.readAsDataURL(file);
-        }
-      }
-
-      window.addEventListener("DOMContentLoaded", function() {
-        if (window.Streamlit) {
-          window.Streamlit.setFrameHeight(100);
-        }
-      });
-    </script>
-    """
-    return components.html(html_code, height=100)
+def render_native_folder_picker() -> Any:
+    """Render native HTML5 folder picker component."""
+    return _native_folder_picker(key="native_folder_picker_comp")
 
 
 if hasattr(st, "dialog"):
@@ -524,13 +421,13 @@ def render_reverse_search_tab() -> None:
             "allowing you to navigate directly to your External Drive and select an entire folder!"
         )
 
-        component_results = render_native_folder_picker_html()
+        component_results = render_native_folder_picker()
 
-        if component_results:
+        if component_results and isinstance(component_results, list):
             st.session_state["native_folder_files"] = component_results
 
         native_files = st.session_state.get("native_folder_files", [])
-        if native_files:
+        if native_files and isinstance(native_files, list):
             st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
             for item in native_files:
                 try:
