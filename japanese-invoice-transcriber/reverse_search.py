@@ -122,46 +122,81 @@ def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Pat
 
 
 if hasattr(st, "dialog"):
-    @st.dialog("📁 Select Local Directory Path")
+    @st.dialog("📁 Select Local Directory Path", width="large")
     def folder_picker_dialog() -> None:
         if "browse_current_dir" not in st.session_state:
             st.session_state["browse_current_dir"] = str(Path.home())
 
         curr = Path(st.session_state["browse_current_dir"]).resolve()
-        st.write(f"**Current Directory:** `{curr}`")
+        st.markdown(f"**Current Directory:** `{curr}`")
 
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c1:
-            if curr.parent != curr and st.button("⬆️ Up", key="picker_up"):
-                st.session_state["browse_current_dir"] = str(curr.parent)
-                st.rerun()
-        with c2:
-            if st.button("🏠 Home", key="picker_home"):
-                st.session_state["browse_current_dir"] = str(Path.home())
-                st.rerun()
-        with c3:
-            if st.button("💼 Workspace", key="picker_work"):
-                st.session_state["browse_current_dir"] = "/home/kat/workspace"
-                st.rerun()
+        c_path, c_go = st.columns([4, 1])
+        with c_path:
+            typed_path = st.text_input("Type or Paste Directory Path", value=str(curr), key="picker_path_input")
+        with c_go:
+            st.write(" ")
+            st.write(" ")
+            if st.button("Go ➡️", key="picker_path_go"):
+                tp = Path(typed_path).resolve()
+                if tp.exists() and tp.is_dir():
+                    st.session_state["browse_current_dir"] = str(tp)
+                    st.rerun()
+                else:
+                    st.error("Directory path does not exist.")
 
         subdirs, images = get_directory_info(curr, recursive=False)
+        _, recursive_images = get_directory_info(curr, recursive=True)
 
-        if subdirs:
-            options = ["-- Navigate to Subdirectory --"] + [d.name for d in subdirs]
-            chosen = st.selectbox("Subdirectories", options, key="picker_subdir_select")
-            if chosen != "-- Navigate to Subdirectory --":
-                st.session_state["browse_current_dir"] = str(curr / chosen)
-                st.rerun()
+        st.success(f"🖼️ Found **{len(images)}** images directly in this folder (**{len(recursive_images)}** total across subfolders).")
 
-        if images:
-            st.success(f"🖼️ Found **{len(images)}** image file(s) in this folder.")
-        else:
-            st.info("No image files (.jpg, .png, .webp) found in this folder.")
-
-        st.divider()
-        if st.button("✅ Select This Folder", type="primary", key="picker_confirm"):
+        if st.button(f"✅ SELECT THIS FOLDER (`{curr.name or str(curr)}`)", type="primary", key="picker_confirm_top", use_container_width=True):
             st.session_state["selected_folder_path"] = str(curr)
             st.rerun()
+
+        st.divider()
+
+        st.markdown("**Quick Shortcuts:**")
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        with sc1:
+            if curr.parent != curr and st.button("⬆️ Parent Dir", key="picker_up", use_container_width=True):
+                st.session_state["browse_current_dir"] = str(curr.parent)
+                st.rerun()
+        with sc2:
+            if st.button("🏠 Home", key="picker_home", use_container_width=True):
+                st.session_state["browse_current_dir"] = str(Path.home())
+                st.rerun()
+        with sc3:
+            if st.button("💼 Workspace", key="picker_work", use_container_width=True):
+                st.session_state["browse_current_dir"] = "/home/kat/workspace"
+                st.rerun()
+        with sc4:
+            if st.button("🛍️ Shopify Repo", key="picker_shopify", use_container_width=True):
+                st.session_state["browse_current_dir"] = "/home/kat/workspace/hot-girl-shopify"
+                st.rerun()
+
+        st.divider()
+
+        st.markdown("**Subdirectories:**")
+        if subdirs:
+            sub_col1, sub_col2, sub_col3 = st.columns([3, 1.2, 1.2])
+            with sub_col1:
+                chosen = st.selectbox("Subdirectories", [d.name for d in subdirs], key="picker_subdir_select")
+            with sub_col2:
+                st.write(" ")
+                st.write(" ")
+                if st.button("Open Folder ➡️", key="picker_open_sub", use_container_width=True):
+                    if chosen:
+                        st.session_state["browse_current_dir"] = str(curr / chosen)
+                        st.rerun()
+            with sub_col3:
+                st.write(" ")
+                st.write(" ")
+                if st.button("Select Folder ✅", key="picker_select_sub", use_container_width=True):
+                    if chosen:
+                        st.session_state["selected_folder_path"] = str(curr / chosen)
+                        st.rerun()
+        else:
+            st.caption("No subdirectories found in this directory.")
 
 
 def analyze_garment_image_with_ai(
@@ -371,6 +406,20 @@ def render_reverse_search_tab() -> None:
                 if hasattr(st, "dialog"):
                     folder_picker_dialog()
 
+        q1, q2, q3 = st.columns(3)
+        with q1:
+            if st.button("💼 /home/kat/workspace", key="preset_work"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace"
+                st.rerun()
+        with q2:
+            if st.button("🛍️ hot-girl-shopify", key="preset_shopify"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify"
+                st.rerun()
+        with q3:
+            if st.button("📄 japanese-invoice-transcriber", key="preset_inv"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber"
+                st.rerun()
+
         is_recursive = st.checkbox(
             "Recursive Scan (Scan all subdirectories in folder)",
             value=True,
@@ -381,23 +430,24 @@ def render_reverse_search_tab() -> None:
             p = Path(folder_path_str)
             if p.exists() and p.is_dir():
                 subdirs, img_paths = get_directory_info(p, recursive=is_recursive)
-                st.info(f"📁 Selected Folder: `{p}` — Found **{len(img_paths)}** total image file(s) across folder structure.")
+                st.success(f"📁 **Selected Folder:** `{p}` — Found **{len(img_paths)}** total image file(s) across folder structure.")
                 for img_p in img_paths:
                     try:
                         rel_path = str(img_p.relative_to(p)) if p in img_p.parents else img_p.name
                         items_to_process.append({
                             "name": rel_path,
                             "path": img_p,
-                            "bytes": None,  # read on demand
+                            "bytes": None,
                             "mime": f"image/{img_p.suffix.lower().lstrip('.')}",
                             "url": "",
                         })
                     except Exception as ex:
                         st.error(f"Failed to index {img_p.name}: {ex}")
             else:
-                st.warning("Directory path does not exist or is not a folder.")
+                st.warning("⚠️ Directory path does not exist or is not a folder.")
 
     elif input_mode == "Upload Images":
+        st.info("💡 You can select multiple images or drag-and-drop an entire set of photos into the box below:")
         uploaded_files = st.file_uploader(
             "Upload look studio photos (JPG, PNG, WEBP)",
             type=["jpg", "jpeg", "png", "webp"],
@@ -518,7 +568,6 @@ def render_reverse_search_tab() -> None:
         ])
 
         with view_tab_table:
-            # Build table records
             table_rows = []
             for res in results:
                 query = res.get("search_query") or res.get("suggested_title", "")
@@ -579,7 +628,6 @@ def render_reverse_search_tab() -> None:
                 key="reverse_search_data_editor",
             )
 
-            # Sync edits back to session state
             if edited_df is not None:
                 updated_results = []
                 for row, orig in zip(edited_df, results):
