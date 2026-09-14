@@ -2,7 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Supports external drive photo picking, local server directory crawling, and
+Includes native OS folder picker popup, local server directory crawling, and
 an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ from typing import Any, Optional
 from urllib.parse import quote, quote_plus
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
     import anthropic
@@ -136,6 +137,120 @@ def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Pat
     items, subdirs = crawl_local_directory(dir_path, recursive=recursive)
     images = [item["path"] for item in items if item.get("path")]
     return subdirs, images
+
+
+def render_native_folder_picker_html() -> Any:
+    """Render a native HTML5 folder picker button using webkitdirectory."""
+    html_code = """
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.min.js"></script>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 4px; }
+      .folder-btn-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .folder-btn {
+        background: linear-gradient(135deg, #ff4b4b 0%, #d93838 100%);
+        color: white;
+        font-weight: 600;
+        padding: 14px 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-block;
+        text-align: center;
+        font-size: 16px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        user-select: none;
+        transition: transform 0.1s ease, background 0.2s ease;
+      }
+      .folder-btn:hover {
+        background: linear-gradient(135deg, #d93838 0%, #b82e2e 100%);
+        transform: translateY(-1px);
+      }
+      #status {
+        font-size: 14px;
+        color: #111;
+        font-weight: 500;
+      }
+    </style>
+
+    <div class="folder-btn-wrapper">
+      <label class="folder-btn" for="nativeFolderInput">
+        📁 Click Here to Choose Folder from External Drive / Computer
+      </label>
+      <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="processFolder(this.files)">
+      <div id="status"></div>
+    </div>
+
+    <script>
+      function processFolder(files) {
+        const statusDiv = document.getElementById("status");
+        if (!files || files.length === 0) {
+          statusDiv.innerHTML = "No folder selected.";
+          return;
+        }
+
+        const validExts = [".jpg", ".jpeg", ".png", ".webp"];
+        const imageFiles = [];
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const lowerName = file.name.toLowerCase();
+          if (validExts.some(ext => lowerName.endsWith(ext))) {
+            imageFiles.push(file);
+          }
+        }
+
+        if (imageFiles.length === 0) {
+          statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in selected folder.";
+          return;
+        }
+
+        statusDiv.innerHTML = `⏳ Reading ${imageFiles.length} image(s) from folder...`;
+
+        const results = [];
+        let loadedCount = 0;
+
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          const reader = new FileReader();
+
+          reader.onload = function(e) {
+            const dataUrl = e.target.result;
+            const b64 = dataUrl.split(",")[1] || "";
+            
+            results.push({
+              name: file.webkitRelativePath || file.name,
+              mime: file.type || "image/jpeg",
+              data_b64: b64,
+              size: file.size
+            });
+
+            loadedCount++;
+            statusDiv.innerHTML = `⏳ Loaded ${loadedCount} / ${imageFiles.length} images...`;
+
+            if (loadedCount === imageFiles.length) {
+              statusDiv.innerHTML = `✅ Selected ${results.length} images from folder!`;
+              if (window.Streamlit) {
+                window.Streamlit.setComponentValue(results);
+              }
+            }
+          };
+
+          reader.readAsDataURL(file);
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", function() {
+        if (window.Streamlit) {
+          window.Streamlit.setFrameHeight(100);
+        }
+      });
+    </script>
+    """
+    return components.html(html_code, height=100)
 
 
 if hasattr(st, "dialog"):
@@ -387,42 +502,48 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Scan look photo folders from your external drive or local disk to identify Y2K/designer garments, "
+        "Click to select a photo folder from your external drive or local disk to identify Y2K/designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
-    input_tab_drive, input_tab_server = st.tabs([
-        "📁 Select Folder from External Drive / Computer",
+    input_tab_drive, input_tab_server, input_tab_files = st.tabs([
+        "📁 Choose Folder (External Drive / Computer)",
         "🖥️ Enter Server Directory Path",
+        "📄 Pick Individual Files",
     ])
 
     items_to_process = []
 
     with input_tab_drive:
-        st.write("### 📁 Select Folder / Photos from External Drive")
+        st.write("### 📁 Select Folder from External Drive / Computer")
         st.caption(
-            "Click below to open your computer's Finder / File Explorer, navigate to your External Drive, "
-            "and select your photos or drag the folder in!"
+            "Click the red button below. Your computer's native file/folder browser (Finder / Explorer) will pop up, "
+            "allowing you to navigate directly to your External Drive and select an entire folder!"
         )
 
-        uploaded_files = st.file_uploader(
-            "Click 'Browse files' -> Navigate to your External Drive -> Select all photos or folder",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-            key="external_drive_uploader",
-        )
-        if uploaded_files:
-            st.success(f"🖼️ Selected **{len(uploaded_files)}** photo(s) from your external drive!")
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
+        component_results = render_native_folder_picker_html()
+
+        if component_results:
+            st.session_state["native_folder_files"] = component_results
+
+        native_files = st.session_state.get("native_folder_files", [])
+        if native_files:
+            st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
+            for item in native_files:
+                try:
+                    b64 = item.get("data_b64", "")
+                    raw_bytes = base64.b64decode(b64) if b64 else None
+                    items_to_process.append({
+                        "name": item.get("name", "folder_image.jpg"),
+                        "bytes": raw_bytes,
+                        "mime": item.get("mime", "image/jpeg"),
+                        "url": "",
+                    })
+                except Exception as ex:
+                    st.error(f"Error decoding {item.get('name')}: {ex}")
 
     with input_tab_server:
         col_input, col_popup = st.columns([3.5, 1.2])
@@ -485,6 +606,22 @@ def render_reverse_search_tab() -> None:
             else:
                 st.warning("⚠️ Directory path does not exist or is not a folder.")
 
+    with input_tab_files:
+        uploaded_files = st.file_uploader(
+            "Upload individual look photos (JPG, PNG, WEBP)",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key="individual_files_uploader",
+        )
+        if uploaded_files:
+            for f in uploaded_files:
+                items_to_process.append({
+                    "name": f.name,
+                    "bytes": f.getvalue(),
+                    "mime": f.type or "image/jpeg",
+                    "url": "",
+                })
+
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         run_analysis = st.button(
@@ -495,6 +632,7 @@ def render_reverse_search_tab() -> None:
     with col_btn2:
         if st.button("🗑️ Clear Results"):
             st.session_state["reverse_search_results"] = []
+            st.session_state["native_folder_files"] = []
             st.rerun()
 
     if run_analysis and items_to_process:
