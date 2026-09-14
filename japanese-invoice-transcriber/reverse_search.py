@@ -2,8 +2,8 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Supports batch folder uploading, local server directory crawling, and
-an interactive editable table view (st.data_editor).
+Includes combined photo card + editable field layout, flattened comp search links,
+and 2000s era normalization rule.
 """
 from __future__ import annotations
 
@@ -71,12 +71,16 @@ def format_shopify_title(
     """Format a title according to Past Studies Shopify title conventions:
 
     Formula: [Designer] [Year/Era] [Collection Name] [Color/Print Description] [Garment Type(s)] [Set (if applicable)]
+    Note: Normalizes 'y2k' / 'y2k era' to '2000s'.
     """
     parts = []
     if designer:
         parts.append(designer.strip().lower())
     if year_era:
-        parts.append(year_era.strip().lower())
+        era_clean = year_era.strip().lower()
+        if era_clean in ["y2k", "y2k era"]:
+            era_clean = "2000s"
+        parts.append(era_clean)
     if collection:
         parts.append(collection.strip().lower())
     if print_color:
@@ -234,7 +238,7 @@ def analyze_garment_image_with_ai(
 
     b64_data = base64.b64encode(image_bytes).decode("utf-8")
 
-    prompt = """Analyze this Y2K/designer/vintage garment studio photo for an e-commerce catalog.
+    prompt = """Analyze this designer/vintage garment studio photo for an e-commerce catalog.
 
 Apply the following evaluation rules:
 1. GARMENT & SET LOGIC:
@@ -242,9 +246,9 @@ Apply the following evaluation rules:
    - If prints do NOT match (e.g. basic top + statement jeans), focus on the statement garment and ignore basic items.
    - If two distinct statement items are present, identify both separately and note if two listings are needed.
 
-2. IDENTIFICATION:
+2. IDENTIFICATION & ERA RULES:
    - Designer / Brand (e.g. Roberto Cavalli, Jean Paul Gaultier, Blumarine, Just Cavalli, Dolce & Gabbana, Missoni)
-   - Era / Year (e.g. 2002, S/S 2003, 2000s, Y2K, 1990s)
+   - Era / Year: Use '2000s', '1990s', or specific year like '2003', '2002', 'S/S 2003'. Do NOT use 'Y2K' or 'y2k' — use '2000s' instead.
    - Collection Name (if famous/identifiable, e.g. "Mon Amour", "Cyberbaba", "Butterflies")
    - Color & Print Description (e.g. white tiger tattoo graphic denim, blue floral zebra, pink snakeskin)
    - Garment Type (e.g. jacket skirt set, mesh tank top, asymmetrical handkerchief midi skirt, trousers)
@@ -316,6 +320,11 @@ Return ONLY a single valid JSON object with the following schema:
             "notes": text,
         }
 
+    # Normalize Y2K -> 2000s
+    year_era = data.get("year_era", "2000s")
+    if str(year_era).strip().lower() in ["y2k", "y2k era"]:
+        data["year_era"] = "2000s"
+
     if not data.get("suggested_title"):
         data["suggested_title"] = format_shopify_title(
             designer=data.get("designer", ""),
@@ -361,11 +370,16 @@ def generate_manifest_csv(results: list[dict[str, Any]]) -> str:
         max_p = item.get("max_price_usd", 0)
         price_str = f"${min_p} - ${max_p}" if min_p and max_p else "N/A"
 
+        # Normalize Y2K -> 2000s
+        year_era = item.get("year_era", "")
+        if str(year_era).strip().lower() in ["y2k", "y2k era"]:
+            year_era = "2000s"
+
         writer.writerow([
             item.get("filename") or item.get("image_url") or "Uploaded Image",
             item.get("item_type", "Single"),
             item.get("designer", ""),
-            item.get("year_era", ""),
+            year_era,
             item.get("collection", ""),
             item.get("print_color", ""),
             item.get("garment_type", ""),
@@ -387,7 +401,7 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Select a photo folder from your external drive or local disk to identify Y2K/designer garments, "
+        "Select a photo folder from your external drive or local disk to identify designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
@@ -403,7 +417,7 @@ def render_reverse_search_tab() -> None:
 
     with input_tab_drive:
         st.write("### 📁 Select Photos or Folder from External Drive")
-        st.info("💡 **How to select an entire folder:** Click **'Browse files'** -> Navigate to your External Drive -> Select all photos (`Cmd + A` / `Ctrl + A`), OR drag and drop the folder directly into the box below!")
+        st.info("💡 **How to select a folder:** Click **'Browse files'** -> Navigate to your External Drive -> Select all photos (`Cmd + A` / `Ctrl + A`), OR drag and drop the folder directly into the box below!")
 
         uploaded_files = st.file_uploader(
             "Upload look photos from folder",
@@ -566,10 +580,79 @@ def render_reverse_search_tab() -> None:
     if results:
         st.markdown(f"### Research Manifest ({len(results)} items)")
 
-        view_tab_table, view_tab_cards = st.tabs([
-            "📊 Editable Spreadsheet Table",
-            "🖼️ Photo Cards Grid",
+        csv_data = generate_manifest_csv(results)
+        st.download_button(
+            label="📥 Download Research Manifest as CSV",
+            data=csv_data,
+            file_name="reverse_search_manifest.csv",
+            mime="text/csv",
+            type="primary",
+        )
+
+        view_tab_combined, view_tab_table = st.tabs([
+            "📸 Combined Photo Cards & Editable Fields",
+            "📊 Bulk Spreadsheet View (st.data_editor)",
         ])
+
+        with view_tab_combined:
+            for idx, res in enumerate(results):
+                # Normalize Y2K -> 2000s
+                if str(res.get("year_era", "")).strip().lower() in ["y2k", "y2k era"]:
+                    res["year_era"] = "2000s"
+
+                with st.container(border=True):
+                    col_img, col_fields = st.columns([1.3, 3.7])
+
+                    with col_img:
+                        if res.get("image_bytes"):
+                            st.image(res["image_bytes"], use_container_width=True)
+                        elif res.get("image_url"):
+                            st.image(res["image_url"], use_container_width=True)
+                        st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
+
+                    with col_fields:
+                        res["suggested_title"] = st.text_input(
+                            "Shopify Title Formula",
+                            value=res.get("suggested_title", ""),
+                            key=f"title_{idx}",
+                        )
+
+                        f1, f2, f3 = st.columns(3)
+                        with f1:
+                            res["designer"] = st.text_input("Designer / Brand", value=res.get("designer", ""), key=f"des_{idx}")
+                            res["year_era"] = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
+                            res["item_type"] = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
+                        with f2:
+                            res["collection"] = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
+                            res["print_color"] = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
+                            res["garment_type"] = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
+                        with f3:
+                            res["fabric"] = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
+                            res["min_price_usd"] = st.number_input("Est. Min Price ($USD)", value=int(res.get("min_price_usd") or 0), key=f"pmin_{idx}")
+                            res["max_price_usd"] = st.number_input("Est. Max Price ($USD)", value=int(res.get("max_price_usd") or 0), key=f"pmax_{idx}")
+
+                        res["notes"] = st.text_input("Notes", value=res.get("notes", ""), key=f"notes_{idx}")
+
+                        st.markdown("**🔎 Flattened Comp Search Links:**")
+                        query = res.get("search_query") or res.get("suggested_title", "")
+                        img_url = res.get("image_url", "")
+                        links = build_search_urls(query, img_url)
+
+                        l1, l2, l3, l4, l5, l6, l7 = st.columns(7)
+                        with l1:
+                            st.link_button("🌐 Lens", links["Google Lens"], use_container_width=True)
+                        with l2:
+                            st.link_button("🛍️ Grailed", links["Grailed"], use_container_width=True)
+                        with l3:
+                            st.link_button("👗 Vestiaire", links["Vestiaire Collective"], use_container_width=True)
+                        with l4:
+                            st.link_button("💎 1stDibs", links["1stDibs"], use_container_width=True)
+                        with l5:
+                            st.link_button("🏷️ eBay", links["eBay"], use_container_width=True)
+                        with l6:
+                            st.link_button("📦 RealReal", links["The RealReal"], use_container_width=True)
+                        with l7:
+                            st.link_button("🛍️ Depop", links["Depop"], use_container_width=True)
 
         with view_tab_table:
             table_rows = []
@@ -578,11 +661,15 @@ def render_reverse_search_tab() -> None:
                 img_url = res.get("image_url", "")
                 links = build_search_urls(query, img_url)
 
+                era_val = res.get("year_era", "2000s")
+                if str(era_val).strip().lower() in ["y2k", "y2k era"]:
+                    era_val = "2000s"
+
                 table_rows.append({
                     "Source": res.get("filename") or res.get("image_url") or "External Drive Photo",
                     "Item Type": res.get("item_type", "Single"),
                     "Designer / Brand": res.get("designer", ""),
-                    "Year / Era": res.get("year_era", ""),
+                    "Year / Era": era_val,
                     "Collection": res.get("collection", ""),
                     "Print / Color": res.get("print_color", ""),
                     "Garment Type": res.get("garment_type", ""),
@@ -651,64 +738,3 @@ def render_reverse_search_tab() -> None:
                     updated_results.append(item_copy)
 
                 st.session_state["reverse_search_results"] = updated_results
-
-            csv_data = generate_manifest_csv(st.session_state["reverse_search_results"])
-            st.download_button(
-                label="📥 Download Research Manifest as CSV",
-                data=csv_data,
-                file_name="reverse_search_manifest.csv",
-                mime="text/csv",
-                type="primary",
-            )
-
-        with view_tab_cards:
-            for idx, res in enumerate(results):
-                with st.container(border=True):
-                    c_img, c_details, c_links = st.columns([1.2, 2.5, 1.8])
-
-                    with c_img:
-                        if res.get("image_bytes"):
-                            st.image(res["image_bytes"], use_container_width=True)
-                        elif res.get("image_url"):
-                            st.image(res["image_url"], use_container_width=True)
-                        st.caption(f"**Source:** {res.get('filename') or 'URL'}")
-
-                    with c_details:
-                        title_input = st.text_input(
-                            "Shopify Title Formula",
-                            value=res.get("suggested_title", ""),
-                            key=f"title_card_{idx}",
-                        )
-                        res["suggested_title"] = title_input
-
-                        c_d1, c_d2 = st.columns(2)
-                        with c_d1:
-                            res["designer"] = st.text_input("Designer/Brand", res.get("designer", ""), key=f"des_card_{idx}")
-                            res["year_era"] = st.text_input("Year / Era", res.get("year_era", ""), key=f"era_card_{idx}")
-                            res["item_type"] = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_card_{idx}")
-                        with c_d2:
-                            res["collection"] = st.text_input("Collection", res.get("collection", ""), key=f"coll_card_{idx}")
-                            res["print_color"] = st.text_input("Print / Colorway", res.get("print_color", ""), key=f"print_card_{idx}")
-                            res["garment_type"] = st.text_input("Garment Type", res.get("garment_type", ""), key=f"garment_card_{idx}")
-
-                        p_col1, p_col2 = st.columns(2)
-                        with p_col1:
-                            res["min_price_usd"] = st.number_input("Est. Min Price ($USD)", value=int(res.get("min_price_usd") or 0), key=f"pmin_card_{idx}")
-                        with p_col2:
-                            res["max_price_usd"] = st.number_input("Est. Max Price ($USD)", value=int(res.get("max_price_usd") or 0), key=f"pmax_card_{idx}")
-
-                        if res.get("notes"):
-                            st.caption(f"**Notes:** {res['notes']}")
-
-                    with c_links:
-                        st.markdown("**🔎 Comp Search Links**")
-                        query = res.get("search_query") or res.get("suggested_title", "")
-                        img_url = res.get("image_url", "")
-                        links = build_search_urls(query, img_url)
-
-                        st.link_button("🌐 Google Lens Search", links["Google Lens"], use_container_width=True)
-                        st.link_button("🛍️ Grailed Comps", links["Grailed"], use_container_width=True)
-                        st.link_button("👗 Vestiaire Collective", links["Vestiaire Collective"], use_container_width=True)
-                        st.link_button("💎 1stDibs Comps", links["1stDibs"], use_container_width=True)
-                        st.link_button("🏷️ eBay Search", links["eBay"], use_container_width=True)
-                        st.link_button("📦 The RealReal", links["The RealReal"], use_container_width=True)

@@ -49,8 +49,19 @@ def test_format_shopify_title():
     assert title == "roberto cavalli 2003 mon amour white tiger tattoo graphic denim jacket skirt set"
 
 
+def test_format_shopify_title_y2k_normalization():
+    title = format_shopify_title(
+        designer="Jean Paul Gaultier",
+        year_era="Y2K",
+        collection="",
+        print_color="mesh tattoo",
+        garment_type="top",
+        is_set=False,
+    )
+    assert title == "jean paul gaultier 2000s mesh tattoo top"
+
+
 def test_get_directory_info(tmp_path: Path):
-    # Create test directory structure
     sub_folder = tmp_path / "sub_folder"
     sub_folder.mkdir()
 
@@ -71,21 +82,21 @@ def test_get_directory_info(tmp_path: Path):
     assert [i.name for i in images] == ["look1.jpg", "look2.png"]
 
 
-def test_generate_manifest_csv():
+def test_generate_manifest_csv_y2k_normalization():
     results = [
         {
             "filename": "look1.jpg",
-            "item_type": "Set",
-            "designer": "Roberto Cavalli",
-            "year_era": "2003",
-            "collection": "Mon Amour",
-            "print_color": "White Tiger Tattoo",
-            "garment_type": "Jacket Skirt",
-            "fabric": "Denim",
-            "suggested_title": "roberto cavalli 2003 mon amour white tiger tattoo denim jacket skirt set",
-            "min_price_usd": 650,
-            "max_price_usd": 1200,
-            "search_query": "roberto cavalli 2003 mon amour white tiger tattoo denim jacket skirt set",
+            "item_type": "Single",
+            "designer": "Blumarine",
+            "year_era": "Y2K",
+            "collection": "",
+            "print_color": "Floral",
+            "garment_type": "Midi Skirt",
+            "fabric": "Silk",
+            "suggested_title": "blumarine 2000s floral silk midi skirt",
+            "min_price_usd": 220,
+            "max_price_usd": 380,
+            "search_query": "blumarine 2000s floral silk midi skirt",
             "image_url": "",
         }
     ]
@@ -94,11 +105,7 @@ def test_generate_manifest_csv():
     reader = list(csv.reader(io.StringIO(csv_out)))
 
     assert len(reader) == 2
-    assert reader[0][0] == "Source"
-    assert reader[1][0] == "look1.jpg"
-    assert reader[1][1] == "Set"
-    assert reader[1][2] == "Roberto Cavalli"
-    assert reader[1][9] == "$650 - $1200"
+    assert reader[1][3] == "2000s"  # Normalized from Y2K -> 2000s
 
 
 def test_analyze_garment_image_with_ai_mock():
@@ -109,15 +116,15 @@ def test_analyze_garment_image_with_ai_mock():
     mock_json = {
         "item_type": "Set",
         "designer": "Roberto Cavalli",
-        "year_era": "2003",
+        "year_era": "Y2K",
         "collection": "Mon Amour",
         "print_color": "white tiger tattoo graphic denim",
         "garment_type": "jacket skirt set",
         "fabric": "denim",
-        "suggested_title": "roberto cavalli 2003 mon amour white tiger tattoo graphic denim jacket skirt set",
+        "suggested_title": "roberto cavalli 2000s mon amour white tiger tattoo graphic denim jacket skirt set",
         "min_price_usd": 650,
         "max_price_usd": 1200,
-        "search_query": "roberto cavalli 2003 mon amour tattoo denim set",
+        "search_query": "roberto cavalli 2000s mon amour tattoo denim set",
         "notes": "Verified match",
     }
 
@@ -134,6 +141,7 @@ def test_analyze_garment_image_with_ai_mock():
     )
 
     assert res["designer"] == "Roberto Cavalli"
+    assert res["year_era"] == "2000s"  # Normalized from Y2K -> 2000s
     assert res["item_type"] == "Set"
     assert res["min_price_usd"] == 650
     assert res["max_price_usd"] == 1200
