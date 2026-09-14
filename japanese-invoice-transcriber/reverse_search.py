@@ -2,7 +2,7 @@
 
 Performs batch reverse image search, garment extraction, competitor pricing
 research, and Shopify title generation for Y2K/vintage luxury studio shots.
-Includes native OS folder picker component, local server directory crawling, and
+Supports batch folder uploading, local server directory crawling, and
 an interactive editable table view (st.data_editor).
 """
 from __future__ import annotations
@@ -18,7 +18,6 @@ from typing import Any, Optional
 from urllib.parse import quote, quote_plus
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 try:
     import anthropic
@@ -29,12 +28,6 @@ try:
     from PIL import Image
 except ImportError:
     Image = None
-
-COMPONENT_DIR = Path(__file__).parent / "folder_picker_component"
-_native_folder_picker = components.declare_component(
-    "native_folder_picker",
-    path=str(COMPONENT_DIR),
-)
 
 RESALE_PLATFORMS = [
     ("Google Lens", "https://lens.google.com/uploadbyurl?url={url}"),
@@ -143,11 +136,6 @@ def get_directory_info(dir_path: Path, recursive: bool = True) -> tuple[list[Pat
     items, subdirs = crawl_local_directory(dir_path, recursive=recursive)
     images = [item["path"] for item in items if item.get("path")]
     return subdirs, images
-
-
-def render_native_folder_picker() -> Any:
-    """Render native HTML5 folder picker component."""
-    return _native_folder_picker(key="native_folder_picker_comp")
 
 
 if hasattr(st, "dialog"):
@@ -399,64 +387,32 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Click to select a photo folder from your external drive or local disk to identify Y2K/designer garments, "
+        "Select a photo folder from your external drive or local disk to identify Y2K/designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
-    if "native_folder_files" in st.session_state and not isinstance(st.session_state["native_folder_files"], list):
-        st.session_state["native_folder_files"] = []
-
-    input_tab_drive, input_tab_server, input_tab_files = st.tabs([
-        "📁 Choose Folder (External Drive / Computer)",
+    input_tab_drive, input_tab_server = st.tabs([
+        "📁 Select Folder or Photos (External Drive / Computer)",
         "🖥️ Enter Server Directory Path",
-        "📄 Pick Individual Files",
     ])
 
     items_to_process = []
 
     with input_tab_drive:
-        st.write("### 📁 Select Folder from External Drive / Computer")
-        st.caption(
-            "Click the red button below. Your computer's native file/folder browser (Finder / Explorer) will pop up, "
-            "allowing you to navigate directly to your External Drive and select an entire folder!"
-        )
+        st.write("### 📁 Select Photos or Folder from External Drive")
+        st.info("💡 **How to select an entire folder:** Click **'Browse files'** -> Navigate to your External Drive -> Select all photos (`Cmd + A` / `Ctrl + A`), OR drag and drop the folder directly into the box below!")
 
-        component_results = render_native_folder_picker()
-
-        if isinstance(component_results, list) and len(component_results) > 0:
-            st.session_state["native_folder_files"] = component_results
-
-        native_files = st.session_state.get("native_folder_files", [])
-        if not isinstance(native_files, list):
-            st.session_state["native_folder_files"] = []
-            native_files = []
-
-        if isinstance(native_files, list) and len(native_files) > 0:
-            st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
-            for item in native_files:
-                try:
-                    b64 = item.get("data_b64", "")
-                    raw_bytes = base64.b64decode(b64) if b64 else None
-                    items_to_process.append({
-                        "name": item.get("name", "folder_image.jpg"),
-                        "bytes": raw_bytes,
-                        "mime": item.get("mime", "image/jpeg"),
-                        "url": "",
-                    })
-                except Exception as ex:
-                    st.error(f"Error decoding {item.get('name')}: {ex}")
-
-        st.divider()
         uploaded_files = st.file_uploader(
-            "Alternative: Select or Drag & Drop folder files directly",
+            "Upload look photos from folder",
             type=["jpg", "jpeg", "png", "webp"],
             accept_multiple_files=True,
-            key="drive_fallback_uploader",
+            key="folder_photos_uploader",
         )
         if uploaded_files:
+            st.success(f"🖼️ Selected **{len(uploaded_files)}** photo(s) from folder!")
             for f in uploaded_files:
                 items_to_process.append({
                     "name": f.name,
@@ -526,22 +482,6 @@ def render_reverse_search_tab() -> None:
             else:
                 st.warning("⚠️ Directory path does not exist or is not a folder.")
 
-    with input_tab_files:
-        uploaded_files = st.file_uploader(
-            "Upload individual look photos (JPG, PNG, WEBP)",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-            key="individual_files_uploader",
-        )
-        if uploaded_files:
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
-
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         run_analysis = st.button(
@@ -552,7 +492,6 @@ def render_reverse_search_tab() -> None:
     with col_btn2:
         if st.button("🗑️ Clear Results"):
             st.session_state["reverse_search_results"] = []
-            st.session_state["native_folder_files"] = []
             st.rerun()
 
     if run_analysis and items_to_process:

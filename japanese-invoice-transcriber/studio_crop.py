@@ -163,7 +163,7 @@ def render_studio_crop_tab():
             with col3:
                 if state_key in st.session_state:
                     st.markdown("**Human Approval & Shopify Push**")
-                    if st.button(f"✓ Approve & Update Shopify (Photo {idx+1})", key=f"btn_push_{img_id}", kind="primary"):
+                    if st.button(f"✓ Approve & Update Shopify (Photo {idx+1})", key=f"btn_push_{img_id}", type="primary"):
                         fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
                         success = update_shopify_product_image(prod_id, img_id, fixed_img)
                         if success:
