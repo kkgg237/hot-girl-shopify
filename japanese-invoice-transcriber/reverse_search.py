@@ -72,12 +72,14 @@ RESALE_PLATFORMS = [
 
 
 def build_search_urls(query: str, image_url: str = "") -> dict[str, str]:
-    """Generate direct search URLs for Google Lens and major resale platforms."""
+    """Generate direct search URLs for Bing Visual Search, Google Lens, and major resale platforms."""
     encoded_q = quote_plus(query)
     urls: dict[str, str] = {}
     if image_url:
+        urls["Bing Visual"] = f"https://www.bing.com/images/search?q=imgurl:{quote(image_url, safe='')}&view=detailv2&iss=sbi"
         urls["Google Lens"] = f"https://lens.google.com/uploadbyurl?url={quote(image_url, safe='')}"
     else:
+        urls["Bing Visual"] = f"https://www.bing.com/images/search?q={encoded_q}"
         urls["Google Lens"] = f"https://lens.google.com/search?p={encoded_q}"
 
     urls["Google Search"] = f"https://www.google.com/search?q={encoded_q}"
@@ -629,21 +631,23 @@ def render_reverse_search_tab() -> None:
                             img_url = res.get("image_url", "")
                         links = build_search_urls(query, img_url)
 
-                        l1, l2, l3, l4, l5, l6, l7 = st.columns(7)
+                        l1, l2, l3, l4, l5, l6, l7, l8 = st.columns(8)
                         with l1:
-                            st.link_button("🌐 Lens", links["Google Lens"], use_container_width=True)
+                            st.link_button("👁️ Bing Visual", links.get("Bing Visual", "#"), use_container_width=True)
                         with l2:
-                            st.link_button("🛍️ Grailed", links["Grailed"], use_container_width=True)
+                            st.link_button("🌐 Lens", links.get("Google Lens", "#"), use_container_width=True)
                         with l3:
-                            st.link_button("👗 Vestiaire", links["Vestiaire Collective"], use_container_width=True)
+                            st.link_button("🛍️ Grailed", links.get("Grailed", "#"), use_container_width=True)
                         with l4:
-                            st.link_button("💎 1stDibs", links["1stDibs"], use_container_width=True)
+                            st.link_button("👗 Vestiaire", links.get("Vestiaire Collective", "#"), use_container_width=True)
                         with l5:
-                            st.link_button("🏷️ eBay", links["eBay"], use_container_width=True)
+                            st.link_button("💎 1stDibs", links.get("1stDibs", "#"), use_container_width=True)
                         with l6:
-                            st.link_button("📦 RealReal", links["The RealReal"], use_container_width=True)
+                            st.link_button("🏷️ eBay", links.get("eBay", "#"), use_container_width=True)
                         with l7:
-                            st.link_button("🛍️ Depop", links["Depop"], use_container_width=True)
+                            st.link_button("📦 RealReal", links.get("The RealReal", "#"), use_container_width=True)
+                        with l8:
+                            st.link_button("🛍️ Depop", links.get("Depop", "#"), use_container_width=True)
 
         with view_tab_table:
             table_rows = []
@@ -674,6 +678,7 @@ def render_reverse_search_tab() -> None:
                     "Est. Min Price ($)": int(res.get("min_price_usd") or 0),
                     "Est. Max Price ($)": int(res.get("max_price_usd") or 0),
                     "Search Query": query,
+                    "Bing Visual Link": links.get("Bing Visual", ""),
                     "Google Lens Link": links.get("Google Lens", ""),
                     "Grailed Link": links.get("Grailed", ""),
                     "Vestiaire Link": links.get("Vestiaire Collective", ""),
@@ -697,6 +702,7 @@ def render_reverse_search_tab() -> None:
                 "Est. Min Price ($)": st.column_config.NumberColumn("Min Price ($)", format="$%d", width="small"),
                 "Est. Max Price ($)": st.column_config.NumberColumn("Max Price ($)", format="$%d", width="small"),
                 "Search Query": st.column_config.TextColumn("Search Query", width="medium"),
+                "Bing Visual Link": st.column_config.LinkColumn("Bing Visual", display_text="👁️ Bing Visual"),
                 "Google Lens Link": st.column_config.LinkColumn("Google Lens", display_text="🔎 Lens"),
                 "Grailed Link": st.column_config.LinkColumn("Grailed", display_text="🛍️ Grailed"),
                 "Vestiaire Link": st.column_config.LinkColumn("Vestiaire", display_text="👗 Vestiaire"),
