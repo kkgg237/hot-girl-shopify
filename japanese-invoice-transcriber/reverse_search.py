@@ -959,7 +959,7 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
             vendor,
             "Apparel & Accessories",
             "",
-            "",
+            str(item.get("tags") or ""),
             "TRUE",
             "Title",
             "Default Title",
@@ -1028,6 +1028,9 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
         photo_p = Path(item["image_path"]) if item.get("image_path") and Path(item["image_path"]).exists() else None
         sku = generate_sku_for_item(designer, idx)
 
+        tags_raw = item.get("tags", "")
+        tags_list = [t.strip() for t in str(tags_raw).split(",") if t.strip()] if tags_raw else []
+
         payload = build_product_payload(
             item={},
             title=title,
@@ -1037,7 +1040,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
             price=listing_p,
             cost_usd=cost_p,
             photo_path=photo_p,
-            tags=[],
+            tags=tags_list,
             body_html=body_html,
         )
 
@@ -1727,6 +1730,8 @@ def render_reverse_search_tab() -> None:
                 hi_p = res.get("max_price_usd") or ""
                 compare_at = str(hi_p) if hi_p and list_p and int(hi_p) > int(list_p) else ""
 
+                tags_val = str(res.get("tags") or "")
+
                 preview_rows.append({
                     "Photo": img_u,
                     "Handle": handle,
@@ -1735,7 +1740,7 @@ def render_reverse_search_tab() -> None:
                     "Vendor": vendor,
                     "Product Category": "Apparel & Accessories",
                     "Type": "",
-                    "Tags": "",
+                    "Tags": tags_val,
                     "Published": "TRUE",
                     "Option1 Name": "Title",
                     "Option1 Value": "Default Title",
@@ -1755,7 +1760,7 @@ def render_reverse_search_tab() -> None:
                     "Status": "draft",
                 })
 
-            st.dataframe(
+            edited_export_df = st.data_editor(
                 preview_rows,
                 column_config={
                     "Photo": st.column_config.ImageColumn("Photo", width="small"),
@@ -1765,7 +1770,7 @@ def render_reverse_search_tab() -> None:
                     "Vendor": st.column_config.TextColumn("Vendor", width="small"),
                     "Product Category": st.column_config.TextColumn("Product Category", width="medium"),
                     "Type": st.column_config.TextColumn("Type", width="small"),
-                    "Tags": st.column_config.TextColumn("Tags", width="medium"),
+                    "Tags": st.column_config.TextColumn("Tags (Editable)", width="large"),
                     "Variant SKU": st.column_config.TextColumn("Variant SKU", width="small"),
                     "Variant Price": st.column_config.TextColumn("Variant Price ($)", width="small"),
                     "Cost per item": st.column_config.TextColumn("Cost per item ($)", width="small"),
@@ -1774,4 +1779,17 @@ def render_reverse_search_tab() -> None:
                 },
                 use_container_width=True,
                 hide_index=True,
+                key="step3_export_data_editor",
             )
+
+            if st.button("💾 Save Tag & Export Edits", type="primary", use_container_width=True, key="save_step3_btn"):
+                if edited_export_df is not None:
+                    for row, orig in zip(edited_export_df, results):
+                        orig["tags"] = str(row.get("Tags") or "").strip()
+                        orig["suggested_title"] = str(row.get("Title") or "").strip()
+                        orig["cost_price_usd"] = row.get("Cost per item", orig.get("cost_price_usd"))
+                        orig["listing_price_usd"] = row.get("Variant Price", orig.get("listing_price_usd"))
+
+                    st.session_state["reverse_search_results"] = results
+                    st.success("🎉 Tags and export values saved!")
+                    st.rerun()
