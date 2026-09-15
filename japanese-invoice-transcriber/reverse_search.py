@@ -256,20 +256,52 @@ def format_shopify_title(
     print_color: str = "",
     garment_type: str = "",
     is_set: bool = False,
+    notes: str = "",
+    is_runway: bool = False,
+    runway_season: str = "SS",
+    runway_year: str = "",
 ) -> str:
     """Format a title according to Past Studies Shopify title conventions:
 
-    Formula: [Designer] [Year/Era] [Collection Name] [Color/Print Description] [Garment Type(s)] [Set (if applicable)]
+    Standard Formula: [Year/Era] [Designer] [Color/Print Description] [Garment Type(s)] [Set (if applicable)]
+    Runway Formula: [Year] [Season] Runway [Designer] [Color/Print Description] [Garment Type]
+    Example Runway: 2002 SS Runway Roberto Cavalli Black Blouse
     Note: Normalizes 'y2k' / 'y2k era' to '2000s'.
     """
+    import re
+    notes_lower = notes.lower() if notes else ""
+    if "runway" in notes_lower or is_runway:
+        year_match = re.search(r"\b(19\d\d|20\d\d)\b", notes_lower + " " + str(year_era) + " " + str(runway_year))
+        year = year_match.group(1) if year_match else (runway_year or "2000")
+
+        season = runway_season.strip().upper() if runway_season else "SS"
+        if any(s in notes_lower for s in ["spring", "summer", "s/s", "ss"]):
+            season = "SS"
+        elif any(f in notes_lower for f in ["fall", "winter", "f/w", "fw", "autumn"]):
+            season = "FW"
+
+        parts = [year, season, "Runway"]
+        if designer:
+            parts.append(designer.strip().title())
+        if print_color:
+            parts.append(print_color.strip().title())
+        if garment_type:
+            parts.append(garment_type.strip().title())
+
+        title = " ".join(parts).strip()
+        if is_set and not title.lower().endswith("set"):
+            title += " Set"
+        return title
+
+    # Standard non-runway title formula
     parts = []
-    if designer:
-        parts.append(designer.strip().lower())
     if year_era:
         era_clean = year_era.strip().lower()
         if era_clean in ["y2k", "y2k era"]:
             era_clean = "2000s"
         parts.append(era_clean)
+    if designer:
+        parts.append(designer.strip().lower())
     if collection:
         parts.append(collection.strip().lower())
     if print_color:
