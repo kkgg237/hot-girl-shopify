@@ -63,6 +63,13 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
 def fetch_serpapi_visual_matches(image_url: str) -> list[dict[str, Any]]:
     """Query SerpAPI Google Lens API with public image URL to fetch exact visual matches."""
     serp_key = os.getenv("SERPAPI_KEY", "")
+    if not serp_key:
+        try:
+            from dotenv import find_dotenv, load_dotenv
+            load_dotenv(find_dotenv(usecwd=True), override=True)
+            serp_key = os.getenv("SERPAPI_KEY", "")
+        except Exception:
+            pass
     if not serp_key or not image_url:
         return []
     try:
