@@ -15,18 +15,20 @@ from reverse_search import (
     format_shopify_title,
     generate_manifest_csv,
     get_directory_info,
+    save_image_for_public_lens,
 )
 
 
-def test_build_search_urls():
-    query = "roberto cavalli 2003 mon amour"
-    urls = build_search_urls(query)
+def test_save_image_for_public_lens():
+    fake_bytes = b"fake_jpg_content_12345"
+    url = save_image_for_public_lens(fake_bytes, "test_look.jpg")
 
-    assert "Google Lens" in urls
-    assert "Grailed" in urls
-    assert "1stDibs" in urls
-    assert "eBay" in urls
-    assert "roberto+cavalli" in urls["Grailed"]
+    assert url.startswith("https://invoices.paststudies-tools/app/static/lens_cache/")
+    assert url.endswith(".jpg")
+
+    urls = build_search_urls("roberto cavalli kamasutra", image_url=url)
+    assert "uploadbyurl" in urls["Google Lens"]
+    assert "https%3A%2F%2Finvoices.paststudies-tools" in urls["Google Lens"]
 
 
 def test_build_search_urls_with_image_url():

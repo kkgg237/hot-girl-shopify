@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -25,6 +26,28 @@ _native_folder_picker = components.declare_component(
     "native_folder_picker",
     path=str(COMPONENT_DIR),
 )
+
+STATIC_LENS_DIR = Path(__file__).parent / "static" / "lens_cache"
+
+
+def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
+    """Save image bytes to static/lens_cache directory and return public URL for Google Lens."""
+    if not image_bytes:
+        return ""
+    try:
+        STATIC_LENS_DIR.mkdir(parents=True, exist_ok=True)
+        img_hash = hashlib.md5(image_bytes).hexdigest()
+        ext = ".jpg"
+        if filename:
+            p_ext = Path(filename).suffix.lower()
+            if p_ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                ext = p_ext
+        out_file = STATIC_LENS_DIR / f"{img_hash}{ext}"
+        if not out_file.exists():
+            out_file.write_bytes(image_bytes)
+        return f"https://invoices.paststudies-tools/app/static/lens_cache/{img_hash}{ext}"
+    except Exception:
+        return ""
 
 try:
     import anthropic
@@ -371,7 +394,13 @@ def generate_manifest_csv(results: list[dict[str, Any]]) -> str:
 
     for item in results:
         query = item.get("search_query") or item.get("suggested_title", "")
-        img_url = item.get("image_url", "")
+        img_url = item.get("public_image_url")
+        if not img_url and item.get("image_bytes"):
+            img_url = save_image_for_public_lens(item["image_bytes"], item.get("filename", ""))
+            item["public_image_url"] = img_url
+        if not img_url:
+            img_url = item.get("image_url", "")
+
         links = build_search_urls(query, img_url)
         min_p = item.get("min_price_usd", 0)
         max_p = item.get("max_price_usd", 0)
@@ -592,7 +621,12 @@ def render_reverse_search_tab() -> None:
 
                         st.markdown("**🔎 Flattened Comp Search Links:**")
                         query = res.get("search_query") or res.get("suggested_title", "")
-                        img_url = res.get("image_url", "")
+                        img_url = res.get("public_image_url")
+                        if not img_url and res.get("image_bytes"):
+                            img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
+                            res["public_image_url"] = img_url
+                        if not img_url:
+                            img_url = res.get("image_url", "")
                         links = build_search_urls(query, img_url)
 
                         l1, l2, l3, l4, l5, l6, l7 = st.columns(7)
@@ -615,7 +649,12 @@ def render_reverse_search_tab() -> None:
             table_rows = []
             for res in results:
                 query = res.get("search_query") or res.get("suggested_title", "")
-                img_url = res.get("image_url", "")
+                img_url = res.get("public_image_url")
+                if not img_url and res.get("image_bytes"):
+                    img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
+                    res["public_image_url"] = img_url
+                if not img_url:
+                    img_url = res.get("image_url", "")
                 links = build_search_urls(query, img_url)
 
                 era_val = res.get("year_era", "2000s")
