@@ -750,16 +750,36 @@ def calculate_listing_price(cost: float = 0.0, min_comp: float = 0.0, max_comp: 
     return 0
 
 
+def get_vendor_for_item(designer: str = "") -> str:
+    """Determine Shopify Vendor value based on brand rules:
+    - Cavalli lines (Just Cavalli, Class Cavalli, Cavalli Freedom, Roberto Cavalli) -> 'Roberto Cavalli'
+    - Unknown/blank -> 'Vintage'
+    - Otherwise -> designer.title()
+    """
+    clean_b = designer.strip() if designer else ""
+    if not clean_b or clean_b.lower() in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"]:
+        return "Vintage"
+    if "cavalli" in clean_b.lower():
+        return "Roberto Cavalli"
+    return clean_b.title()
+
+
 def generate_sku_for_item(brand: str = "", idx: int = 1) -> str:
-    """Generate canonical Shopify SKU matching codebase standard in to_shopify.py: {BRAND_PREFIX}_{YYMM}_{NNN}."""
+    """Generate canonical Shopify SKU matching codebase standard in to_shopify.py: {BRAND_PREFIX}_{YYMM}_{NNN}.
+    Rule: Cavalli (any line) is always ROB. Unknown brand is UNK.
+    """
     from datetime import datetime
     yymm = datetime.now().strftime("%y%m")
     clean_b = brand.strip() if brand else ""
-    if not clean_b or clean_b.lower() in ["unknown", "unbranded", "generic", "none", "n/a", "unsure"]:
+    low_b = clean_b.lower()
+
+    if "cavalli" in low_b:
+        prefix = "ROB"
+    elif not clean_b or low_b in ["unknown", "unbranded", "generic", "none", "n/a", "unsure"]:
         prefix = "UNK"
     else:
         BRAND_PREFIXES = {
-            "roberto cavalli": "CAV", "cavalli": "CAV", "burberry": "BUR",
+            "burberry": "BUR",
             "jean paul gaultier": "JPG", "gaultier": "JPG", "blumarine": "BLU",
             "dolce & gabbana": "DG", "dolce and gabbana": "DG", "gucci": "GUC",
             "prada": "PRA", "chanel": "CHA", "dior": "CD", "christian dior": "CD",
@@ -767,12 +787,12 @@ def generate_sku_for_item(brand: str = "", idx: int = 1) -> str:
             "fendi": "FEN", "giorgio armani": "GA", "armani": "ARM",
             "vivienne westwood": "VWW", "moschino": "MOS", "missoni": "MIS",
         }
-        low_b = clean_b.lower()
         if low_b in BRAND_PREFIXES:
             prefix = BRAND_PREFIXES[low_b]
         else:
             letters = "".join(c for c in clean_b if c.isalpha())[:3].upper()
             prefix = letters or "UNK"
+
     return f"{prefix}_{yymm}_{idx:03d}"
 
 
@@ -812,7 +832,7 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
     for idx, item in enumerate(results, 1):
         title = item.get("suggested_title") or f"Item {idx}"
         designer = item.get("designer", "").strip()
-        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
+        vendor = get_vendor_for_item(designer)
 
         year_era = item.get("year_era", "2000s")
         garment_type = item.get("garment_type", "Garment")
@@ -827,7 +847,7 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
 
         body_parts = ["<p>"]
         if designer:
-            body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
+            body_parts.append(f"<strong>Brand:</strong> {designer.title()}<br>")
         if year_era:
             body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
         if collection:
@@ -909,7 +929,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
     for idx, item in enumerate(results, 1):
         title = item.get("suggested_title") or f"Item {idx}"
         designer = item.get("designer", "").strip()
-        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
+        vendor = get_vendor_for_item(designer)
         garment_type = item.get("garment_type", "Garment")
         year_era = item.get("year_era", "2000s")
         collection = item.get("collection", "")
@@ -1194,25 +1214,6 @@ def render_reverse_search_tab() -> None:
             st.session_state["selected_folder_path"] = None
             st.rerun()
 
-    dedup_mode = st.radio(
-        "🎯 Auto-Deduplicate Multi-Angle Duplicate Shots:",
-        ["🖼️ Visual Similarity (AI Image Matching - No Filename Needed)", "🏷️ Filename Suffixes", "🚫 No Deduplication (Process All Photos)"],
-        index=0,
-        horizontal=True,
-        help="Visual Similarity uses image pixels to group front/back/tag shots of the same garment regardless of filename.",
-    )
-
-    if items_to_process and "Visual Similarity" in dedup_mode:
-        items_to_process, dups_skipped = deduplicate_photo_items_visually(items_to_process, similarity_threshold=0.72)
-        if dups_skipped > 0:
-            st.info(f"✨ Visually grouped photos into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} multi-angle duplicate shots).")
-        else:
-            st.info(f"✨ Verified **{len(items_to_process)} unique garment(s)** (no visual duplicates detected).")
-    elif items_to_process and "Filename Suffixes" in dedup_mode:
-        items_to_process, dups_skipped = deduplicate_photo_items(items_to_process)
-        if dups_skipped > 0:
-            st.info(f"✨ Grouped by filename into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} duplicate shots).")
-
     if not items_to_process:
         st.warning("⚠️ **0 photos currently loaded.** Please click **'Select Photo Folder'** above to pick your folder.")
 
@@ -1386,68 +1387,9 @@ def render_reverse_search_tab() -> None:
                 "Shopify titles auto-regenerate in real-time as you edit!"
             )
 
-            sub_v1, sub_v2 = st.tabs(["📸 Combined Photo Cards", "📊 Bulk Spreadsheet View"])
+            sub_v1, sub_v2 = st.tabs(["📊 Bulk Spreadsheet View (st.data_editor)", "📸 Combined Photo Cards"])
 
             with sub_v1:
-                for idx, res in enumerate(results):
-                    # Normalize Y2K -> 2000s
-                    if str(res.get("year_era", "")).strip().lower() in ["y2k", "y2k era"]:
-                        res["year_era"] = "2000s"
-
-                    with st.container(border=True):
-                        col_img, col_fields = st.columns([1.3, 3.7])
-
-                        with col_img:
-                            img_u = _get_item_img_url(res)
-                            if res.get("image_path") and Path(res["image_path"]).exists():
-                                st.image(res["image_path"], use_container_width=True)
-                            elif img_u:
-                                st.image(img_u, use_container_width=True)
-                            elif res.get("image_bytes"):
-                                st.image(res["image_bytes"], use_container_width=True)
-                            st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
-
-                        with col_fields:
-                            f1, f2, f3 = st.columns(3)
-                            with f1:
-                                new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"s1_des_{idx}")
-                                new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"s1_era_{idx}")
-                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"s1_type_{idx}")
-                            with f2:
-                                new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"s1_coll_{idx}")
-                                new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"s1_print_{idx}")
-                                new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"s1_garment_{idx}")
-                            with f3:
-                                new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"s1_fab_{idx}")
-                                new_notes = st.text_input("Notes / Details", value=res.get("notes", ""), key=f"s1_notes_{idx}")
-
-                            # Save updated metadata synchronously
-                            res["designer"] = new_designer
-                            res["year_era"] = new_era
-                            res["item_type"] = new_item_type
-                            res["collection"] = new_collection
-                            res["print_color"] = new_print
-                            res["garment_type"] = new_garment
-                            res["fabric"] = new_fabric
-                            res["notes"] = new_notes
-
-                            # Auto-regenerate title using Shopify Title Formula
-                            recalculated_title = format_shopify_title(
-                                designer=new_designer,
-                                year_era=new_era,
-                                collection=new_collection,
-                                print_color=new_print,
-                                garment_type=new_garment,
-                                is_set=(new_item_type == "Set"),
-                                notes=new_notes,
-                            )
-                            res["suggested_title"] = st.text_input(
-                                "Generated Shopify Title (Auto-updates during QA)",
-                                value=recalculated_title or res.get("suggested_title", ""),
-                                key=f"s1_title_{idx}",
-                            )
-
-            with sub_v2:
                 table_rows = []
                 for res in results:
                     img_u = _get_item_img_url(res)
@@ -1505,6 +1447,65 @@ def render_reverse_search_tab() -> None:
                         orig["fabric"] = row.get("Fabric", orig.get("fabric"))
                         orig["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
                         orig["notes"] = row.get("Notes", orig.get("notes"))
+
+            with sub_v2:
+                for idx, res in enumerate(results):
+                    # Normalize Y2K -> 2000s
+                    if str(res.get("year_era", "")).strip().lower() in ["y2k", "y2k era"]:
+                        res["year_era"] = "2000s"
+
+                    with st.container(border=True):
+                        col_img, col_fields = st.columns([1.3, 3.7])
+
+                        with col_img:
+                            img_u = _get_item_img_url(res)
+                            if res.get("image_path") and Path(res["image_path"]).exists():
+                                st.image(res["image_path"], use_container_width=True)
+                            elif img_u:
+                                st.image(img_u, use_container_width=True)
+                            elif res.get("image_bytes"):
+                                st.image(res["image_bytes"], use_container_width=True)
+                            st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
+
+                        with col_fields:
+                            f1, f2, f3 = st.columns(3)
+                            with f1:
+                                new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"s1_des_{idx}")
+                                new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"s1_era_{idx}")
+                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"s1_type_{idx}")
+                            with f2:
+                                new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"s1_coll_{idx}")
+                                new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"s1_print_{idx}")
+                                new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"s1_garment_{idx}")
+                            with f3:
+                                new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"s1_fab_{idx}")
+                                new_notes = st.text_input("Notes / Details", value=res.get("notes", ""), key=f"s1_notes_{idx}")
+
+                            # Save updated metadata synchronously
+                            res["designer"] = new_designer
+                            res["year_era"] = new_era
+                            res["item_type"] = new_item_type
+                            res["collection"] = new_collection
+                            res["print_color"] = new_print
+                            res["garment_type"] = new_garment
+                            res["fabric"] = new_fabric
+                            res["notes"] = new_notes
+
+                            # Auto-regenerate title using Shopify Title Formula
+                            recalculated_title = format_shopify_title(
+                                designer=new_designer,
+                                year_era=new_era,
+                                collection=new_collection,
+                                print_color=new_print,
+                                garment_type=new_garment,
+                                is_set=(new_item_type == "Set"),
+                                notes=new_notes,
+                            )
+                            res["suggested_title"] = st.text_input(
+                                "Generated Shopify Title (Auto-updates during QA)",
+                                value=recalculated_title or res.get("suggested_title", ""),
+                                key=f"s1_title_{idx}",
+                            )
 
             st.success("✅ **Metadata & Descriptions Saved!** Proceed to **2 · Pricing & QA Once-Over** above.")
 
@@ -1606,6 +1607,36 @@ def render_reverse_search_tab() -> None:
                     num_rows="dynamic",
                     key="step2_qa_data_editor",
                 )
+
+                if st.button("💾 Save Edits & Update Shopify Titles", type="primary", use_container_width=True, key="save_qa_titles_btn"):
+                    if edited_qa_df is not None:
+                        for row, orig in zip(edited_qa_df, results):
+                            old_brand = orig.get("designer", "")
+                            new_brand = str(row.get("Brand / Vendor") or "").strip()
+                            orig["designer"] = new_brand
+
+                            user_edited_title = str(row.get("Shopify Title") or "").strip()
+                            if new_brand != old_brand or not user_edited_title:
+                                orig["suggested_title"] = format_shopify_title(
+                                    designer=new_brand,
+                                    year_era=orig.get("year_era", ""),
+                                    collection=orig.get("collection", ""),
+                                    print_color=orig.get("print_color", ""),
+                                    garment_type=orig.get("garment_type", ""),
+                                    is_set=(orig.get("item_type") == "Set"),
+                                    notes=orig.get("notes", ""),
+                                )
+                            else:
+                                orig["suggested_title"] = user_edited_title
+
+                            orig["cost_price_usd"] = row.get("Purchase Cost ($USD)", orig.get("cost_price_usd"))
+                            orig["min_price_usd"] = row.get("Low Comp ($USD)", orig.get("min_price_usd"))
+                            orig["max_price_usd"] = row.get("High Comp ($USD)", orig.get("max_price_usd"))
+                            orig["listing_price_usd"] = row.get("🔥 Final Listing Price ($USD)", orig.get("listing_price_usd"))
+
+                        st.session_state["reverse_search_results"] = results
+                        st.success("🎉 All Brand, Vendor & Title changes saved successfully!")
+                        st.rerun()
 
                 if edited_qa_df is not None:
                     for row, orig in zip(edited_qa_df, results):
@@ -1740,7 +1771,7 @@ def render_reverse_search_tab() -> None:
                 img_u = _get_item_img_url(res)
                 title = res.get("suggested_title") or f"Item {idx}"
                 designer = res.get("designer", "").strip()
-                vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
+                vendor = get_vendor_for_item(designer)
                 year_era = res.get("year_era", "2000s")
                 garment_type = res.get("garment_type", "Garment")
                 collection = res.get("collection", "")
