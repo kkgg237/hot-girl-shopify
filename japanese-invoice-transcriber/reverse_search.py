@@ -47,36 +47,77 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
             out_file.write_bytes(image_bytes)
 
         import requests
-        # Primary: Uguu.se upload
+        # Primary: Litterbox CDN upload
         try:
             resp = requests.post(
-                "https://uguu.se/upload",
-                files={"files[]": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
-                timeout=12,
+                "https://litterbox.catbox.moe/resources/internals/api.php",
+                data={"reqtype": "fileupload", "time": "72h"},
+                files={"fileToUpload": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
+                timeout=10,
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                if "files" in data and len(data["files"]) > 0:
-                    return data["files"][0]["url"]
+            if resp.status_code == 200 and resp.text.strip().startswith("http"):
+                return resp.text.strip()
         except Exception:
             pass
-
-        # Fallback: Litterbox upload
-        resp2 = requests.post(
-            "https://litterbox.catbox.moe/resources/internals/api.php",
-            data={"reqtype": "fileupload", "time": "72h"},
-            files={"fileToUpload": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
-            timeout=10,
-        )
-        if resp2.status_code == 200 and resp2.text.strip().startswith("http"):
-            return resp2.text.strip()
     except Exception:
         pass
     return f"https://invoices.paststudies-tools.com/app/static/lens_cache/{img_hash}{ext}"
 
 
-def fetch_serpapi_visual_matches(image_url: str) -> list[dict[str, Any]]:
-    """Query SerpAPI Google Lens API with public image URL to fetch exact visual matches."""
+APPROVED_PLATFORM_DOMAINS = [
+    "therealreal",
+    "grailed",
+    "vestiaire",
+    "depop",
+    "ebay",
+    "poshmark",
+    "etsy",
+    "vinted",
+    "farfetch",
+    "rubylane",
+    "paststudies",
+    "intoarchive",
+    "recessla",
+    "sublimearchive",
+    "vintagebymisty",
+    "empressvintage",
+    "vintagedesigner",
+    "heroine",
+]
+
+FAST_FASHION_DOMAINS = [
+    "shein",
+    "asos",
+    "zara",
+    "hm.com",
+    "h&m",
+    "forever21",
+    "boohoo",
+    "prettylittlething",
+    "cider",
+    "fashionnova",
+    "fashion nova",
+    "zaful",
+    "aliexpress",
+    "temu",
+    "dhgate",
+    "amazon",
+    "walmart",
+    "target",
+    "nastygal",
+    "garage",
+    "cottonon",
+    "romwe",
+    "pacsun",
+]
+
+
+def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine: str = "bing_reverse_image") -> list[dict[str, Any]]:
+    """Query SerpAPI (Bing Reverse Image or Google Lens) with public image URL to fetch exact visual matches.
+    
+    Filters strictly by approved resale/luxury platforms and excludes fast-fashion sites.
+    Applies brand-guided visual search and Option A fallback flag.
+    """
     serp_key = os.getenv("SERPAPI_KEY", "")
     if not serp_key:
         try:
@@ -87,19 +128,58 @@ def fetch_serpapi_visual_matches(image_url: str) -> list[dict[str, Any]]:
             pass
     if not serp_key or not image_url:
         return []
+
+    matches = []
     try:
         import requests
+        # Primary: Bing Reverse Image Search via SerpAPI
+        params = {"engine": engine, "url": image_url, "api_key": serp_key}
+        if brand:
+            params["q"] = brand
+
         resp = requests.get(
             "https://serpapi.com/search.json",
-            params={"engine": "google_lens", "url": image_url, "api_key": serp_key},
+            params=params,
             timeout=15,
         )
         if resp.status_code == 200:
             data = resp.json()
-            return data.get("visual_matches", [])
+            matches = data.get("visual_matches") or data.get("organic_results") or data.get("image_results") or []
+        else:
+            # Fallback engine: google_lens
+            params["engine"] = "google_lens"
+            resp2 = requests.get(
+                "https://serpapi.com/search.json",
+                params=params,
+                timeout=15,
+            )
+            if resp2.status_code == 200:
+                data2 = resp2.json()
+                matches = data2.get("visual_matches") or data2.get("organic_results") or []
     except Exception:
         pass
-    return []
+
+    # Filter results by approved luxury/resale platforms and fast-fashion exclusion
+    filtered = []
+    brand_terms = [b.strip().lower() for b in brand.split() if len(b.strip()) > 2] if brand else []
+
+    for m in matches:
+        link = (m.get("link") or m.get("source_url") or "").lower()
+        title = (m.get("title") or m.get("snippet") or "").lower()
+        source = (m.get("source") or "").lower()
+
+        # 1. Exclude fast fashion
+        if any(ff in link or ff in source for ff in FAST_FASHION_DOMAINS):
+            continue
+
+        # 2. Match approved platform or brand context
+        is_approved = any(ap in link or ap in source for ap in APPROVED_PLATFORM_DOMAINS)
+        has_brand = any(bt in title or bt in link or bt in source for bt in brand_terms) if brand_terms else True
+
+        if is_approved or (has_brand and not any(ff in link for ff in FAST_FASHION_DOMAINS)):
+            filtered.append(m)
+
+    return filtered
 
 try:
     import anthropic
@@ -487,6 +567,48 @@ def generate_manifest_csv(results: list[dict[str, Any]]) -> str:
     return output.getvalue()
 
 
+def deduplicate_photo_items(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Group multi-angle studio photos (e.g. front/back/tag/detail shots) by look/item filename prefix.
+    
+    Returns (deduplicated_primary_items, total_duplicates_skipped).
+    """
+    if not items:
+        return [], 0
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+
+    for item in items:
+        name = item.get("name", "")
+        stem = Path(name).stem.lower()
+
+        # Clean multi-angle suffixes: _1, _2, -1, -2, _front, _back, _tag, _detail, _side, _a, _b, (1), (2)
+        clean_stem = re.sub(r'[\_\-\s]+(front|back|tag|detail|side|close|zoom|a|b|c|d|\d+)$', '', stem, flags=re.IGNORECASE)
+        clean_stem = re.sub(r'\s*\(\d+\)$', '', clean_stem)
+        clean_stem = clean_stem.strip() or stem
+
+        if clean_stem not in groups:
+            groups[clean_stem] = []
+        groups[clean_stem].append(item)
+
+    deduped = []
+    skipped_count = 0
+
+    for group_key, group_items in groups.items():
+        primary = group_items[0]
+        for g in group_items:
+            g_name = g.get("name", "").lower()
+            if any(k in g_name for k in ["front", "main", "_1.", "-1.", "_a."]):
+                primary = g
+                break
+
+        secondary = [g for g in group_items if g != primary]
+        primary["secondary_angles"] = secondary
+        deduped.append(primary)
+        skipped_count += len(secondary)
+
+    return deduped, skipped_count
+
+
 def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
@@ -535,6 +657,17 @@ def render_reverse_search_tab() -> None:
                     "mime": f.type or "image/jpeg",
                     "url": "",
                 })
+
+    dedup_multi_angles = st.checkbox(
+        "🎯 Auto-Deduplicate Multi-Angle Shots (Group front/back/tag photos per item & process 1 primary photo)",
+        value=True,
+        help="Skips duplicate orientation/back/detail photos of the same garment to save time and streamline results.",
+    )
+
+    if items_to_process and dedup_multi_angles:
+        items_to_process, dups_skipped = deduplicate_photo_items(items_to_process)
+        if dups_skipped > 0:
+            st.info(f"✨ Auto-grouped photos into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} multi-angle/tag duplicate shots).")
 
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
@@ -594,8 +727,14 @@ def render_reverse_search_tab() -> None:
                     ai_data["image_url"] = item["url"]
                     pub_url = save_image_for_public_lens(image_bytes, item["name"])
                     ai_data["public_image_url"] = pub_url
+                    designer = ai_data.get("designer") or "Cavalli"
                     if pub_url:
-                        ai_data["visual_matches"] = fetch_serpapi_visual_matches(pub_url)
+                        matches = fetch_serpapi_visual_matches(pub_url, brand=designer, engine="bing_reverse_image")
+                        ai_data["visual_matches"] = matches
+                        if not matches:
+                            ai_data["match_status"] = f"No exact {designer} visual match found — needs manual QA"
+                        else:
+                            ai_data["match_status"] = f"Found {len(matches)} approved visual matches"
                     return idx, ai_data
                 except Exception as ex:
                     return idx, {
@@ -728,7 +867,9 @@ def render_reverse_search_tab() -> None:
 
                         if v_matches:
                             match_data = []
-                            for vm in v_matches[:15]:
+                            # Display top 2 to 4 exact matches from reputable platforms
+                            top_matches = v_matches[:4]
+                            for vm in top_matches:
                                 title = vm.get("title", "Matched Item")
                                 source = vm.get("source", "Marketplace")
                                 link = vm.get("link", "#")
@@ -740,6 +881,7 @@ def render_reverse_search_tab() -> None:
                                     "Price": price_val,
                                     "Listing Link": link,
                                 })
+                            st.caption("Showing top exact matches from reputable resale platforms (Grailed, Vestiaire, 1stDibs, The RealReal, eBay, Depop, Poshmark). Fast fashion filtered out.")
                             st.dataframe(
                                 match_data,
                                 column_config={
