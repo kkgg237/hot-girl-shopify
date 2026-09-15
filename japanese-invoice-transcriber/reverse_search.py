@@ -668,6 +668,8 @@ def render_reverse_search_tab() -> None:
                         if not img_url and res.get("image_bytes"):
                             img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
                             res["public_image_url"] = img_url
+                            if "reverse_search_results" in st.session_state and idx < len(st.session_state["reverse_search_results"]):
+                                st.session_state["reverse_search_results"][idx]["public_image_url"] = img_url
                         if not img_url:
                             img_url = res.get("image_url", "")
 
@@ -676,6 +678,8 @@ def render_reverse_search_tab() -> None:
                                 with st.spinner("Fetching exact visual matches from Google Lens..."):
                                     fetched = fetch_serpapi_visual_matches(img_url)
                                     res["visual_matches"] = fetched
+                                    if "reverse_search_results" in st.session_state and idx < len(st.session_state["reverse_search_results"]):
+                                        st.session_state["reverse_search_results"][idx]["visual_matches"] = fetched
                                     v_matches = fetched
                                     st.rerun()
 
@@ -708,11 +712,7 @@ def render_reverse_search_tab() -> None:
                             st.caption("Click 'Run AI Reverse Research' or 'Fetch Google Lens Matches' to pull exact visual comps.")
 
                         links = build_search_urls(res.get("search_query") or res.get("suggested_title", ""), img_url)
-                        col_l1, col_l2 = st.columns([1, 1])
-                        with col_l1:
-                            st.link_button("👁️ Open Bing Visual Search", links.get("Bing Visual", "#"), use_container_width=True)
-                        with col_l2:
-                            st.link_button("🌐 Open Google Lens Browser View", links.get("Google Lens", "#"), use_container_width=True)
+                        st.link_button("👁️ Open Bing Visual Search (Browser View)", links.get("Bing Visual", "#"), use_container_width=True)
 
         with view_tab_table:
             table_rows = []
