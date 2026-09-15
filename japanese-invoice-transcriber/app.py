@@ -262,9 +262,65 @@ details.item-detail tr.final td { border-top: 1px solid #111; font-weight: 600;
 details.item-detail .orig { font-family: 'Courier New', monospace; font-size: 0.72rem;
                              color: #777; margin-top: 0.4rem; }
 
-/* Streamlit control overrides */
+/* Streamlit control overrides & forced light mode styling */
 .stSlider > div > div > div > div { background: #111 !important; }
 .stSlider [data-baseweb="slider"] > div > div { background: #eee !important; }
+
+div[data-baseweb="input"],
+div[data-baseweb="base-input"],
+div[data-testid="stTextInputRootElement"],
+div[data-testid="stNumberInputContainer"],
+div[data-testid="stTextAreaRootElement"],
+.stSelectbox > div > div,
+div[data-baseweb="select"] > div {
+    background-color: #ffffff !important;
+    color: #111111 !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0 !important;
+}
+
+div[data-baseweb="input"] input,
+div[data-testid="stTextInputRootElement"] input,
+div[data-testid="stNumberInputField"],
+div[data-testid="stTextAreaRootElement"] textarea,
+.stSelectbox select,
+div[data-baseweb="select"] * {
+    background-color: #ffffff !important;
+    color: #111111 !important;
+}
+
+ul[data-baseweb="menu"], li[data-baseweb="option"] {
+    background-color: #ffffff !important;
+    color: #111111 !important;
+}
+
+div[data-testid="stLinkButton"] a {
+    background-color: #f8f9fa !important;
+    color: #111111 !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0 !important;
+    font-family: 'Arial Nova', Arial, Helvetica, sans-serif !important;
+    font-size: 0.82rem !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+}
+div[data-testid="stLinkButton"] a *,
+div[data-testid="stLinkButton"] a p,
+div[data-testid="stLinkButton"] a span {
+    color: #111111 !important;
+}
+div[data-testid="stLinkButton"] a:hover {
+    background-color: #111111 !important;
+    color: #ffffff !important;
+    border-color: #111111 !important;
+}
+div[data-testid="stLinkButton"] a:hover *,
+div[data-testid="stLinkButton"] a:hover p,
+div[data-testid="stLinkButton"] a:hover span {
+    color: #ffffff !important;
+}
+
 .stNumberInput input, .stTextInput input, .stSelectbox > div > div {
     font-family: 'Arial Nova', Arial, Helvetica, sans-serif !important;
     border-radius: 0 !important;
