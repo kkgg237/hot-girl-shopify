@@ -1336,9 +1336,19 @@ def render_reverse_search_tab() -> None:
 
         tab_step1, tab_step2, tab_step3 = st.tabs([
             "1 · Title, Brand & Description Editor",
-            "2 · Pricing & QA Once-Over",
+            "2 · Pricing & QA Once-Over (Table Format)",
             "3 · Shopify Export & Direct Push",
         ])
+
+        # Helper to ensure public image URL is populated for table thumbnails
+        def _get_item_img_url(res: dict[str, Any]) -> str:
+            url = res.get("public_image_url")
+            if not url and res.get("image_bytes"):
+                url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
+                res["public_image_url"] = url
+            if not url:
+                url = res.get("image_url", "")
+            return url
 
         # =========================================================================
         # TAB 1: Title, Brand & Description Columns
@@ -1349,7 +1359,7 @@ def render_reverse_search_tab() -> None:
                 "Shopify titles auto-regenerate in real-time as you edit!"
             )
 
-            sub_v1, sub_v2 = st.tabs(["📸 Combined Photo Cards & Editable Fields", "📊 Bulk Spreadsheet View (st.data_editor)"])
+            sub_v1, sub_v2 = st.tabs(["📸 Combined Photo Cards", "📊 Bulk Spreadsheet View"])
 
             with sub_v1:
                 for idx, res in enumerate(results):
@@ -1361,10 +1371,11 @@ def render_reverse_search_tab() -> None:
                         col_img, col_fields = st.columns([1.3, 3.7])
 
                         with col_img:
+                            img_u = _get_item_img_url(res)
                             if res.get("image_path") and Path(res["image_path"]).exists():
                                 st.image(res["image_path"], use_container_width=True)
-                            elif res.get("public_image_url"):
-                                st.image(res["public_image_url"], use_container_width=True)
+                            elif img_u:
+                                st.image(img_u, use_container_width=True)
                             elif res.get("image_bytes"):
                                 st.image(res["image_bytes"], use_container_width=True)
                             st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
@@ -1372,18 +1383,18 @@ def render_reverse_search_tab() -> None:
                         with col_fields:
                             f1, f2, f3 = st.columns(3)
                             with f1:
-                                new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"des_{idx}")
-                                new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
-                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
+                                new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"s1_des_{idx}")
+                                new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"s1_era_{idx}")
+                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"s1_type_{idx}")
                             with f2:
-                                new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
-                                new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
-                                new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
+                                new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"s1_coll_{idx}")
+                                new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"s1_print_{idx}")
+                                new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"s1_garment_{idx}")
                             with f3:
-                                new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
-                                new_notes = st.text_input("Notes / Details", value=res.get("notes", ""), key=f"notes_{idx}")
+                                new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"s1_fab_{idx}")
+                                new_notes = st.text_input("Notes / Details", value=res.get("notes", ""), key=f"s1_notes_{idx}")
 
-                            # Save updated metadata
+                            # Save updated metadata synchronously
                             res["designer"] = new_designer
                             res["year_era"] = new_era
                             res["item_type"] = new_item_type
@@ -1406,27 +1417,23 @@ def render_reverse_search_tab() -> None:
                             res["suggested_title"] = st.text_input(
                                 "Generated Shopify Title (Auto-updates during QA)",
                                 value=recalculated_title or res.get("suggested_title", ""),
-                                key=f"title_{idx}",
+                                key=f"s1_title_{idx}",
                             )
 
             with sub_v2:
                 table_rows = []
                 for res in results:
+                    img_u = _get_item_img_url(res)
                     query = res.get("search_query") or res.get("suggested_title", "")
-                    img_url = res.get("public_image_url")
-                    if not img_url and res.get("image_bytes"):
-                        img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
-                        res["public_image_url"] = img_url
-                    if not img_url:
-                        img_url = res.get("image_url", "")
-                    links = build_search_urls(query, img_url)
+                    links = build_search_urls(query, img_u)
 
                     era_val = res.get("year_era", "2000s")
                     if str(era_val).strip().lower() in ["y2k", "y2k era"]:
                         era_val = "2000s"
 
                     table_rows.append({
-                        "Source": res.get("filename") or res.get("image_url") or "External Drive Photo",
+                        "Photo": img_u,
+                        "Source": res.get("filename") or res.get("image_url") or "Photo",
                         "Item Type": res.get("item_type", "Single"),
                         "Designer / Brand": res.get("designer", ""),
                         "Year / Era": era_val,
@@ -1435,19 +1442,11 @@ def render_reverse_search_tab() -> None:
                         "Garment Type": res.get("garment_type", ""),
                         "Fabric": res.get("fabric", ""),
                         "Shopify Title": res.get("suggested_title", ""),
-                        "Search Query": query,
-                        "Bing Visual Link": links.get("Bing Visual", ""),
-                        "Google Lens Link": links.get("Google Lens", ""),
-                        "Grailed Link": links.get("Grailed", ""),
-                        "Vestiaire Link": links.get("Vestiaire Collective", ""),
-                        "1stDibs Link": links.get("1stDibs", ""),
-                        "eBay Link": links.get("eBay", ""),
-                        "The RealReal Link": links.get("The RealReal", ""),
-                        "Depop Link": links.get("Depop", ""),
                         "Notes": res.get("notes", ""),
                     })
 
                 column_config = {
+                    "Photo": st.column_config.ImageColumn("Photo", width="small"),
                     "Source": st.column_config.TextColumn("Source / Photo Name", width="medium", disabled=True),
                     "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
                     "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
@@ -1457,15 +1456,6 @@ def render_reverse_search_tab() -> None:
                     "Garment Type": st.column_config.TextColumn("Garment Type", width="medium"),
                     "Fabric": st.column_config.TextColumn("Fabric / Material", width="small"),
                     "Shopify Title": st.column_config.TextColumn("Generated Shopify Title", width="large"),
-                    "Search Query": st.column_config.TextColumn("Search Query", width="medium"),
-                    "Bing Visual Link": st.column_config.LinkColumn("Bing Visual", display_text="👁️ Bing Visual"),
-                    "Google Lens Link": st.column_config.LinkColumn("Google Lens", display_text="🔎 Lens"),
-                    "Grailed Link": st.column_config.LinkColumn("Grailed", display_text="🛍️ Grailed"),
-                    "Vestiaire Link": st.column_config.LinkColumn("Vestiaire", display_text="👗 Vestiaire"),
-                    "1stDibs Link": st.column_config.LinkColumn("1stDibs", display_text="💎 1stDibs"),
-                    "eBay Link": st.column_config.LinkColumn("eBay", display_text="🏷️ eBay"),
-                    "The RealReal Link": st.column_config.LinkColumn("The RealReal", display_text="📦 RealReal"),
-                    "Depop Link": st.column_config.LinkColumn("Depop", display_text="🛍️ Depop"),
                     "Notes": st.column_config.TextColumn("Notes", width="large"),
                 }
 
@@ -1474,7 +1464,7 @@ def render_reverse_search_tab() -> None:
                     column_config=column_config,
                     use_container_width=True,
                     num_rows="dynamic",
-                    key="reverse_search_data_editor",
+                    key="step1_data_editor",
                 )
 
                 if edited_df is not None:
@@ -1487,43 +1477,160 @@ def render_reverse_search_tab() -> None:
                         orig["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
                         orig["fabric"] = row.get("Fabric", orig.get("fabric"))
                         orig["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
-                        orig["search_query"] = row.get("Search Query", orig.get("search_query"))
                         orig["notes"] = row.get("Notes", orig.get("notes"))
 
-            st.success("✅ **Metadata & Descriptions Saved!** Switch to **2 · Pricing & QA Once-Over** above.")
+            st.success("✅ **Metadata & Descriptions Saved!** Proceed to **2 · Pricing & QA Once-Over** above.")
 
         # =========================================================================
-        # TAB 2: Pricing & QA Once-Over
+        # TAB 2: Pricing & QA Once-Over (Table Format)
         # =========================================================================
         with tab_step2:
             st.info(
-                "💡 **Step 2:** Review market comps (Low/High), input purchase cost, do your pricing once-over, "
-                "and fix any Brand/Vendor issues. Inputting a Brand automatically updates the Shopify Title!"
+                "💡 **Step 2 (Pricing & QA Table):** Review market comps (Low/High), input purchase cost, and do your final once-over on listing prices in a compact table. "
+                "Editing a Brand/Vendor automatically regenerates the Shopify Title!"
             )
 
-            for idx, res in enumerate(results):
-                with st.container(border=True):
-                    col_img, col_qa = st.columns([1.3, 3.7])
+            # CSS Hover Zoom for Image Thumbnails
+            st.markdown(
+                """
+                <style>
+                .qa-hover-thumb {
+                    width: 55px;
+                    height: 55px;
+                    object-fit: cover;
+                    border-radius: 6px;
+                    transition: transform 0.25s ease, box-shadow 0.25s ease;
+                    cursor: pointer;
+                }
+                .qa-hover-thumb:hover {
+                    transform: scale(4.5);
+                    z-index: 9999;
+                    position: relative;
+                    box-shadow: 0px 8px 25px rgba(0,0,0,0.6);
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                    with col_img:
-                        if res.get("image_path") and Path(res["image_path"]).exists():
-                            st.image(res["image_path"], use_container_width=True)
-                        elif res.get("public_image_url"):
-                            st.image(res["public_image_url"], use_container_width=True)
-                        elif res.get("image_bytes"):
-                            st.image(res["image_bytes"], use_container_width=True)
-                        st.caption(f"**Photo:** `{res.get('filename') or 'Item'}`")
+            qa_sub1, qa_sub2 = st.tabs([
+                "📊 Interactive Pricing Spreadsheet (st.data_editor)",
+                "🔍 Hover-Zoom Interactive Table",
+            ])
 
-                    with col_qa:
-                        # Fix Brand & Title during QA
-                        f_qa1, f_qa2 = st.columns([1.2, 2.8])
-                        with f_qa1:
-                            qa_designer = st.text_input("Brand / Vendor (Fix/Input)", value=res.get("designer", ""), key=f"qa_des_{idx}")
-                            if qa_designer != res.get("designer"):
-                                res["designer"] = qa_designer
-                                # Auto-recalculate title when brand is entered in QA
+            with qa_sub1:
+                qa_table_rows = []
+                for res in results:
+                    img_u = _get_item_img_url(res)
+
+                    v_matches = res.get("visual_matches") or []
+                    match_summary = []
+                    top_link = ""
+                    if v_matches:
+                        top_link = v_matches[0].get("link") or ""
+                        for vm in v_matches[:3]:
+                            source = vm.get("source", "Comp")
+                            p_dict = vm.get("price") if isinstance(vm.get("price"), dict) else {}
+                            price_val = p_dict.get("value") or p_dict.get("extracted_value") or ""
+                            if price_val:
+                                match_summary.append(f"{source}: ${price_val}")
+                            else:
+                                match_summary.append(source)
+                    summary_str = " | ".join(match_summary) if match_summary else "No exact comps found"
+
+                    p_cost = float(res.get("cost_price_usd") or 0.0)
+                    p_min = int(res.get("min_price_usd") or 0)
+                    p_max = int(res.get("max_price_usd") or 0)
+
+                    if not res.get("listing_price_usd"):
+                        res["listing_price_usd"] = calculate_listing_price(cost=p_cost, min_comp=p_min, max_comp=p_max)
+                    p_list = int(res.get("listing_price_usd") or 0)
+
+                    qa_table_rows.append({
+                        "Photo": img_u,
+                        "Source Photo": res.get("filename") or "Photo",
+                        "Brand / Vendor": res.get("designer", ""),
+                        "Shopify Title": res.get("suggested_title", ""),
+                        "Purchase Cost ($USD)": int(p_cost),
+                        "Low Comp ($USD)": p_min,
+                        "High Comp ($USD)": p_max,
+                        "🔥 Final Listing Price ($USD)": p_list,
+                        "Comps Summary": summary_str,
+                        "Top Match Link": top_link,
+                    })
+
+                qa_col_config = {
+                    "Photo": st.column_config.ImageColumn("Photo (Click to view)", width="small"),
+                    "Source Photo": st.column_config.TextColumn("Source Photo", width="medium", disabled=True),
+                    "Brand / Vendor": st.column_config.TextColumn("Brand / Vendor (Input/Fix)", width="medium"),
+                    "Shopify Title": st.column_config.TextColumn("Shopify Title (Auto-updated)", width="large"),
+                    "Purchase Cost ($USD)": st.column_config.NumberColumn("Cost ($)", format="$%d", width="small"),
+                    "Low Comp ($USD)": st.column_config.NumberColumn("Low Comp ($)", format="$%d", width="small"),
+                    "High Comp ($USD)": st.column_config.NumberColumn("High Comp ($)", format="$%d", width="small"),
+                    "🔥 Final Listing Price ($USD)": st.column_config.NumberColumn("🔥 Final Listing Price ($)", format="$%d", width="small"),
+                    "Comps Summary": st.column_config.TextColumn("Comps Summary", width="medium", disabled=True),
+                    "Top Match Link": st.column_config.LinkColumn("Comp Link", display_text="🔗 View Comp"),
+                }
+
+                edited_qa_df = st.data_editor(
+                    qa_table_rows,
+                    column_config=qa_col_config,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    key="step2_qa_data_editor",
+                )
+
+                if edited_qa_df is not None:
+                    for row, orig in zip(edited_qa_df, results):
+                        old_brand = orig.get("designer", "")
+                        new_brand = str(row.get("Brand / Vendor") or "").strip()
+                        orig["designer"] = new_brand
+
+                        # Auto-regenerate title if brand changed in QA table
+                        if new_brand != old_brand:
+                            orig["suggested_title"] = format_shopify_title(
+                                designer=new_brand,
+                                year_era=orig.get("year_era", ""),
+                                collection=orig.get("collection", ""),
+                                print_color=orig.get("print_color", ""),
+                                garment_type=orig.get("garment_type", ""),
+                                is_set=(orig.get("item_type") == "Set"),
+                                notes=orig.get("notes", ""),
+                            )
+                        else:
+                            orig["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
+
+                        orig["cost_price_usd"] = row.get("Purchase Cost ($USD)", orig.get("cost_price_usd"))
+                        orig["min_price_usd"] = row.get("Low Comp ($USD)", orig.get("min_price_usd"))
+                        orig["max_price_usd"] = row.get("High Comp ($USD)", orig.get("max_price_usd"))
+                        orig["listing_price_usd"] = row.get("🔥 Final Listing Price ($USD)", orig.get("listing_price_usd"))
+
+            with qa_sub2:
+                st.caption("🔍 **Hover Cursor Over Any Thumbnail Below to Instantly Expand Image (4.5x Zoom)!**")
+
+                for idx, res in enumerate(results):
+                    img_u = _get_item_img_url(res)
+                    p_min = int(res.get("min_price_usd") or 0)
+                    p_max = int(res.get("max_price_usd") or 0)
+                    p_cost = float(res.get("cost_price_usd") or 0.0)
+                    if not res.get("listing_price_usd"):
+                        res["listing_price_usd"] = calculate_listing_price(cost=p_cost, min_comp=p_min, max_comp=p_max)
+                    p_list = int(res.get("listing_price_usd") or 0)
+
+                    with st.container(border=True):
+                        col_img, col_info, col_pr = st.columns([0.8, 2.5, 2.7])
+
+                        with col_img:
+                            if img_u:
+                                st.markdown(f'<img src="{img_u}" class="qa-hover-thumb" title="Hover to expand">', unsafe_allow_html=True)
+                            st.caption(f"`{res.get('filename') or 'Photo'}`")
+
+                        with col_info:
+                            h_brand = st.text_input("Brand / Vendor", value=res.get("designer", ""), key=f"hz_des_{idx}")
+                            if h_brand != res.get("designer"):
+                                res["designer"] = h_brand
                                 res["suggested_title"] = format_shopify_title(
-                                    designer=qa_designer,
+                                    designer=h_brand,
                                     year_era=res.get("year_era", ""),
                                     collection=res.get("collection", ""),
                                     print_color=res.get("print_color", ""),
@@ -1531,68 +1638,30 @@ def render_reverse_search_tab() -> None:
                                     is_set=(res.get("item_type") == "Set"),
                                     notes=res.get("notes", ""),
                                 )
-                        with f_qa2:
-                            qa_title = st.text_input("Shopify Title (Auto-updated)", value=res.get("suggested_title", ""), key=f"qa_title_{idx}")
-                            res["suggested_title"] = qa_title
+                            h_title = st.text_input("Shopify Title", value=res.get("suggested_title", ""), key=f"hz_title_{idx}")
+                            res["suggested_title"] = h_title
 
-                        # Pricing Once-Over
-                        st.markdown("**💰 Pricing Once-Over:**")
-                        p_min = int(res.get("min_price_usd") or 0)
-                        p_max = int(res.get("max_price_usd") or 0)
-                        p_cost = float(res.get("cost_price_usd") or 0.0)
+                        with col_pr:
+                            p1, p2, p3, p4 = st.columns(4)
+                            with p1:
+                                res["cost_price_usd"] = st.number_input("Cost ($)", value=int(p_cost), key=f"hz_cost_{idx}")
+                            with p2:
+                                res["min_price_usd"] = st.number_input("Low ($)", value=int(p_min), key=f"hz_pmin_{idx}")
+                            with p3:
+                                res["max_price_usd"] = st.number_input("High ($)", value=int(p_max), key=f"hz_pmax_{idx}")
+                            with p4:
+                                res["listing_price_usd"] = st.number_input("🔥 Price ($)", value=int(p_list), key=f"hz_plist_{idx}")
 
-                        if not res.get("listing_price_usd"):
-                            res["listing_price_usd"] = calculate_listing_price(cost=p_cost, min_comp=p_min, max_comp=p_max)
-
-                        p_list = int(res.get("listing_price_usd") or 0)
-
-                        pr1, pr2, pr3, pr4 = st.columns(4)
-                        with pr1:
-                            res["cost_price_usd"] = st.number_input("Purchase Cost ($USD)", value=int(p_cost), key=f"qa_cost_{idx}")
-                        with pr2:
-                            res["min_price_usd"] = st.number_input("Low Comp ($USD)", value=int(p_min), key=f"qa_pmin_{idx}")
-                        with pr3:
-                            res["max_price_usd"] = st.number_input("High Comp ($USD)", value=int(p_max), key=f"qa_pmax_{idx}")
-                        with pr4:
-                            res["listing_price_usd"] = st.number_input("🔥 Final Listing Price ($USD)", value=int(p_list), key=f"qa_plist_{idx}")
-
-                        # Visual Match Comps
-                        v_matches = res.get("visual_matches") or []
-                        if v_matches:
-                            match_data = []
-                            for vm in v_matches[:4]:
-                                title = vm.get("title", "Matched Item")
-                                source = vm.get("source", "Marketplace")
-                                link = vm.get("link", "#")
-                                p_dict = vm.get("price") if isinstance(vm.get("price"), dict) else {}
-                                price_val = p_dict.get("value") or p_dict.get("extracted_value") or "N/A"
-                                match_data.append({
-                                    "Platform / Source": source,
-                                    "Listing Title (Exact Visual Match)": title,
-                                    "Price": price_val,
-                                    "Listing Link": link,
-                                })
-                            st.caption("Approved resale platform matches (Grailed, Vestiaire, 1stDibs, TRR, eBay, Depop, Poshmark):")
-                            st.dataframe(
-                                match_data,
-                                column_config={
-                                    "Platform / Source": st.column_config.TextColumn("Source", width="medium"),
-                                    "Listing Title (Exact Visual Match)": st.column_config.TextColumn("Listing Title", width="large"),
-                                    "Price": st.column_config.TextColumn("Price", width="small"),
-                                    "Listing Link": st.column_config.LinkColumn("Listing Link", display_text="🔗 View Listing"),
-                                },
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-                        else:
-                            st.caption("No exact visual matches found on approved resale platforms.")
-
-            st.success("✅ **Pricing Once-Over Saved!** Switch to **3 · Shopify Export & Direct Push** above.")
+            # Save state explicitly
+            st.session_state["reverse_search_results"] = results
+            st.success("✅ **Pricing & QA Changes Synced!** Proceed to **3 · Shopify Export & Direct Push** above.")
 
         # =========================================================================
         # TAB 3: Export & Direct Push Page
         # =========================================================================
         with tab_step3:
+            # Sync latest results from state
+            results = st.session_state.get("reverse_search_results", [])
             st.info("💡 **Step 3:** Final view of all formatted Shopify CSV values. Download CSV or push directly to Shopify!")
 
             tot_items = len(results)
@@ -1641,6 +1710,7 @@ def render_reverse_search_tab() -> None:
 
             preview_rows = []
             for idx, res in enumerate(results, 1):
+                img_u = _get_item_img_url(res)
                 title = res.get("suggested_title") or f"Item {idx}"
                 handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
                 designer = res.get("designer", "").strip()
@@ -1654,7 +1724,6 @@ def render_reverse_search_tab() -> None:
                     max_comp=res.get("max_price_usd", 0),
                 )
                 cost_p = res.get("cost_price_usd") or ""
-                img_url = res.get("public_image_url") or res.get("image_url") or ""
 
                 tags_list = ["vintage", "designer", year_era]
                 if designer:
@@ -1665,6 +1734,7 @@ def render_reverse_search_tab() -> None:
                     tags_list.append(collection.lower())
 
                 preview_rows.append({
+                    "Photo": img_u,
                     "Handle": handle,
                     "Title": title,
                     "Vendor": vendor,
@@ -1675,12 +1745,12 @@ def render_reverse_search_tab() -> None:
                     "Low Comp ($)": int(res.get("min_price_usd") or 0),
                     "High Comp ($)": int(res.get("max_price_usd") or 0),
                     "Status": "draft",
-                    "Image URL": img_url,
                 })
 
             st.dataframe(
                 preview_rows,
                 column_config={
+                    "Photo": st.column_config.ImageColumn("Photo", width="small"),
                     "Handle": st.column_config.TextColumn("Handle", width="medium"),
                     "Title": st.column_config.TextColumn("Title", width="large"),
                     "Vendor": st.column_config.TextColumn("Vendor / Brand", width="medium"),
@@ -1691,7 +1761,6 @@ def render_reverse_search_tab() -> None:
                     "Low Comp ($)": st.column_config.NumberColumn("Low Comp ($)", format="$%d", width="small"),
                     "High Comp ($)": st.column_config.NumberColumn("High Comp ($)", format="$%d", width="small"),
                     "Status": st.column_config.TextColumn("Status", width="small"),
-                    "Image URL": st.column_config.LinkColumn("Image Link", display_text="🖼️ View Image"),
                 },
                 use_container_width=True,
                 hide_index=True,
