@@ -968,10 +968,17 @@ def render_reverse_search_tab() -> None:
                         mime_type=item["mime"],
                         client=client,
                     )
-                    ai_data["image_bytes"] = image_bytes
-                    ai_data["image_url"] = item["url"]
                     pub_url = save_image_for_public_lens(image_bytes, item["name"])
                     ai_data["public_image_url"] = pub_url
+                    img_hash = hashlib.md5(image_bytes).hexdigest()
+                    ext = Path(item["name"]).suffix.lower() if item["name"] else ".jpg"
+                    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+                        ext = ".jpg"
+                    local_file = STATIC_LENS_DIR / f"{img_hash}{ext}"
+                    if not local_file.exists():
+                        local_file.write_bytes(image_bytes)
+                    ai_data["image_path"] = str(local_file)
+                    ai_data["image_url"] = item["url"]
                     designer = ai_data.get("designer") or "Cavalli"
                     if pub_url:
                         matches = fetch_serpapi_visual_matches(pub_url, brand=designer, engine="bing_reverse_image")
@@ -1076,10 +1083,12 @@ def render_reverse_search_tab() -> None:
                     col_img, col_fields = st.columns([1.3, 3.7])
 
                     with col_img:
-                        if res.get("image_bytes"):
+                        if res.get("image_path") and Path(res["image_path"]).exists():
+                            st.image(res["image_path"], use_container_width=True)
+                        elif res.get("public_image_url"):
+                            st.image(res["public_image_url"], use_container_width=True)
+                        elif res.get("image_bytes"):
                             st.image(res["image_bytes"], use_container_width=True)
-                        elif res.get("image_url"):
-                            st.image(res["image_url"], use_container_width=True)
                         st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
 
                     with col_fields:
@@ -1169,7 +1178,14 @@ def render_reverse_search_tab() -> None:
                             st.caption("Click 'Run AI Reverse Research' or 'Fetch Google Lens Matches' to pull exact visual comps.")
 
                         links = build_search_urls(res.get("search_query") or res.get("suggested_title", ""), img_url)
-                        st.link_button("👁️ Open Bing Visual Search (Browser View)", links.get("Bing Visual", "#"), use_container_width=True)
+                        bing_url = links.get("Bing Visual", "#")
+                        st.markdown(
+                            f'<a href="{bing_url}" target="_blank" style="text-decoration:none;">'
+                            f'<div style="width:100%; text-align:center; padding:10px 16px; background-color:#0f172a; color:#ffffff; border-radius:8px; font-weight:600; margin-top:8px; display:inline-block; box-sizing:border-box;">'
+                            f'👁️ Open Bing Visual Search (New Tab ↗)'
+                            f'</div></a>',
+                            unsafe_allow_html=True,
+                        )
 
         with view_tab_table:
             table_rows = []
