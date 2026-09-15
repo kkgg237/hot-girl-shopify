@@ -3,67 +3,94 @@
 <head>
   <meta charset="utf-8">
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
-      padding: 6px;
+      padding: 4px;
       background: transparent;
+      color: #0f172a;
     }
-    .folder-card {
+    .folder-container {
       background: #ffffff;
-      border: 2px dashed #ff4b4b;
+      border: 1.5px dashed #cbd5e1;
       border-radius: 12px;
-      padding: 24px;
+      padding: 22px 16px;
       text-align: center;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    .folder-card:hover {
-      background: #fff8f8;
-      border-color: #d93838;
-      box-shadow: 0 4px 14px rgba(255, 75, 75, 0.12);
+    .folder-container:hover {
+      background: #f8fafc;
+      border-color: #0f172a;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
     }
     .folder-btn {
-      background: #ff4b4b;
-      color: white;
-      font-weight: 700;
-      padding: 16px 32px;
+      background: #0f172a;
+      color: #ffffff;
+      font-weight: 600;
+      padding: 13px 26px;
       border-radius: 8px;
       cursor: pointer;
-      display: inline-block;
-      text-align: center;
-      font-size: 17px;
-      box-shadow: 0 3px 10px rgba(255, 75, 75, 0.3);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 15px;
+      letter-spacing: -0.2px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
       user-select: none;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       border: none;
     }
     .folder-btn:hover {
-      background: #d93838;
-      box-shadow: 0 4px 14px rgba(217, 56, 56, 0.4);
+      background: #1e293b;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
     }
     .folder-btn:active {
       transform: scale(0.98);
     }
-    .hint {
+    .subtext {
       margin-top: 10px;
-      font-size: 13px;
-      color: #555;
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 400;
+    }
+    .progress-bar-bg {
+      margin-top: 12px;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 99px;
+      overflow: hidden;
+      display: none;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: #0f172a;
+      transition: width 0.1s linear;
     }
     #status {
-      margin-top: 12px;
-      font-size: 14px;
-      color: #111;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #0f172a;
       font-weight: 600;
     }
   </style>
 </head>
 <body>
-  <div class="folder-card" onclick="document.getElementById('nativeFolderInput').click()">
+  <div class="folder-container" onclick="document.getElementById('nativeFolderInput').click()">
     <button class="folder-btn" type="button">
-      📁 Click to Select Folder from Computer / External Drive
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      Select Photo Folder
     </button>
-    <div class="hint">Opens your Mac Finder / PC file chooser directly — click any folder and press Open!</div>
-    <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="processFolder(this.files)">
+    <div class="subtext">Click to choose a folder from your Mac or External Drive</div>
+    <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="handleFolderSelect(this.files)">
+    <div class="progress-bar-bg" id="progressBg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
     <div id="status"></div>
   </div>
 
@@ -92,65 +119,125 @@
       }, "*");
     }
 
-    function processFolder(files) {
+    function processFileOptimized(file, maxDim = 1400, quality = 0.85) {
+      return new Promise((resolve) => {
+        const validExts = [".jpg", ".jpeg", ".png", ".webp"];
+        const lowerName = file.name.toLowerCase();
+        if (!validExts.some(ext => lowerName.endsWith(ext))) {
+          return resolve(null);
+        }
+
+        if (file.size < 500 * 1024) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            const b64 = (e.target.result || "").split(",")[1] || "";
+            resolve({
+              name: file.webkitRelativePath || file.name,
+              mime: file.type || "image/jpeg",
+              data_b64: b64,
+              size: file.size
+            });
+          };
+          reader.onerror = function() { resolve(null); };
+          reader.readAsDataURL(file);
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const dataUrl = canvas.toDataURL("image/jpeg", quality);
+            const b64 = dataUrl.split(",")[1] || "";
+
+            resolve({
+              name: file.webkitRelativePath || file.name,
+              mime: "image/jpeg",
+              data_b64: b64,
+              size: Math.round((b64.length * 3) / 4)
+            });
+          };
+          img.onerror = function() { resolve(null); };
+          img.src = e.target.result;
+        };
+        reader.onerror = function() { resolve(null); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function handleFolderSelect(files) {
       const statusDiv = document.getElementById("status");
+      const progressBg = document.getElementById("progressBg");
+      const progressFill = document.getElementById("progressFill");
+
       if (!files || files.length === 0) {
-        statusDiv.innerHTML = "No folder selected.";
+        statusDiv.innerHTML = "";
+        progressBg.style.display = "none";
         return;
       }
 
       const validExts = [".jpg", ".jpeg", ".png", ".webp"];
       const imageFiles = [];
-
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const lowerName = file.name.toLowerCase();
-        if (validExts.some(ext => lowerName.endsWith(ext))) {
-          imageFiles.push(file);
+        if (validExts.some(ext => files[i].name.toLowerCase().endsWith(ext))) {
+          imageFiles.push(files[i]);
         }
       }
 
       if (imageFiles.length === 0) {
-        statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in selected folder.";
+        statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in folder.";
+        progressBg.style.display = "none";
         return;
       }
 
-      statusDiv.innerHTML = `⏳ Reading ${imageFiles.length} photo(s) from folder...`;
+      progressBg.style.display = "block";
+      progressFill.style.width = "0%";
+      statusDiv.innerHTML = `Reading 0 / ${imageFiles.length} photos...`;
 
       const results = [];
-      let loadedCount = 0;
+      const batchSize = 8;
 
-      for (let i = 0; i < imageFiles.length; i++) {
-        const file = imageFiles[i];
-        const reader = new FileReader();
+      for (let i = 0; i < imageFiles.length; i += batchSize) {
+        const batch = imageFiles.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(f => processFileOptimized(f)));
 
-        reader.onload = function(e) {
-          const dataUrl = e.target.result;
-          const b64 = dataUrl.split(",")[1] || "";
-          
-          results.push({
-            name: file.webkitRelativePath || file.name,
-            mime: file.type || "image/jpeg",
-            data_b64: b64,
-            size: file.size
-          });
+        for (const res of batchResults) {
+          if (res) results.push(res);
+        }
 
-          loadedCount++;
-          statusDiv.innerHTML = `⏳ Reading photos: ${loadedCount} / ${imageFiles.length}...`;
-
-          if (loadedCount === imageFiles.length) {
-            statusDiv.innerHTML = `✅ Selected ${results.length} photo(s) from folder!`;
-            setComponentValue(results);
-          }
-        };
-
-        reader.readAsDataURL(file);
+        const pct = Math.round(((i + batch.length) / imageFiles.length) * 100);
+        progressFill.style.width = `${pct}%`;
+        statusDiv.innerHTML = `Reading photos: ${Math.min(i + batch.length, imageFiles.length)} / ${imageFiles.length} (${pct}%)...`;
       }
+
+      const folderName = imageFiles[0].webkitRelativePath ? imageFiles[0].webkitRelativePath.split("/")[0] : "selected folder";
+      statusDiv.innerHTML = `✅ Ready! Loaded <strong>${results.length}</strong> photo(s) from <em>${folderName}</em>`;
+      progressFill.style.width = "100%";
+
+      setComponentValue(results);
     }
 
-    // Initialize component
     setComponentReady();
-    setFrameHeight(160);
+    setFrameHeight(150);
   </script>
 </body>
 </html>

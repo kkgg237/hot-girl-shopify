@@ -417,16 +417,13 @@ def render_reverse_search_tab() -> None:
 
     items_to_process = []
 
-    st.markdown("### 📁 Native Folder Selector")
-    st.caption("Click the button below to open your native Mac Finder / PC file chooser window and select your photo folder directly.")
-
     folder_picker_result = _native_folder_picker(key="native_folder_picker_ui")
     if folder_picker_result and isinstance(folder_picker_result, list):
         st.session_state["native_folder_files"] = folder_picker_result
 
     native_files = st.session_state.get("native_folder_files", [])
     if native_files and isinstance(native_files, list) and native_files:
-        st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
+        st.success(f"🖼️ Loaded **{len(native_files)}** photo(s) from selected folder ready for research!")
         for item in native_files:
             try:
                 raw_bytes = base64.b64decode(item.get("data_b64", ""))
@@ -438,27 +435,6 @@ def render_reverse_search_tab() -> None:
                 "mime": item.get("mime", "image/jpeg"),
                 "url": "",
             })
-
-    with st.expander("🖥️ Local Server Disk Path (Advanced / Server Filesystem)", expanded=False):
-        default_folder = st.session_state.get("selected_folder_path", "")
-        folder_path_str = st.text_input(
-            "Server Directory Path",
-            value=default_folder,
-            placeholder="/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/photos",
-            key="folder_path_text_input",
-        )
-        st.session_state["selected_folder_path"] = folder_path_str
-        is_recursive = st.checkbox("Scan Subfolders (Recursive)", value=True, key="folder_recursive_checkbox")
-
-        if folder_path_str and not items_to_process:
-            p = Path(folder_path_str).expanduser()
-            if p.exists() and p.is_dir():
-                crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
-                st.success(f"📁 **Server Folder:** `{p}` — Found **{len(crawled_items)}** photo(s).")
-                if crawled_items:
-                    items_to_process = crawled_items
-            else:
-                st.warning("⚠️ Server directory path does not exist.")
 
     with st.expander("📤 Manual File Upload Fallback (Drag & Drop)", expanded=not items_to_process):
         uploaded_files = st.file_uploader(
