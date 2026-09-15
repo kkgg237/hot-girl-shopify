@@ -31,7 +31,7 @@ STATIC_LENS_DIR = Path(__file__).parent / "static" / "lens_cache"
 
 
 def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
-    """Upload studio photo bytes to temporary public host (Litterbox CDN) so Google Lens/Bing can access the image directly without Cloudflare Access auth blocks."""
+    """Upload studio photo bytes to temporary public host (Uguu/Litterbox CDN) so Google Lens/Bing can access the image directly without Cloudflare Access auth blocks."""
     if not image_bytes:
         return ""
     try:
@@ -47,14 +47,29 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
             out_file.write_bytes(image_bytes)
 
         import requests
-        resp = requests.post(
+        # Primary: Uguu.se upload
+        try:
+            resp = requests.post(
+                "https://uguu.se/upload",
+                files={"files[]": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
+                timeout=12,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if "files" in data and len(data["files"]) > 0:
+                    return data["files"][0]["url"]
+        except Exception:
+            pass
+
+        # Fallback: Litterbox upload
+        resp2 = requests.post(
             "https://litterbox.catbox.moe/resources/internals/api.php",
             data={"reqtype": "fileupload", "time": "72h"},
             files={"fileToUpload": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
             timeout=10,
         )
-        if resp.status_code == 200 and resp.text.strip().startswith("http"):
-            return resp.text.strip()
+        if resp2.status_code == 200 and resp2.text.strip().startswith("http"):
+            return resp2.text.strip()
     except Exception:
         pass
     return f"https://invoices.paststudies-tools.com/app/static/lens_cache/{img_hash}{ext}"
@@ -541,18 +556,19 @@ def render_reverse_search_tab() -> None:
             except Exception as e:
                 st.warning(f"Could not initialize Anthropic client: {e}")
 
-        new_results = []
-        progress_bar = st.progress(0, text="Processing images...")
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        for idx, item in enumerate(items_to_process):
-            progress_bar.progress((idx) / len(items_to_process), text=f"Analyzing [{idx+1}/{len(items_to_process)}] {item['name']}...")
+        new_results = [None] * len(items_to_process)
+        progress_bar = st.progress(0, text="Processing images in parallel...")
 
+        def _process_single_item(args):
+            idx, item = args
             image_bytes = item.get("bytes")
             if not image_bytes and item.get("path"):
                 try:
                     image_bytes = item["path"].read_bytes()
                 except Exception as ex:
-                    st.error(f"Failed to read file {item['name']}: {ex}")
+                    pass
 
             if not image_bytes and item.get("url"):
                 try:
@@ -564,7 +580,7 @@ def render_reverse_search_tab() -> None:
                     with urllib.request.urlopen(req, timeout=15) as resp:
                         image_bytes = resp.read()
                 except Exception as ex:
-                    st.error(f"Failed to fetch image from {item['url']}: {ex}")
+                    pass
 
             if image_bytes and client:
                 try:
@@ -580,10 +596,9 @@ def render_reverse_search_tab() -> None:
                     ai_data["public_image_url"] = pub_url
                     if pub_url:
                         ai_data["visual_matches"] = fetch_serpapi_visual_matches(pub_url)
-                    new_results.append(ai_data)
+                    return idx, ai_data
                 except Exception as ex:
-                    st.error(f"Error analyzing {item['name']}: {ex}")
-                    new_results.append({
+                    return idx, {
                         "filename": item["name"],
                         "item_type": "Single",
                         "designer": "",
@@ -599,7 +614,35 @@ def render_reverse_search_tab() -> None:
                         "notes": f"Analysis failed: {ex}",
                         "image_bytes": image_bytes,
                         "image_url": item["url"],
-                    })
+                    }
+            return idx, {
+                "filename": item["name"],
+                "item_type": "Single",
+                "designer": "",
+                "year_era": "2000s",
+                "suggested_title": item["name"],
+                "notes": "No image data available",
+            }
+
+        max_workers = min(12, max(2, len(items_to_process)))
+        completed = 0
+        total = len(items_to_process)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(_process_single_item, (i, item))
+                for i, item in enumerate(items_to_process)
+            ]
+            for future in as_completed(futures):
+                idx, result = future.result()
+                new_results[idx] = result
+                completed += 1
+                progress_bar.progress(
+                    completed / total,
+                    text=f"Analyzing images [{completed}/{total}] ({max_workers} parallel workers)...",
+                )
+
+        new_results = [r for r in new_results if r is not None]
 
         progress_bar.progress(1.0, text="Done!")
         st.session_state["reverse_search_results"] = new_results
