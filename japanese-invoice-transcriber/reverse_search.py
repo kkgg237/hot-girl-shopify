@@ -673,6 +673,103 @@ def generate_manifest_csv(results: list[dict[str, Any]]) -> str:
     return output.getvalue()
 
 
+def compute_image_features(image_bytes: bytes) -> tuple[str, list[float]]:
+    """Compute (dhash_hex, color_histogram) for visual similarity comparison."""
+    if not image_bytes or Image is None:
+        return "", []
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        
+        # 1. dHash (Difference Hash, 8x8 -> 64 bits)
+        gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+        pixels = list(gray.getdata()) if hasattr(gray, "getdata") else list(gray.get_flattened_data())
+        diff = [pixels[row * 9 + col] > pixels[row * 9 + col + 1] for row in range(8) for col in range(8)]
+        dec_val = sum(2 ** i for i, val in enumerate(diff) if val)
+        dhash_hex = f"{dec_val:016x}"
+
+        # 2. Color Histogram (64 bins: 4x4x4 RGB)
+        img_small = img.resize((50, 50), Image.Resampling.NEAREST)
+        hist = [0.0] * 64
+        rgb_data = list(img_small.getdata()) if hasattr(img_small, "getdata") else list(img_small.get_flattened_data())
+        for pixel in rgb_data:
+            if isinstance(pixel, (tuple, list)) and len(pixel) >= 3:
+                r, g, b = pixel[0], pixel[1], pixel[2]
+                hist[(min(3, r // 64) * 16) + (min(3, g // 64) * 4) + min(3, b // 64)] += 1.0
+        hist = [h / 2500.0 for h in hist]
+
+        return dhash_hex, hist
+    except Exception:
+        return "", []
+
+
+def visual_similarity(f1: tuple[str, list[float]], f2: tuple[str, list[float]]) -> float:
+    """Return visual similarity score (0.0 to 1.0) between two image feature tuples."""
+    h1, hist1 = f1
+    h2, hist2 = f2
+    if not h1 or not h2:
+        return 0.0
+
+    # Hamming distance of 64-bit dHash
+    ham = bin(int(h1, 16) ^ int(h2, 16)).count("1")
+    hash_sim = max(0.0, (32.0 - ham) / 32.0)
+
+    # Cosine dot product of color histograms
+    hist_sim = 0.0
+    if hist1 and hist2:
+        hist_sim = sum(a * b for a, b in zip(hist1, hist2))
+
+    return 0.6 * hash_sim + 0.4 * hist_sim
+
+
+def deduplicate_photo_items_visually(items: list[dict[str, Any]], similarity_threshold: float = 0.72) -> tuple[list[dict[str, Any]], int]:
+    """Group multi-angle studio photos visually using perceptual dHash + color histogram similarity.
+    
+    Identifies photos that depict the same garment regardless of filename.
+    Returns (deduplicated_primary_items, total_duplicates_skipped).
+    """
+    if not items:
+        return [], 0
+
+    item_features = []
+    for item in items:
+        img_bytes = item.get("bytes")
+        if not img_bytes and item.get("path"):
+            try:
+                img_bytes = item["path"].read_bytes()
+            except Exception:
+                pass
+        feat = compute_image_features(img_bytes) if img_bytes else ("", [])
+        item_features.append(feat)
+
+    groups: list[list[int]] = []  # Groups of item indices
+
+    for idx, (item, feat) in enumerate(zip(items, item_features)):
+        assigned = False
+        if feat[0]:
+            for grp in groups:
+                primary_idx = grp[0]
+                primary_feat = item_features[primary_idx]
+                sim = visual_similarity(feat, primary_feat)
+                if sim >= similarity_threshold:
+                    grp.append(idx)
+                    assigned = True
+                    break
+        if not assigned:
+            groups.append([idx])
+
+    deduped = []
+    skipped_count = 0
+
+    for grp in groups:
+        primary_item = items[grp[0]]
+        secondary_items = [items[i] for i in grp[1:]]
+        primary_item["secondary_angles"] = secondary_items
+        deduped.append(primary_item)
+        skipped_count += len(secondary_items)
+
+    return deduped, skipped_count
+
+
 def deduplicate_photo_items(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     """Group multi-angle studio photos (e.g. front/back/tag/detail shots) by look/item filename prefix.
     
@@ -795,16 +892,24 @@ def render_reverse_search_tab() -> None:
             st.session_state["selected_folder_path"] = None
             st.rerun()
 
-    dedup_multi_angles = st.checkbox(
-        "🎯 Auto-Deduplicate Multi-Angle Shots (Group front/back/tag photos per item & process 1 primary photo)",
-        value=True,
-        help="Skips duplicate orientation/back/detail photos of the same garment to save time and streamline results.",
+    dedup_mode = st.radio(
+        "🎯 Auto-Deduplicate Multi-Angle Duplicate Shots:",
+        ["🖼️ Visual Similarity (AI Image Matching - No Filename Needed)", "🏷️ Filename Suffixes", "🚫 No Deduplication (Process All Photos)"],
+        index=0,
+        horizontal=True,
+        help="Visual Similarity uses image pixels to group front/back/tag shots of the same garment regardless of filename.",
     )
 
-    if items_to_process and dedup_multi_angles:
+    if items_to_process and "Visual Similarity" in dedup_mode:
+        items_to_process, dups_skipped = deduplicate_photo_items_visually(items_to_process, similarity_threshold=0.72)
+        if dups_skipped > 0:
+            st.info(f"✨ Visually grouped photos into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} multi-angle duplicate shots).")
+        else:
+            st.info(f"✨ Verified **{len(items_to_process)} unique garment(s)** (no visual duplicates detected).")
+    elif items_to_process and "Filename Suffixes" in dedup_mode:
         items_to_process, dups_skipped = deduplicate_photo_items(items_to_process)
         if dups_skipped > 0:
-            st.info(f"✨ Auto-grouped photos into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} multi-angle/tag duplicate shots).")
+            st.info(f"✨ Grouped by filename into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} duplicate shots).")
 
     if not items_to_process:
         st.warning("⚠️ **0 photos currently loaded.** Please click **'Select Photo Folder'** above to pick your folder.")
