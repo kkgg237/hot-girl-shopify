@@ -1330,7 +1330,7 @@ def render_reverse_search_tab() -> None:
         st.session_state["reverse_search_results"] = new_results
         st.success(f"Processed {len(new_results)} photo(s) successfully!")
 
-        results = st.session_state.get("reverse_search_results", [])
+    results = st.session_state.get("reverse_search_results", [])
     if results:
         st.markdown(f"### Research Manifest & QA ({len(results)} items)")
 
