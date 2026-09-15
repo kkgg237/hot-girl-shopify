@@ -711,6 +711,243 @@ def generate_manifest_csv(results: list[dict[str, Any]]) -> str:
     return output.getvalue()
 
 
+def calculate_listing_price(cost: float = 0.0, min_comp: float = 0.0, max_comp: float = 0.0) -> int:
+    """Calculate recommended listing price using cost and/or comp low/high range.
+    
+    Rules:
+    - If cost is present and >0:
+        Aim for ~3.5x cost markup, bounded by min_comp and max_comp.
+    - If no cost is present:
+        Default to mid-point or high-end of comp range.
+    """
+    c = float(cost or 0)
+    lo = float(min_comp or 0)
+    hi = float(max_comp or 0)
+
+    if c > 0:
+        target = c * 3.5
+        if lo > 0 and hi > 0:
+            if target < lo:
+                return int(lo)
+            elif target > hi:
+                return int(hi)
+            else:
+                return int(target)
+        elif lo > 0:
+            return int(max(target, lo))
+        elif hi > 0:
+            return int(min(target, hi))
+        else:
+            return int(round(target, -1))
+    else:
+        if lo > 0 and hi > 0:
+            return int(round((lo + hi) / 2.0))
+        elif hi > 0:
+            return int(hi)
+        elif lo > 0:
+            return int(lo)
+
+    return 0
+
+
+def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
+    """Generate official Shopify Product CSV import string matching Shopify's product CSV spec."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    headers = [
+        "Handle",
+        "Title",
+        "Body (HTML)",
+        "Vendor",
+        "Product Category",
+        "Type",
+        "Tags",
+        "Published",
+        "Option1 Name",
+        "Option1 Value",
+        "Variant SKU",
+        "Variant Grams",
+        "Variant Inventory Tracker",
+        "Variant Inventory Qty",
+        "Variant Inventory Policy",
+        "Variant Fulfillment Service",
+        "Variant Price",
+        "Variant Compare At Price",
+        "Variant Requires Shipping",
+        "Variant Taxable",
+        "Cost per item",
+        "Image Src",
+        "Image Position",
+        "Status",
+    ]
+    writer.writerow(headers)
+
+    for idx, item in enumerate(results, 1):
+        title = item.get("suggested_title") or f"Item {idx}"
+
+        handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
+
+        designer = item.get("designer", "").strip()
+        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else "Past Studies"
+
+        year_era = item.get("year_era", "2000s")
+        garment_type = item.get("garment_type", "Garment")
+        collection = item.get("collection", "")
+        print_color = item.get("print_color", "")
+        fabric = item.get("fabric", "")
+
+        body_parts = ["<p>"]
+        if designer:
+            body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
+        if year_era:
+            body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
+        if collection:
+            body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
+        if print_color:
+            body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
+        if fabric:
+            body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
+        body_parts.append("</p>")
+        body_html = "".join(body_parts)
+
+        tags_list = ["vintage", "designer", year_era]
+        if designer:
+            tags_list.append(designer.lower())
+        if garment_type:
+            tags_list.append(garment_type.lower())
+        if collection:
+            tags_list.append(collection.lower())
+        tags_str = ", ".join(dict.fromkeys(tags_list))
+
+        listing_p = item.get("listing_price_usd") or calculate_listing_price(
+            cost=item.get("cost_price_usd", 0),
+            min_comp=item.get("min_price_usd", 0),
+            max_comp=item.get("max_price_usd", 0),
+        )
+        cost_p = item.get("cost_price_usd") or ""
+        hi_p = item.get("max_price_usd") or ""
+        compare_at = str(hi_p) if hi_p and listing_p and int(hi_p) > int(listing_p) else ""
+
+        sku = f"PS-{year_era[:4]}-{idx:03d}"
+        img_url = item.get("public_image_url") or item.get("image_url") or ""
+
+        writer.writerow([
+            handle,
+            title,
+            body_html,
+            vendor,
+            "Apparel & Accessories",
+            garment_type.title(),
+            tags_str,
+            "TRUE",
+            "Title",
+            "Default Title",
+            sku,
+            "0",
+            "shopify",
+            "1",
+            "deny",
+            "manual",
+            str(listing_p or ""),
+            compare_at,
+            "TRUE",
+            "TRUE",
+            str(cost_p or ""),
+            img_url,
+            "1",
+            "draft",
+        ])
+
+    return output.getvalue()
+
+
+def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int, int, list[str]]:
+    """Push reviewed research results directly to Shopify as draft products."""
+    try:
+        from shopify_inventory import get_shop, get_token
+        from shopify_push import _api_post, build_product_payload
+    except ImportError:
+        return 0, len(results), ["shopify_push or shopify_inventory module not available."]
+
+    shop = get_shop()
+    token = get_token()
+    if not shop or not token:
+        return 0, len(results), ["Shopify API credentials not configured. Please check shopify_inventory config."]
+
+    pushed_count = 0
+    failed_count = 0
+    logs = []
+
+    for idx, item in enumerate(results, 1):
+        title = item.get("suggested_title") or f"Item {idx}"
+        designer = item.get("designer", "").strip()
+        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else "Past Studies"
+        garment_type = item.get("garment_type", "Garment")
+        year_era = item.get("year_era", "2000s")
+        collection = item.get("collection", "")
+        print_color = item.get("print_color", "")
+        fabric = item.get("fabric", "")
+
+        listing_p = float(item.get("listing_price_usd") or calculate_listing_price(
+            cost=item.get("cost_price_usd", 0),
+            min_comp=item.get("min_price_usd", 0),
+            max_comp=item.get("max_price_usd", 0),
+        ))
+        cost_p = float(item.get("cost_price_usd") or 0.0)
+
+        tags_list = ["vintage", "designer", year_era]
+        if designer:
+            tags_list.append(designer.lower())
+        if garment_type:
+            tags_list.append(garment_type.lower())
+        if collection:
+            tags_list.append(collection.lower())
+
+        body_parts = ["<p>"]
+        if designer:
+            body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
+        if year_era:
+            body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
+        if collection:
+            body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
+        if print_color:
+            body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
+        if fabric:
+            body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
+        body_parts.append("</p>")
+        body_html = "".join(body_parts)
+
+        photo_p = Path(item["image_path"]) if item.get("image_path") and Path(item["image_path"]).exists() else None
+        sku = f"PS-{year_era[:4]}-{idx:03d}"
+
+        payload = build_product_payload(
+            item={},
+            title=title,
+            vendor=vendor,
+            product_type=garment_type.title(),
+            sku=sku,
+            price=listing_p,
+            cost_usd=cost_p,
+            photo_path=photo_p,
+            tags=tags_list,
+            body_html=body_html,
+        )
+
+        status_code, resp = _api_post(shop, token, "products.json", {"product": payload})
+        if status_code in (200, 201) and "product" in resp:
+            p_id = resp["product"].get("id")
+            pushed_count += 1
+            item["shopify_product_id"] = p_id
+            logs.append(f"✅ Pushed '{title}' -> Draft Product ID {p_id} (${listing_p:.2f} USD)")
+        else:
+            failed_count += 1
+            err = resp.get("errors") or f"HTTP {status_code}"
+            logs.append(f"❌ Failed pushing '{title}': {err}")
+
+    return pushed_count, failed_count, logs
+
+
 def compute_image_features(image_bytes: bytes) -> tuple[str, list[float]]:
     """Compute (dhash_hex, color_histogram) for visual similarity comparison."""
     if not image_bytes or Image is None:
@@ -1093,18 +1330,39 @@ def render_reverse_search_tab() -> None:
         st.session_state["reverse_search_results"] = new_results
         st.success(f"Processed {len(new_results)} photo(s) successfully!")
 
-    results = st.session_state.get("reverse_search_results", [])
+        results = st.session_state.get("reverse_search_results", [])
     if results:
-        st.markdown(f"### Research Manifest ({len(results)} items)")
+        st.markdown(f"### Research Manifest & QA ({len(results)} items)")
 
-        csv_data = generate_manifest_csv(results)
-        st.download_button(
-            label="📥 Download Research Manifest as CSV",
-            data=csv_data,
-            file_name="reverse_search_manifest.csv",
-            mime="text/csv",
-            type="primary",
-        )
+        col_exp1, col_exp2, col_exp3 = st.columns([1.5, 1.5, 2])
+        with col_exp1:
+            st.download_button(
+                label="🛍️ Download Official Shopify Product CSV",
+                data=generate_shopify_import_csv(results),
+                file_name="shopify_product_import.csv",
+                mime="text/csv",
+                type="primary",
+                use_container_width=True,
+            )
+        with col_exp2:
+            st.download_button(
+                label="📊 Download Research Manifest CSV",
+                data=generate_manifest_csv(results),
+                file_name="reverse_search_manifest.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with col_exp3:
+            if st.button("🚀 Push Drafts Directly to Shopify", type="secondary", use_container_width=True):
+                with st.spinner("Pushing draft listings to Shopify Admin API..."):
+                    pushed_ok, failed_err, logs = push_research_results_to_shopify(results)
+                    if pushed_ok > 0:
+                        st.success(f"🎉 Created **{pushed_ok} draft product(s)** in your Shopify store!")
+                    if failed_err > 0:
+                        st.error(f"⚠️ Failed to push {failed_err} product(s).")
+                    with st.expander("📋 View Shopify API Push Logs", expanded=True):
+                        for log in logs:
+                            st.write(log)
 
         view_tab_combined, view_tab_table = st.tabs([
             "📸 Combined Photo Cards & Editable Fields",
@@ -1130,29 +1388,69 @@ def render_reverse_search_tab() -> None:
                         st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
 
                     with col_fields:
+                        f1, f2, f3 = st.columns(3)
+                        with f1:
+                            new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"des_{idx}")
+                            new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
+                            new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
+                        with f2:
+                            new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
+                            new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
+                            new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
+                        with f3:
+                            new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
+                            res["notes"] = st.text_input("Notes", value=res.get("notes", ""), key=f"notes_{idx}")
+
+                        # Save updated metadata
+                        res["designer"] = new_designer
+                        res["year_era"] = new_era
+                        res["item_type"] = new_item_type
+                        res["collection"] = new_collection
+                        res["print_color"] = new_print
+                        res["garment_type"] = new_garment
+                        res["fabric"] = new_fabric
+
+                        # Auto-regenerate title using Shopify Title Formula
+                        recalculated_title = format_shopify_title(
+                            designer=new_designer,
+                            year_era=new_era,
+                            collection=new_collection,
+                            print_color=new_print,
+                            garment_type=new_garment,
+                            is_set=(new_item_type == "Set"),
+                            notes=res.get("notes", ""),
+                        )
                         res["suggested_title"] = st.text_input(
-                            "Shopify Title Formula",
-                            value=res.get("suggested_title", ""),
+                            "Shopify Title Formula (Auto-updates during QA)",
+                            value=recalculated_title or res.get("suggested_title", ""),
                             key=f"title_{idx}",
                         )
 
-                        f1, f2, f3 = st.columns(3)
-                        with f1:
-                            res["designer"] = st.text_input("Designer / Brand", value=res.get("designer", ""), key=f"des_{idx}")
-                            res["year_era"] = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
-                            res["item_type"] = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
-                        with f2:
-                            res["collection"] = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
-                            res["print_color"] = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
-                            res["garment_type"] = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
-                        with f3:
-                            res["fabric"] = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
-                            res["min_price_usd"] = st.number_input("Est. Min Price ($USD)", value=int(res.get("min_price_usd") or 0), key=f"pmin_{idx}")
-                            res["max_price_usd"] = st.number_input("Est. Max Price ($USD)", value=int(res.get("max_price_usd") or 0), key=f"pmax_{idx}")
+                        # Pricing Once-Over Section
+                        st.markdown("**💰 Pricing & Valuation Once-Over:**")
+                        p_min = int(res.get("min_price_usd") or 0)
+                        p_max = int(res.get("max_price_usd") or 0)
+                        p_cost = float(res.get("cost_price_usd") or 0.0)
 
-                        res["notes"] = st.text_input("Notes", value=res.get("notes", ""), key=f"notes_{idx}")
+                        if not res.get("listing_price_usd"):
+                            res["listing_price_usd"] = calculate_listing_price(cost=p_cost, min_comp=p_min, max_comp=p_max)
 
-                        st.markdown("**🎯 Google Lens Exact Visual Matches (Title Comparison & Pricing Research):**")
+                        p_list = int(res.get("listing_price_usd") or 0)
+
+                        pr1, pr2, pr3, pr4 = st.columns(4)
+                        with pr1:
+                            res["cost_price_usd"] = st.number_input("Purchase Cost ($USD)", value=int(p_cost), key=f"cost_{idx}")
+                        with pr2:
+                            res["min_price_usd"] = st.number_input("Low Comp ($USD)", value=int(p_min), key=f"pmin_{idx}")
+                        with pr3:
+                            res["max_price_usd"] = st.number_input("High Comp ($USD)", value=int(p_max), key=f"pmax_{idx}")
+                        with pr4:
+                            res["listing_price_usd"] = st.number_input("🔥 Final Listing Price ($USD)", value=int(p_list), key=f"plist_{idx}")
+
+                        if p_list > 0:
+                            cost_txt = f" (Cost: ${p_cost:.0f})" if p_cost > 0 else ""
+                            st.info(f"💵 **Listing Price:** **${p_list} USD**{cost_txt} | Low Comp: **${p_min}** | High Comp: **${p_max}**")
+
                         v_matches = res.get("visual_matches") or []
                         img_url = res.get("public_image_url")
                         if not img_url and res.get("image_bytes"):
