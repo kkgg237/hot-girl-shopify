@@ -401,62 +401,48 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Select a photo folder from your external drive or local disk to identify designer garments, "
+        "Select photos or a folder from your computer or external drive to identify designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
     if "reverse_search_results" not in st.session_state:
         st.session_state["reverse_search_results"] = []
 
-    input_tab_drive, input_tab_server = st.tabs([
-        "📁 Select Folder or Photos (External Drive / Computer)",
-        "🖥️ Enter Server Directory Path",
-    ])
-
     items_to_process = []
 
-    with input_tab_drive:
-        st.write("### 📁 Select Photos or Folder from External Drive")
-        st.info("💡 **How to select a folder:** Click **'Browse files'** -> Navigate to your External Drive -> Select all photos (`Cmd + A` / `Ctrl + A`), OR drag and drop the folder directly into the box below!")
+    st.markdown("### 📁 Direct Local Folder Scanner")
+    st.caption("Point to any folder on your computer or external drive to scan and process all photos directly from disk with zero upload waiting time.")
 
-        uploaded_files = st.file_uploader(
-            "Upload look photos from folder",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-            key="folder_photos_uploader",
+    default_folder = st.session_state.get("selected_folder_path", "")
+
+    col_input, col_browse = st.columns([3.5, 1.2])
+
+    with col_input:
+        folder_path_str = st.text_input(
+            "Local Directory / Folder Path",
+            value=default_folder,
+            placeholder="/path/to/your/look_photos_folder",
+            key="folder_path_text_input",
+            help="Enter any folder path on disk or mounted external drive."
         )
-        if uploaded_files:
-            st.success(f"🖼️ Selected **{len(uploaded_files)}** photo(s) from folder!")
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
+        st.session_state["selected_folder_path"] = folder_path_str
 
-    with input_tab_server:
-        col_input, col_popup = st.columns([3.5, 1.2])
+    with col_browse:
+        st.write(" ")
+        st.write(" ")
+        if st.button("📁 Browse Folders", key="open_folder_popup", use_container_width=True):
+            if hasattr(st, "dialog"):
+                folder_picker_dialog()
 
-        default_folder = st.session_state.get("selected_folder_path", "")
-
-        with col_input:
-            folder_path_str = st.text_input(
-                "Directory path on server disk or mounted drive",
-                value=default_folder,
-                placeholder="/media/external_drive/looks_folder",
-                key="folder_path_text_input",
-            )
-            st.session_state["selected_folder_path"] = folder_path_str
-
-        with col_popup:
-            st.write(" ")
-            st.write(" ")
-            if st.button("📁 Browse Server", key="open_folder_popup", use_container_width=True):
-                if hasattr(st, "dialog"):
-                    folder_picker_dialog()
-
-        st.caption("Mounted Drive / Server Shortcuts:")
+    col_options, col_presets = st.columns([1.5, 3])
+    with col_options:
+        is_recursive = st.checkbox(
+            "Scan Subfolders (Recursive)",
+            value=True,
+            key="folder_recursive_checkbox",
+        )
+    with col_presets:
+        st.caption("Quick Folder Shortcuts:")
         q1, q2, q3, q4 = st.columns(4)
         with q1:
             if st.button("💾 /media", key="preset_media"):
@@ -471,30 +457,42 @@ def render_reverse_search_tab() -> None:
                 st.session_state["selected_folder_path"] = "/home/kat/workspace"
                 st.rerun()
         with q4:
-            if st.button("🛍️ hot-girl-shopify", key="preset_shopify"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify"
+            if st.button("🛍️ photos", key="preset_photos"):
+                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/photos"
                 st.rerun()
 
-        is_recursive = st.checkbox(
-            "Recursive Scan (Crawl all subdirectories in folder)",
-            value=True,
-            key="folder_recursive_checkbox",
+    if folder_path_str:
+        p = Path(folder_path_str).expanduser()
+        if p.exists() and p.is_dir():
+            crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
+            st.success(f"📁 **Active Folder:** `{p}` — Found **{len(crawled_items)}** photo(s) across **{len(subdirs)}** subfolder(s) (Direct disk access — 0 upload time).")
+
+            if crawled_items:
+                items_to_process = crawled_items
+                with st.expander(f"📋 List of Found Files ({len(crawled_items)} images)"):
+                    for item_meta in crawled_items[:50]:
+                        st.write(f"- `{item_meta['name']}` ({item_meta['size_bytes'] / 1024:.1f} KB)")
+                    if len(crawled_items) > 50:
+                        st.caption(f"...and {len(crawled_items) - 50} more images.")
+        else:
+            st.warning("⚠️ Directory path does not exist or is not a folder.")
+
+    with st.expander("📤 Manual File Upload Fallback (Drag & Drop)", expanded=not items_to_process):
+        uploaded_files = st.file_uploader(
+            "Upload look photos manually",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key="folder_photos_uploader",
         )
-
-        if folder_path_str:
-            p = Path(folder_path_str)
-            if p.exists() and p.is_dir():
-                crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
-                st.success(f"📁 **Server Directory:** `{p}` — Found **{len(crawled_items)}** image file(s) across **{len(subdirs)}** subfolder(s).")
-
-                if crawled_items:
-                    with st.expander(f"📋 View List of Crawled Files ({len(crawled_items)} items)"):
-                        for item_meta in crawled_items:
-                            st.write(f"- `{item_meta['name']}` ({item_meta['size_bytes'] / 1024:.1f} KB)")
-
-                    items_to_process = crawled_items
-            else:
-                st.warning("⚠️ Directory path does not exist or is not a folder.")
+        if uploaded_files and not items_to_process:
+            st.success(f"🖼️ Uploaded **{len(uploaded_files)}** photo(s)!")
+            for f in uploaded_files:
+                items_to_process.append({
+                    "name": f.name,
+                    "bytes": f.getvalue(),
+                    "mime": f.type or "image/jpeg",
+                    "url": "",
+                })
 
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
