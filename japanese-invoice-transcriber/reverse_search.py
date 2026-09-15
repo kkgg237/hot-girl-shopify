@@ -336,8 +336,8 @@ def format_shopify_title(
     runway_year: str = "",
 ) -> str:
     """Format concise Shopify title with Title Case capitalization.
-    If designer is unknown or generic ('unknown', 'unbranded', 'generic'), leave blank.
-    Formula: [Era/Year] [Designer] [Collection] [Color/Print] [Garment Type] [Set]
+    Formula: [Era/Year] [Brand/Diffusion Line (or 'Vintage' if unknown)] [Collection] [Color/Print] [Garment Type] [Set]
+    Ensures brand words are NEVER duplicated across fields.
     """
     import re
 
@@ -346,10 +346,20 @@ def format_shopify_title(
             return ""
         return " ".join(w.capitalize() if not w.isupper() else w for w in text.strip().split())
 
-    # Filter out unknown or generic brand names
     d_clean = designer.strip() if designer else ""
     if d_clean.lower() in ["unknown", "unbranded", "generic", "none", "n/a", "unsure"]:
-        d_clean = ""
+        d_clean = "Vintage"
+
+    # Helper to strip overlapping brand words from other fields so brand is never duplicated
+    def strip_brand_words(field_text: str, brand_name: str) -> str:
+        if not field_text or not brand_name:
+            return field_text
+        b_tokens = set(brand_name.lower().split())
+        if "cavalli" in brand_name.lower():
+            b_tokens.update(["roberto", "cavalli", "just", "class", "freedom"])
+        words = field_text.strip().split()
+        filtered = [w for w in words if w.lower() not in b_tokens]
+        return " ".join(filtered)
 
     notes_lower = notes.lower() if notes else ""
     if "runway" in notes_lower or is_runway:
@@ -365,10 +375,12 @@ def format_shopify_title(
         parts = [year, season, "Runway"]
         if d_clean:
             parts.append(cap(d_clean))
-        if print_color:
-            parts.append(cap(print_color))
-        if garment_type:
-            parts.append(cap(garment_type))
+        p_clean = strip_brand_words(print_color, d_clean)
+        if p_clean:
+            parts.append(cap(p_clean))
+        g_clean = strip_brand_words(garment_type, d_clean)
+        if g_clean:
+            parts.append(cap(g_clean))
 
         title = " ".join(parts).strip()
         if is_set and not title.lower().endswith("set"):
@@ -386,14 +398,17 @@ def format_shopify_title(
     if d_clean:
         parts.append(cap(d_clean))
 
-    if collection:
-        parts.append(cap(collection))
+    c_clean = strip_brand_words(collection, d_clean)
+    if c_clean:
+        parts.append(cap(c_clean))
 
-    if print_color:
-        parts.append(cap(print_color))
+    p_clean = strip_brand_words(print_color, d_clean)
+    if p_clean:
+        parts.append(cap(p_clean))
 
-    if garment_type:
-        parts.append(cap(garment_type))
+    g_clean = strip_brand_words(garment_type, d_clean)
+    if g_clean:
+        parts.append(cap(g_clean))
 
     title = " ".join(parts).strip()
     if is_set and not title.lower().endswith("set"):
@@ -1339,17 +1354,32 @@ def render_reverse_search_tab() -> None:
                     key="step1_data_editor",
                 )
 
-                if edited_df is not None:
-                    for row, orig in zip(edited_df, results):
-                        orig["item_type"] = row.get("Item Type", orig.get("item_type"))
-                        orig["designer"] = row.get("Designer / Brand", orig.get("designer"))
-                        orig["year_era"] = row.get("Year / Era", orig.get("year_era"))
-                        orig["collection"] = row.get("Collection", orig.get("collection"))
-                        orig["print_color"] = row.get("Print / Color", orig.get("print_color"))
-                        orig["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
-                        orig["fabric"] = row.get("Fabric", orig.get("fabric"))
-                        orig["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
-                        orig["notes"] = row.get("Notes", orig.get("notes"))
+                if st.button("💾 Save Metadata Edits & Sync Panels", type="primary", use_container_width=True, key="save_step1_btn"):
+                    if edited_df is not None:
+                        for row, orig in zip(edited_df, results):
+                            orig["item_type"] = row.get("Item Type", orig.get("item_type"))
+                            orig["designer"] = row.get("Designer / Brand", orig.get("designer"))
+                            orig["year_era"] = row.get("Year / Era", orig.get("year_era"))
+                            orig["collection"] = row.get("Collection", orig.get("collection"))
+                            orig["print_color"] = row.get("Print / Color", orig.get("print_color"))
+                            orig["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
+                            orig["fabric"] = row.get("Fabric", orig.get("fabric"))
+                            orig["notes"] = row.get("Notes", orig.get("notes"))
+
+                            # Recalculate title formula
+                            orig["suggested_title"] = format_shopify_title(
+                                designer=orig.get("designer", ""),
+                                year_era=orig.get("year_era", ""),
+                                collection=orig.get("collection", ""),
+                                print_color=orig.get("print_color", ""),
+                                garment_type=orig.get("garment_type", ""),
+                                is_set=(orig.get("item_type") == "Set"),
+                                notes=orig.get("notes", ""),
+                            )
+
+                        st.session_state["reverse_search_results"] = results
+                        st.success("🎉 Metadata edits saved and titles updated across all panels!")
+                        st.rerun()
 
             with sub_v2:
                 for idx, res in enumerate(results):
