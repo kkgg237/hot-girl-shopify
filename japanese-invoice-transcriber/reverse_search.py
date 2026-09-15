@@ -32,7 +32,7 @@ STATIC_LENS_DIR = Path(__file__).parent / "static" / "lens_cache"
 
 
 def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
-    """Upload studio photo bytes to temporary public host (Uguu/Litterbox CDN) so Google Lens/Bing can access the image directly without Cloudflare Access auth blocks."""
+    """Upload studio photo bytes to temporary public host (Uguu/Catbox CDN) so Google Lens/Bing can access the image directly without Cloudflare Access auth blocks."""
     if not image_bytes:
         return ""
     try:
@@ -48,7 +48,21 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
             out_file.write_bytes(image_bytes)
 
         import requests
-        # Primary: Litterbox CDN upload
+        # Primary: Uguu.se CDN upload
+        try:
+            resp = requests.post(
+                "https://uguu.se/upload",
+                files={"files[]": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
+                timeout=12,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if "files" in data and len(data["files"]) > 0:
+                    return data["files"][0]["url"]
+        except Exception:
+            pass
+
+        # Secondary: Litterbox CDN upload
         try:
             resp = requests.post(
                 "https://litterbox.catbox.moe/resources/internals/api.php",
@@ -113,11 +127,10 @@ FAST_FASHION_DOMAINS = [
 ]
 
 
-def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine: str = "bing_reverse_image") -> list[dict[str, Any]]:
-    """Query SerpAPI (Bing Reverse Image or Google Lens) with public image URL to fetch exact visual matches.
+def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine: str = "google_lens") -> list[dict[str, Any]]:
+    """Query SerpAPI (Google Lens or Bing Reverse Image) with public image URL to fetch exact visual matches.
     
     Filters strictly by approved resale/luxury platforms and excludes fast-fashion sites.
-    Applies brand-guided visual search and Option A fallback flag.
     """
     serp_key = os.getenv("SERPAPI_KEY", "")
     if not serp_key:
@@ -133,30 +146,36 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
     matches = []
     try:
         import requests
-        # Primary: Bing Reverse Image Search via SerpAPI
-        params = {"engine": engine, "url": image_url, "api_key": serp_key}
-        if brand:
-            params["q"] = brand
-
-        resp = requests.get(
+        # 1. Primary engine: google_lens
+        r1 = requests.get(
             "https://serpapi.com/search.json",
-            params=params,
+            params={"engine": "google_lens", "url": image_url, "api_key": serp_key},
             timeout=15,
         )
-        if resp.status_code == 200:
-            data = resp.json()
-            matches = data.get("visual_matches") or data.get("organic_results") or data.get("image_results") or []
-        else:
-            # Fallback engine: google_lens
-            params["engine"] = "google_lens"
-            resp2 = requests.get(
+        if r1.status_code == 200:
+            data1 = r1.json()
+            matches = data1.get("visual_matches", []) or []
+
+        # 2. Secondary engine fallback: bing_reverse_image
+        if len(matches) < 5:
+            params_bing = {"engine": "bing_reverse_image", "image_url": image_url, "api_key": serp_key}
+            if brand:
+                params_bing["q"] = brand
+            r2 = requests.get(
                 "https://serpapi.com/search.json",
-                params=params,
+                params=params_bing,
                 timeout=15,
             )
-            if resp2.status_code == 200:
-                data2 = resp2.json()
-                matches = data2.get("visual_matches") or data2.get("organic_results") or []
+            if r2.status_code == 200:
+                data2 = r2.json()
+                rc = data2.get("related_content", []) or data2.get("organic_results", []) or []
+                for item in rc:
+                    matches.append({
+                        "title": item.get("title", ""),
+                        "link": item.get("source") or item.get("link", ""),
+                        "source": item.get("source", ""),
+                        "price": item.get("price"),
+                    })
     except Exception:
         pass
 
@@ -165,7 +184,7 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
     brand_terms = [b.strip().lower() for b in brand.split() if len(b.strip()) > 2] if brand else []
 
     for m in matches:
-        link = (m.get("link") or m.get("source_url") or "").lower()
+        link = (m.get("link") or m.get("source") or "").lower()
         title = (m.get("title") or m.get("snippet") or "").lower()
         source = (m.get("source") or "").lower()
 
@@ -310,14 +329,22 @@ def format_shopify_title(
     runway_season: str = "SS",
     runway_year: str = "",
 ) -> str:
-    """Format a title according to Past Studies Shopify title conventions:
-
-    Standard Formula: [Year/Era] [Designer] [Color/Print Description] [Garment Type(s)] [Set (if applicable)]
-    Runway Formula: [Year] [Season] Runway [Designer] [Color/Print Description] [Garment Type]
-    Example Runway: 2002 SS Runway Roberto Cavalli Black Blouse
-    Note: Normalizes 'y2k' / 'y2k era' to '2000s'.
+    """Format concise Shopify title with Title Case capitalization.
+    If designer is unknown or generic ('unknown', 'unbranded', 'generic'), leave blank.
+    Formula: [Era/Year] [Designer] [Collection] [Color/Print] [Garment Type] [Set]
     """
     import re
+
+    def cap(text: str) -> str:
+        if not text:
+            return ""
+        return " ".join(w.capitalize() if not w.isupper() else w for w in text.strip().split())
+
+    # Filter out unknown or generic brand names
+    d_clean = designer.strip() if designer else ""
+    if d_clean.lower() in ["unknown", "unbranded", "generic", "none", "n/a", "unsure"]:
+        d_clean = ""
+
     notes_lower = notes.lower() if notes else ""
     if "runway" in notes_lower or is_runway:
         year_match = re.search(r"\b(19\d\d|20\d\d)\b", notes_lower + " " + str(year_era) + " " + str(runway_year))
@@ -330,12 +357,12 @@ def format_shopify_title(
             season = "FW"
 
         parts = [year, season, "Runway"]
-        if designer:
-            parts.append(designer.strip().title())
+        if d_clean:
+            parts.append(cap(d_clean))
         if print_color:
-            parts.append(print_color.strip().title())
+            parts.append(cap(print_color))
         if garment_type:
-            parts.append(garment_type.strip().title())
+            parts.append(cap(garment_type))
 
         title = " ".join(parts).strip()
         if is_set and not title.lower().endswith("set"):
@@ -345,22 +372,27 @@ def format_shopify_title(
     # Standard non-runway title formula
     parts = []
     if year_era:
-        era_clean = year_era.strip().lower()
-        if era_clean in ["y2k", "y2k era"]:
+        era_clean = year_era.strip()
+        if era_clean.lower() in ["y2k", "y2k era"]:
             era_clean = "2000s"
-        parts.append(era_clean)
-    if designer:
-        parts.append(designer.strip().lower())
+        parts.append(cap(era_clean))
+
+    if d_clean:
+        parts.append(cap(d_clean))
+
     if collection:
-        parts.append(collection.strip().lower())
+        parts.append(cap(collection))
+
     if print_color:
-        parts.append(print_color.strip().lower())
+        parts.append(cap(print_color))
+
     if garment_type:
-        parts.append(garment_type.strip().lower())
+        parts.append(cap(garment_type))
 
     title = " ".join(parts).strip()
-    if is_set and not title.endswith("set"):
-        title += " set"
+    if is_set and not title.lower().endswith("set"):
+        title += " Set"
+
     return title
 
 
@@ -1125,22 +1157,6 @@ def render_reverse_search_tab() -> None:
                         if not img_url:
                             img_url = res.get("image_url", "")
 
-                        if not v_matches and img_url:
-                            if st.button(f"🔍 Fetch Google Lens Matches for {res.get('filename') or 'Photo'}", key=f"fetch_lens_{idx}"):
-                                with st.spinner("Fetching exact visual matches from Google Lens..."):
-                                    fetched = fetch_serpapi_visual_matches(img_url)
-                                    res["visual_matches"] = fetched
-                                    min_p, max_p = extract_prices_from_visual_matches(fetched)
-                                    if min_p and max_p:
-                                        res["min_price_usd"] = min_p
-                                        res["max_price_usd"] = max_p
-                                    if "reverse_search_results" in st.session_state and idx < len(st.session_state["reverse_search_results"]):
-                                        st.session_state["reverse_search_results"][idx]["visual_matches"] = fetched
-                                        st.session_state["reverse_search_results"][idx]["min_price_usd"] = res.get("min_price_usd")
-                                        st.session_state["reverse_search_results"][idx]["max_price_usd"] = res.get("max_price_usd")
-                                    v_matches = fetched
-                                    st.rerun()
-
                         p_min = int(res.get("min_price_usd") or 0)
                         p_max = int(res.get("max_price_usd") or 0)
                         if p_min > 0 or p_max > 0:
@@ -1175,17 +1191,7 @@ def render_reverse_search_tab() -> None:
                                 hide_index=True,
                             )
                         else:
-                            st.caption("Click 'Run AI Reverse Research' or 'Fetch Google Lens Matches' to pull exact visual comps.")
-
-                        links = build_search_urls(res.get("search_query") or res.get("suggested_title", ""), img_url)
-                        bing_url = links.get("Bing Visual", "#")
-                        st.markdown(
-                            f'<a href="{bing_url}" target="_blank" style="text-decoration:none;">'
-                            f'<div style="width:100%; text-align:center; padding:10px 16px; background-color:#0f172a; color:#ffffff; border-radius:8px; font-weight:600; margin-top:8px; display:inline-block; box-sizing:border-box;">'
-                            f'👁️ Open Bing Visual Search (New Tab ↗)'
-                            f'</div></a>',
-                            unsafe_allow_html=True,
-                        )
+                            st.caption("No exact visual matches found on approved resale platforms.")
 
         with view_tab_table:
             table_rows = []
