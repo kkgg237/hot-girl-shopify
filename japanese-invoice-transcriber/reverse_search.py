@@ -1338,7 +1338,7 @@ def render_reverse_search_tab() -> None:
                 column_config = {
                     "Photo": st.column_config.ImageColumn("Photo", width="small"),
                     "Source": st.column_config.TextColumn("Source / Photo Name", width="medium", disabled=True),
-                    "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
+                    "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Top", "Bottom", "Set", "Outerwear", "Dress", "Handbag", "Shoes", "Accessory"], width="small"),
                     "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
                     "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
                     "Collection": st.column_config.TextColumn("Collection Name", width="medium"),
@@ -1408,7 +1408,10 @@ def render_reverse_search_tab() -> None:
                             with f1:
                                 new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"s1_des_{idx}")
                                 new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"s1_era_{idx}")
-                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"s1_type_{idx}")
+                                opts = ["Top", "Bottom", "Set", "Outerwear", "Dress", "Handbag", "Shoes", "Accessory"]
+                                curr_type = res.get("item_type", "Top")
+                                type_idx = opts.index(curr_type) if curr_type in opts else 0
+                                new_item_type = st.selectbox("Item Type", opts, index=type_idx, key=f"s1_type_{idx}")
                             with f2:
                                 new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"s1_coll_{idx}")
                                 new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"s1_print_{idx}")
