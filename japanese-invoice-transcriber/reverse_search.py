@@ -687,9 +687,12 @@ def deduplicate_photo_items(items: list[dict[str, Any]]) -> tuple[list[dict[str,
         name = item.get("name", "")
         stem = Path(name).stem.lower()
 
-        # Clean multi-angle suffixes: _1, _2, -1, -2, _front, _back, _tag, _detail, _side, _a, _b, (1), (2)
-        clean_stem = re.sub(r'[\_\-\s]+(front|back|tag|detail|side|close|zoom|a|b|c|d|\d+)$', '', stem, flags=re.IGNORECASE)
+        # Clean explicit multi-angle suffixes (_front, _back, _tag, _detail, _side, _close, _zoom, _a, _b, _c, _d)
+        clean_stem = re.sub(r'[\_\-\s]+(front|back|tag|detail|side|close|zoom|angle\d*)$', '', stem, flags=re.IGNORECASE)
+        clean_stem = re.sub(r'[\_\-\s]+[a-d]$', '', clean_stem, flags=re.IGNORECASE)
         clean_stem = re.sub(r'\s*\(\d+\)$', '', clean_stem)
+        # Shot index numbers like _1, _2 ONLY when preceded by an item number (e.g. _001_1 -> _001)
+        clean_stem = re.sub(r'([\_\-\s]+\d{2,})[\_\-\s]+[1-9]$', r'\1', clean_stem)
         clean_stem = clean_stem.strip() or stem
 
         if clean_stem not in groups:
