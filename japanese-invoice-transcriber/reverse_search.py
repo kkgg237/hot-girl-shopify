@@ -647,26 +647,44 @@ def render_reverse_search_tab() -> None:
 
     items_to_process = []
 
-    folder_picker_result = _native_folder_picker(key="native_folder_picker_ui")
-    if folder_picker_result and isinstance(folder_picker_result, list):
-        st.session_state["native_folder_files"] = folder_picker_result
+    # 1. Local Folder Path Selector (if chosen via dialog)
+    sel_path = st.session_state.get("selected_folder_path")
+    if sel_path and Path(sel_path).exists() and Path(sel_path).is_dir():
+        crawled_items, _ = crawl_local_directory(Path(sel_path), recursive=True)
+        if crawled_items:
+            st.success(f"📁 Loaded **{len(crawled_items)}** photo(s) from local directory `{sel_path}`!")
+            for c in crawled_items:
+                items_to_process.append({
+                    "name": c["name"],
+                    "path": c["path"],
+                    "mime": "image/jpeg",
+                    "bytes": None,
+                    "url": "",
+                })
 
-    native_files = st.session_state.get("native_folder_files", [])
-    if native_files and isinstance(native_files, list) and native_files:
-        st.success(f"🖼️ Loaded **{len(native_files)}** photo(s) from selected folder ready for research!")
-        for item in native_files:
-            try:
-                raw_bytes = base64.b64decode(item.get("data_b64", ""))
-            except Exception:
-                raw_bytes = b""
-            items_to_process.append({
-                "name": item.get("name", "folder_image.jpg"),
-                "bytes": raw_bytes,
-                "mime": item.get("mime", "image/jpeg"),
-                "url": "",
-            })
+    # 2. Native OS Folder Chooser (Client Webkit directory)
+    if not items_to_process:
+        folder_picker_result = _native_folder_picker(key="native_folder_picker_ui")
+        if folder_picker_result and isinstance(folder_picker_result, list) and len(folder_picker_result) > 0:
+            st.session_state["native_folder_files"] = folder_picker_result
 
-    with st.expander("📤 Manual File Upload Fallback (Drag & Drop)", expanded=not items_to_process):
+        native_files = st.session_state.get("native_folder_files", [])
+        if native_files and isinstance(native_files, list) and native_files:
+            st.success(f"🖼️ Loaded **{len(native_files)}** photo(s) from selected folder ready for research!")
+            for item in native_files:
+                try:
+                    raw_bytes = base64.b64decode(item.get("data_b64", ""))
+                except Exception:
+                    raw_bytes = b""
+                items_to_process.append({
+                    "name": item.get("name", "folder_image.jpg"),
+                    "bytes": raw_bytes,
+                    "mime": item.get("mime", "image/jpeg"),
+                    "url": "",
+                })
+
+    # 3. Manual Upload Fallback
+    with st.expander("📤 Manual File Upload Fallback / Server Folder Path", expanded=not items_to_process):
         uploaded_files = st.file_uploader(
             "Upload look photos manually",
             type=["jpg", "jpeg", "png", "webp"],
@@ -683,6 +701,16 @@ def render_reverse_search_tab() -> None:
                     "url": "",
                 })
 
+        if hasattr(st, "dialog"):
+            if st.button("📁 Browse Local Directory Path on Server", key="open_server_dir_dialog"):
+                folder_picker_dialog()
+
+    if items_to_process:
+        if st.button("🔄 Reset / Select Different Photo Folder", key="reset_folder_selection"):
+            st.session_state["native_folder_files"] = []
+            st.session_state["selected_folder_path"] = None
+            st.rerun()
+
     dedup_multi_angles = st.checkbox(
         "🎯 Auto-Deduplicate Multi-Angle Shots (Group front/back/tag photos per item & process 1 primary photo)",
         value=True,
@@ -693,6 +721,9 @@ def render_reverse_search_tab() -> None:
         items_to_process, dups_skipped = deduplicate_photo_items(items_to_process)
         if dups_skipped > 0:
             st.info(f"✨ Auto-grouped photos into **{len(items_to_process)} unique garment(s)** (skipped {dups_skipped} multi-angle/tag duplicate shots).")
+
+    if not items_to_process:
+        st.warning("⚠️ **0 photos currently loaded.** Please click **'Select Photo Folder'** above to pick your folder.")
 
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
