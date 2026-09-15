@@ -31,7 +31,7 @@ STATIC_LENS_DIR = Path(__file__).parent / "static" / "lens_cache"
 
 
 def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
-    """Save image bytes to static/lens_cache directory and return public URL for Google Lens."""
+    """Upload studio photo bytes to temporary public host (Litterbox CDN) so Google Lens/Bing can access the image directly without Cloudflare Access auth blocks."""
     if not image_bytes:
         return ""
     try:
@@ -45,9 +45,39 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
         out_file = STATIC_LENS_DIR / f"{img_hash}{ext}"
         if not out_file.exists():
             out_file.write_bytes(image_bytes)
-        return f"https://invoices.paststudies-tools.com/app/static/lens_cache/{img_hash}{ext}"
+
+        import requests
+        resp = requests.post(
+            "https://litterbox.catbox.moe/resources/internals/api.php",
+            data={"reqtype": "fileupload", "time": "72h"},
+            files={"fileToUpload": (f"{img_hash}{ext}", image_bytes, f"image/{ext.lstrip('.')}")},
+            timeout=10,
+        )
+        if resp.status_code == 200 and resp.text.strip().startswith("http"):
+            return resp.text.strip()
     except Exception:
-        return ""
+        pass
+    return f"https://invoices.paststudies-tools.com/app/static/lens_cache/{img_hash}{ext}"
+
+
+def fetch_serpapi_visual_matches(image_url: str) -> list[dict[str, Any]]:
+    """Query SerpAPI Google Lens API with public image URL to fetch exact visual matches."""
+    serp_key = os.getenv("SERPAPI_KEY", "")
+    if not serp_key or not image_url:
+        return []
+    try:
+        import requests
+        resp = requests.get(
+            "https://serpapi.com/search.json",
+            params={"engine": "google_lens", "url": image_url, "api_key": serp_key},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("visual_matches", [])
+    except Exception:
+        pass
+    return []
 
 try:
     import anthropic
@@ -539,6 +569,10 @@ def render_reverse_search_tab() -> None:
                     )
                     ai_data["image_bytes"] = image_bytes
                     ai_data["image_url"] = item["url"]
+                    pub_url = save_image_for_public_lens(image_bytes, item["name"])
+                    ai_data["public_image_url"] = pub_url
+                    if pub_url:
+                        ai_data["visual_matches"] = fetch_serpapi_visual_matches(pub_url)
                     new_results.append(ai_data)
                 except Exception as ex:
                     st.error(f"Error analyzing {item['name']}: {ex}")
@@ -648,6 +682,18 @@ def render_reverse_search_tab() -> None:
                             st.link_button("📦 RealReal", links.get("The RealReal", "#"), use_container_width=True)
                         with l8:
                             st.link_button("🛍️ Depop", links.get("Depop", "#"), use_container_width=True)
+
+                        v_matches = res.get("visual_matches") or []
+                        if v_matches:
+                            with st.expander(f"🎯 Exact Visual Matches Found ({len(v_matches)})", expanded=True):
+                                for vm in v_matches[:8]:
+                                    title = vm.get("title", "Matched Item")
+                                    source = vm.get("source", "Marketplace")
+                                    link = vm.get("link", "#")
+                                    p_dict = vm.get("price") if isinstance(vm.get("price"), dict) else {}
+                                    price_val = p_dict.get("value") or p_dict.get("extracted_value") or ""
+                                    price_str = f" · **{price_val}**" if price_val else ""
+                                    st.markdown(f"- **{source}**: [{title}]({link}){price_str}")
 
         with view_tab_table:
             table_rows = []
