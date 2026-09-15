@@ -23,12 +23,12 @@ def test_save_image_for_public_lens():
     fake_bytes = b"fake_jpg_content_12345"
     url = save_image_for_public_lens(fake_bytes, "test_look.jpg")
 
-    assert url.startswith("https://invoices.paststudies-tools/app/static/lens_cache/")
+    assert url.startswith("https://invoices.paststudies-tools.com/app/static/lens_cache/")
     assert url.endswith(".jpg")
 
     urls = build_search_urls("roberto cavalli kamasutra", image_url=url)
     assert "uploadbyurl" in urls["Google Lens"]
-    assert "https%3A%2F%2Finvoices.paststudies-tools" in urls["Google Lens"]
+    assert "https%3A%2F%2Finvoices.paststudies-tools.com" in urls["Google Lens"]
 
 
 def test_build_search_urls_with_image_url():

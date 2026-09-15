@@ -45,7 +45,7 @@ def save_image_for_public_lens(image_bytes: bytes, filename: str = "") -> str:
         out_file = STATIC_LENS_DIR / f"{img_hash}{ext}"
         if not out_file.exists():
             out_file.write_bytes(image_bytes)
-        return f"https://invoices.paststudies-tools/app/static/lens_cache/{img_hash}{ext}"
+        return f"https://invoices.paststudies-tools.com/app/static/lens_cache/{img_hash}{ext}"
     except Exception:
         return ""
 
