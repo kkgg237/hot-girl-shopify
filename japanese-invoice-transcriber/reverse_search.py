@@ -796,6 +796,91 @@ def generate_sku_for_item(brand: str = "", idx: int = 1) -> str:
     return f"{prefix}_{yymm}_{idx:03d}"
 
 
+def get_body_html_template(item: dict[str, Any]) -> str:
+    """Return exact HTML description template skeleton from Copy Formats tab (description_templates.yaml)."""
+    item_type = str(item.get("item_type", "")).strip().lower()
+    garment = str(item.get("garment_type", "")).strip().lower()
+
+    # 1. Sets (Top + Bottom measurement prompts)
+    if item_type == "set" or "set" in garment or "co-ord" in garment or "suit" in garment:
+        return (
+            "<p><strong>TAGGED SIZE:</strong> </p>\n"
+            "<p><strong>MEASUREMENTS:</strong></p>\n"
+            "<table>\n"
+            "  <tbody>\n"
+            "    <tr><td><strong>CHEST</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>TOP LENGTH</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>WAIST</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>HIPS</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>INSEAM</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>RISE</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>BOTTOM LENGTH</strong></td><td></td></tr>\n"
+            "  </tbody>\n"
+            "</table>\n"
+            "<p><strong>CONDITION NOTES:</strong></p>\n"
+        )
+
+    # 2. Bottoms (Pants, Skirts, Shorts, Jeans, Trousers)
+    if any(b in garment for b in ["bottom", "pant", "skirt", "short", "jean", "trouser", "legging"]):
+        return (
+            "<p><strong>TAGGED SIZE:</strong> </p>\n"
+            "<p><strong>MEASUREMENTS:</strong></p>\n"
+            "<table>\n"
+            "  <tbody>\n"
+            "    <tr><td><strong>WAIST</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>HIPS</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>INSEAM</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>RISE</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n"
+            "  </tbody>\n"
+            "</table>\n"
+            "<p><strong>CONDITION NOTES:</strong></p>\n"
+        )
+
+    # 3. Outerwear / Coats / Jackets
+    if any(o in garment for o in ["jacket", "coat", "outerwear", "blazer", "trench"]):
+        return (
+            "<p><strong>TAGGED SIZE:</strong> </p>\n"
+            "<p><strong>MEASUREMENTS:</strong></p>\n"
+            "<table>\n"
+            "  <tbody>\n"
+            "    <tr><td><strong>CHEST</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>SLEEVE</strong></td><td></td></tr>\n"
+            "    <tr><td><strong>SHOULDER</strong></td><td></td></tr>\n"
+            "  </tbody>\n"
+            "</table>\n"
+            "<p><strong>CONDITION NOTES:</strong></p>\n"
+        )
+
+    # 4. Handbags / Bags
+    if any(h in garment for h in ["bag", "handbag", "purse", "tote", "clutch"]):
+        return (
+            "<p><strong>DIMENSIONS:</strong><br></p>\n"
+            "<p><strong>DETAILS:</strong></p>\n"
+            "<ul>\n"
+            "  <li></li>\n"
+            "  <li></li>\n"
+            "  <li></li>\n"
+            "</ul>\n"
+            "<p><strong>MATERIAL:</strong><br></p>\n"
+            "<p><strong>CONDITION NOTES:</strong></p>\n"
+        )
+
+    # 5. Tops / Default Tops / Shirts / Sweaters / Dresses
+    return (
+        "<p><strong>TAGGED SIZE:</strong> </p>\n"
+        "<p><strong>MEASUREMENTS:</strong></p>\n"
+        "<table>\n"
+        "  <tbody>\n"
+        "    <tr><td><strong>CHEST</strong></td><td></td></tr>\n"
+        "    <tr><td><strong>LENGTH</strong></td><td></td></tr>\n"
+        "  </tbody>\n"
+        "</table>\n"
+        "<p><strong>CONDITION NOTES:</strong></p>\n"
+    )
+
+
 def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
     """Generate official Shopify Product CSV import string matching Shopify's product CSV spec."""
     output = io.StringIO()
@@ -834,39 +919,12 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
         designer = item.get("designer", "").strip()
         vendor = get_vendor_for_item(designer)
 
-        year_era = item.get("year_era", "2000s")
-        garment_type = item.get("garment_type", "Garment")
-        collection = item.get("collection", "")
-        print_color = item.get("print_color", "")
-        fabric = item.get("fabric", "")
-
         sku = generate_sku_for_item(designer, idx)
         title_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
         sku_slug = re.sub(r'[^a-z0-9]+', '-', sku.lower()).strip('-')
         handle = f"{title_slug}-{sku_slug}"
 
-        body_parts = ["<p>"]
-        if designer:
-            body_parts.append(f"<strong>Brand:</strong> {designer.title()}<br>")
-        if year_era:
-            body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
-        if collection:
-            body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
-        if print_color:
-            body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
-        if fabric:
-            body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
-        body_parts.append("</p>")
-        body_html = "".join(body_parts)
-
-        tags_list = ["vintage", "designer", year_era]
-        if designer:
-            tags_list.append(designer.lower())
-        if garment_type:
-            tags_list.append(garment_type.lower())
-        if collection:
-            tags_list.append(collection.lower())
-        tags_str = ", ".join(dict.fromkeys(tags_list))
+        body_html = get_body_html_template(item)
 
         listing_p = item.get("listing_price_usd") or calculate_listing_price(
             cost=item.get("cost_price_usd", 0),
@@ -885,8 +943,8 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
             body_html,
             vendor,
             "Apparel & Accessories",
-            garment_type.title(),
-            tags_str,
+            "",
+            "",
             "TRUE",
             "Title",
             "Default Title",
@@ -951,20 +1009,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
         if collection:
             tags_list.append(collection.lower())
 
-        body_parts = ["<p>"]
-        if designer:
-            body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
-        if year_era:
-            body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
-        if collection:
-            body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
-        if print_color:
-            body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
-        if fabric:
-            body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
-        body_parts.append("</p>")
-        body_html = "".join(body_parts)
-
+        body_html = get_body_html_template(item)
         photo_p = Path(item["image_path"]) if item.get("image_path") and Path(item["image_path"]).exists() else None
         sku = generate_sku_for_item(designer, idx)
 
@@ -972,12 +1017,12 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
             item={},
             title=title,
             vendor=vendor,
-            product_type=garment_type.title(),
+            product_type="",
             sku=sku,
             price=listing_p,
             cost_usd=cost_p,
             photo_path=photo_p,
-            tags=tags_list,
+            tags=[],
             body_html=body_html,
         )
 
@@ -1641,28 +1686,7 @@ def render_reverse_search_tab() -> None:
                 sku_slug = re.sub(r'[^a-z0-9]+', '-', sku.lower()).strip('-')
                 handle = f"{title_slug}-{sku_slug}"
 
-                body_parts = ["<p>"]
-                if designer:
-                    body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
-                if year_era:
-                    body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
-                if collection:
-                    body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
-                if print_color:
-                    body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
-                if fabric:
-                    body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
-                body_parts.append("</p>")
-                body_html = "".join(body_parts)
-
-                tags_list = ["vintage", "designer", year_era]
-                if designer:
-                    tags_list.append(designer.lower())
-                if garment_type:
-                    tags_list.append(garment_type.lower())
-                if collection:
-                    tags_list.append(collection.lower())
-                tags_str = ", ".join(dict.fromkeys(tags_list))
+                body_html = get_body_html_template(res)
 
                 list_p = res.get("listing_price_usd") or calculate_listing_price(
                     cost=res.get("cost_price_usd", 0),
@@ -1680,8 +1704,8 @@ def render_reverse_search_tab() -> None:
                     "Body (HTML)": body_html,
                     "Vendor": vendor,
                     "Product Category": "Apparel & Accessories",
-                    "Type": garment_type.title(),
-                    "Tags": tags_str,
+                    "Type": "",
+                    "Tags": "",
                     "Published": "TRUE",
                     "Option1 Name": "Title",
                     "Option1 Value": "Default Title",
