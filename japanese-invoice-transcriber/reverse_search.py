@@ -662,45 +662,57 @@ def render_reverse_search_tab() -> None:
 
                         res["notes"] = st.text_input("Notes", value=res.get("notes", ""), key=f"notes_{idx}")
 
-                        st.markdown("**🔎 Flattened Comp Search Links:**")
-                        query = res.get("search_query") or res.get("suggested_title", "")
+                        st.markdown("**🎯 Google Lens Exact Visual Matches (Title Comparison & Pricing Research):**")
+                        v_matches = res.get("visual_matches") or []
                         img_url = res.get("public_image_url")
                         if not img_url and res.get("image_bytes"):
                             img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
                             res["public_image_url"] = img_url
                         if not img_url:
                             img_url = res.get("image_url", "")
-                        links = build_search_urls(query, img_url)
 
-                        l1, l2, l3, l4, l5, l6, l7, l8 = st.columns(8)
-                        with l1:
-                            st.link_button("👁️ Bing Visual", links.get("Bing Visual", "#"), use_container_width=True)
-                        with l2:
-                            st.link_button("🌐 Lens", links.get("Google Lens", "#"), use_container_width=True)
-                        with l3:
-                            st.link_button("🛍️ Grailed", links.get("Grailed", "#"), use_container_width=True)
-                        with l4:
-                            st.link_button("👗 Vestiaire", links.get("Vestiaire Collective", "#"), use_container_width=True)
-                        with l5:
-                            st.link_button("💎 1stDibs", links.get("1stDibs", "#"), use_container_width=True)
-                        with l6:
-                            st.link_button("🏷️ eBay", links.get("eBay", "#"), use_container_width=True)
-                        with l7:
-                            st.link_button("📦 RealReal", links.get("The RealReal", "#"), use_container_width=True)
-                        with l8:
-                            st.link_button("🛍️ Depop", links.get("Depop", "#"), use_container_width=True)
+                        if not v_matches and img_url:
+                            if st.button(f"🔍 Fetch Google Lens Matches for {res.get('filename') or 'Photo'}", key=f"fetch_lens_{idx}"):
+                                with st.spinner("Fetching exact visual matches from Google Lens..."):
+                                    fetched = fetch_serpapi_visual_matches(img_url)
+                                    res["visual_matches"] = fetched
+                                    v_matches = fetched
+                                    st.rerun()
 
-                        v_matches = res.get("visual_matches") or []
                         if v_matches:
-                            with st.expander(f"🎯 Exact Visual Matches Found ({len(v_matches)})", expanded=True):
-                                for vm in v_matches[:8]:
-                                    title = vm.get("title", "Matched Item")
-                                    source = vm.get("source", "Marketplace")
-                                    link = vm.get("link", "#")
-                                    p_dict = vm.get("price") if isinstance(vm.get("price"), dict) else {}
-                                    price_val = p_dict.get("value") or p_dict.get("extracted_value") or ""
-                                    price_str = f" · **{price_val}**" if price_val else ""
-                                    st.markdown(f"- **{source}**: [{title}]({link}){price_str}")
+                            match_data = []
+                            for vm in v_matches[:15]:
+                                title = vm.get("title", "Matched Item")
+                                source = vm.get("source", "Marketplace")
+                                link = vm.get("link", "#")
+                                p_dict = vm.get("price") if isinstance(vm.get("price"), dict) else {}
+                                price_val = p_dict.get("value") or p_dict.get("extracted_value") or "N/A"
+                                match_data.append({
+                                    "Platform / Source": source,
+                                    "Listing Title (Exact Visual Match)": title,
+                                    "Price": price_val,
+                                    "Listing Link": link,
+                                })
+                            st.dataframe(
+                                match_data,
+                                column_config={
+                                    "Platform / Source": st.column_config.TextColumn("Source", width="medium"),
+                                    "Listing Title (Exact Visual Match)": st.column_config.TextColumn("Listing Title", width="large"),
+                                    "Price": st.column_config.TextColumn("Price", width="small"),
+                                    "Listing Link": st.column_config.LinkColumn("Listing Link", display_text="🔗 View Listing"),
+                                },
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                        else:
+                            st.caption("Click 'Run AI Reverse Research' or 'Fetch Google Lens Matches' to pull exact visual comps.")
+
+                        links = build_search_urls(res.get("search_query") or res.get("suggested_title", ""), img_url)
+                        col_l1, col_l2 = st.columns([1, 1])
+                        with col_l1:
+                            st.link_button("👁️ Open Bing Visual Search", links.get("Bing Visual", "#"), use_container_width=True)
+                        with col_l2:
+                            st.link_button("🌐 Open Google Lens Browser View", links.get("Google Lens", "#"), use_container_width=True)
 
         with view_tab_table:
             table_rows = []
