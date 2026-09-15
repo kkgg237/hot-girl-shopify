@@ -1,10 +1,11 @@
 [theme]
 base = "light"
-primaryColor = "#111111"
-backgroundColor = "#fafaf8"
+primaryColor = "#0f172a"
+backgroundColor = "#f8fafc"
 secondaryBackgroundColor = "#ffffff"
-textColor = "#111111"
-font = "sans serif"
+textColor = "#0f172a"
 
 [server]
+maxMessageSize = 500
+maxUploadSize = 500
 enableStaticServing = true
