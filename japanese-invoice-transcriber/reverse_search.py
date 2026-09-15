@@ -181,6 +181,31 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
 
     return filtered
 
+
+def extract_prices_from_visual_matches(matches: list[dict[str, Any]]) -> tuple[int, int]:
+    """Extract min and max numeric prices ($USD) from exact visual match listings."""
+    prices = []
+    for m in matches:
+        p_dict = m.get("price") if isinstance(m.get("price"), dict) else {}
+        val = p_dict.get("extracted_value") or p_dict.get("value")
+
+        text_to_search = str(val) if val else f"{m.get('title', '')} {m.get('snippet', '')}"
+        found = re.findall(r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)', text_to_search)
+        for f in found:
+            try:
+                num = float(f.replace(",", ""))
+                if 20 <= num <= 10000:
+                    prices.append(int(num))
+            except ValueError:
+                pass
+
+        if isinstance(val, (int, float)) and 20 <= val <= 10000:
+            prices.append(int(val))
+
+    if prices:
+        return min(prices), max(prices)
+    return 0, 0
+
 try:
     import anthropic
 except ImportError:
@@ -731,6 +756,10 @@ def render_reverse_search_tab() -> None:
                     if pub_url:
                         matches = fetch_serpapi_visual_matches(pub_url, brand=designer, engine="bing_reverse_image")
                         ai_data["visual_matches"] = matches
+                        min_p, max_p = extract_prices_from_visual_matches(matches)
+                        if min_p and max_p:
+                            ai_data["min_price_usd"] = min_p
+                            ai_data["max_price_usd"] = max_p
                         if not matches:
                             ai_data["match_status"] = f"No exact {designer} visual match found — needs manual QA"
                         else:
@@ -860,10 +889,21 @@ def render_reverse_search_tab() -> None:
                                 with st.spinner("Fetching exact visual matches from Google Lens..."):
                                     fetched = fetch_serpapi_visual_matches(img_url)
                                     res["visual_matches"] = fetched
+                                    min_p, max_p = extract_prices_from_visual_matches(fetched)
+                                    if min_p and max_p:
+                                        res["min_price_usd"] = min_p
+                                        res["max_price_usd"] = max_p
                                     if "reverse_search_results" in st.session_state and idx < len(st.session_state["reverse_search_results"]):
                                         st.session_state["reverse_search_results"][idx]["visual_matches"] = fetched
+                                        st.session_state["reverse_search_results"][idx]["min_price_usd"] = res.get("min_price_usd")
+                                        st.session_state["reverse_search_results"][idx]["max_price_usd"] = res.get("max_price_usd")
                                     v_matches = fetched
                                     st.rerun()
+
+                        p_min = int(res.get("min_price_usd") or 0)
+                        p_max = int(res.get("max_price_usd") or 0)
+                        if p_min > 0 or p_max > 0:
+                            st.info(f"💵 **Estimated Market Resale Price Range:** **${p_min} – ${p_max} USD** (Low: **${p_min}** | High: **${p_max}** based on exact comps & market valuation)")
 
                         if v_matches:
                             match_data = []
