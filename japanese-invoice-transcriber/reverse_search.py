@@ -750,6 +750,32 @@ def calculate_listing_price(cost: float = 0.0, min_comp: float = 0.0, max_comp: 
     return 0
 
 
+def generate_sku_for_item(brand: str = "", idx: int = 1) -> str:
+    """Generate canonical Shopify SKU matching codebase standard in to_shopify.py: {BRAND_PREFIX}_{YYMM}_{NNN}."""
+    from datetime import datetime
+    yymm = datetime.now().strftime("%y%m")
+    clean_b = brand.strip() if brand else ""
+    if not clean_b or clean_b.lower() in ["unknown", "unbranded", "generic", "none", "n/a", "unsure"]:
+        prefix = "UNK"
+    else:
+        BRAND_PREFIXES = {
+            "roberto cavalli": "CAV", "cavalli": "CAV", "burberry": "BUR",
+            "jean paul gaultier": "JPG", "gaultier": "JPG", "blumarine": "BLU",
+            "dolce & gabbana": "DG", "dolce and gabbana": "DG", "gucci": "GUC",
+            "prada": "PRA", "chanel": "CHA", "dior": "CD", "christian dior": "CD",
+            "versace": "VER", "yves saint laurent": "YSL", "saint laurent": "SL",
+            "fendi": "FEN", "giorgio armani": "GA", "armani": "ARM",
+            "vivienne westwood": "VWW", "moschino": "MOS", "missoni": "MIS",
+        }
+        low_b = clean_b.lower()
+        if low_b in BRAND_PREFIXES:
+            prefix = BRAND_PREFIXES[low_b]
+        else:
+            letters = "".join(c for c in clean_b if c.isalpha())[:3].upper()
+            prefix = letters or "UNK"
+    return f"{prefix}_{yymm}_{idx:03d}"
+
+
 def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
     """Generate official Shopify Product CSV import string matching Shopify's product CSV spec."""
     output = io.StringIO()
@@ -785,9 +811,6 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
 
     for idx, item in enumerate(results, 1):
         title = item.get("suggested_title") or f"Item {idx}"
-
-        handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
-
         designer = item.get("designer", "").strip()
         vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
 
@@ -796,6 +819,11 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
         collection = item.get("collection", "")
         print_color = item.get("print_color", "")
         fabric = item.get("fabric", "")
+
+        sku = generate_sku_for_item(designer, idx)
+        title_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
+        sku_slug = re.sub(r'[^a-z0-9]+', '-', sku.lower()).strip('-')
+        handle = f"{title_slug}-{sku_slug}"
 
         body_parts = ["<p>"]
         if designer:
@@ -829,7 +857,6 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
         hi_p = item.get("max_price_usd") or ""
         compare_at = str(hi_p) if hi_p and listing_p and int(hi_p) > int(listing_p) else ""
 
-        sku = f"PS-{year_era[:4]}-{idx:03d}"
         img_url = item.get("public_image_url") or item.get("image_url") or ""
 
         writer.writerow([
@@ -919,7 +946,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
         body_html = "".join(body_parts)
 
         photo_p = Path(item["image_path"]) if item.get("image_path") and Path(item["image_path"]).exists() else None
-        sku = f"PS-{year_era[:4]}-{idx:03d}"
+        sku = generate_sku_for_item(designer, idx)
 
         payload = build_product_payload(
             item={},
@@ -1706,24 +1733,38 @@ def render_reverse_search_tab() -> None:
                             for log in logs:
                                 st.write(log)
 
-            st.markdown("### 📊 Formatted Shopify CSV Export Values Preview")
+            st.markdown("### 📊 Official Shopify Import CSV Preview (Exact 24 Columns)")
 
             preview_rows = []
             for idx, res in enumerate(results, 1):
                 img_u = _get_item_img_url(res)
                 title = res.get("suggested_title") or f"Item {idx}"
-                handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
                 designer = res.get("designer", "").strip()
                 vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
                 year_era = res.get("year_era", "2000s")
                 garment_type = res.get("garment_type", "Garment")
                 collection = res.get("collection", "")
-                list_p = res.get("listing_price_usd") or calculate_listing_price(
-                    cost=res.get("cost_price_usd", 0),
-                    min_comp=res.get("min_price_usd", 0),
-                    max_comp=res.get("max_price_usd", 0),
-                )
-                cost_p = res.get("cost_price_usd") or ""
+                print_color = res.get("print_color", "")
+                fabric = res.get("fabric", "")
+
+                sku = generate_sku_for_item(designer, idx)
+                title_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
+                sku_slug = re.sub(r'[^a-z0-9]+', '-', sku.lower()).strip('-')
+                handle = f"{title_slug}-{sku_slug}"
+
+                body_parts = ["<p>"]
+                if designer:
+                    body_parts.append(f"<strong>Designer:</strong> {designer.title()}<br>")
+                if year_era:
+                    body_parts.append(f"<strong>Era:</strong> {year_era}<br>")
+                if collection:
+                    body_parts.append(f"<strong>Collection:</strong> {collection.title()}<br>")
+                if print_color:
+                    body_parts.append(f"<strong>Print/Color:</strong> {print_color.title()}<br>")
+                if fabric:
+                    body_parts.append(f"<strong>Fabric:</strong> {fabric.title()}<br>")
+                body_parts.append("</p>")
+                body_html = "".join(body_parts)
 
                 tags_list = ["vintage", "designer", year_era]
                 if designer:
@@ -1732,18 +1773,42 @@ def render_reverse_search_tab() -> None:
                     tags_list.append(garment_type.lower())
                 if collection:
                     tags_list.append(collection.lower())
+                tags_str = ", ".join(dict.fromkeys(tags_list))
+
+                list_p = res.get("listing_price_usd") or calculate_listing_price(
+                    cost=res.get("cost_price_usd", 0),
+                    min_comp=res.get("min_price_usd", 0),
+                    max_comp=res.get("max_price_usd", 0),
+                )
+                cost_p = res.get("cost_price_usd") or ""
+                hi_p = res.get("max_price_usd") or ""
+                compare_at = str(hi_p) if hi_p and list_p and int(hi_p) > int(list_p) else ""
 
                 preview_rows.append({
                     "Photo": img_u,
                     "Handle": handle,
                     "Title": title,
+                    "Body (HTML)": body_html,
                     "Vendor": vendor,
+                    "Product Category": "Apparel & Accessories",
                     "Type": garment_type.title(),
-                    "Tags": ", ".join(dict.fromkeys(tags_list)),
-                    "Variant Price ($)": int(list_p or 0),
-                    "Cost Per Item ($)": cost_p,
-                    "Low Comp ($)": int(res.get("min_price_usd") or 0),
-                    "High Comp ($)": int(res.get("max_price_usd") or 0),
+                    "Tags": tags_str,
+                    "Published": "TRUE",
+                    "Option1 Name": "Title",
+                    "Option1 Value": "Default Title",
+                    "Variant SKU": sku,
+                    "Variant Grams": "0",
+                    "Variant Inventory Tracker": "shopify",
+                    "Variant Inventory Qty": "1",
+                    "Variant Inventory Policy": "deny",
+                    "Variant Fulfillment Service": "manual",
+                    "Variant Price": str(list_p or ""),
+                    "Variant Compare At Price": compare_at,
+                    "Variant Requires Shipping": "TRUE",
+                    "Variant Taxable": "TRUE",
+                    "Cost per item": str(cost_p or ""),
+                    "Image Src": img_u,
+                    "Image Position": "1",
                     "Status": "draft",
                 })
 
@@ -1753,13 +1818,15 @@ def render_reverse_search_tab() -> None:
                     "Photo": st.column_config.ImageColumn("Photo", width="small"),
                     "Handle": st.column_config.TextColumn("Handle", width="medium"),
                     "Title": st.column_config.TextColumn("Title", width="large"),
-                    "Vendor": st.column_config.TextColumn("Vendor / Brand", width="medium"),
-                    "Type": st.column_config.TextColumn("Product Type", width="medium"),
+                    "Body (HTML)": st.column_config.TextColumn("Body (HTML)", width="medium"),
+                    "Vendor": st.column_config.TextColumn("Vendor", width="small"),
+                    "Product Category": st.column_config.TextColumn("Product Category", width="medium"),
+                    "Type": st.column_config.TextColumn("Type", width="small"),
                     "Tags": st.column_config.TextColumn("Tags", width="medium"),
-                    "Variant Price ($)": st.column_config.NumberColumn("Listing Price ($)", format="$%d", width="small"),
-                    "Cost Per Item ($)": st.column_config.TextColumn("Cost ($)", width="small"),
-                    "Low Comp ($)": st.column_config.NumberColumn("Low Comp ($)", format="$%d", width="small"),
-                    "High Comp ($)": st.column_config.NumberColumn("High Comp ($)", format="$%d", width="small"),
+                    "Variant SKU": st.column_config.TextColumn("Variant SKU", width="small"),
+                    "Variant Price": st.column_config.TextColumn("Variant Price ($)", width="small"),
+                    "Cost per item": st.column_config.TextColumn("Cost per item ($)", width="small"),
+                    "Image Src": st.column_config.TextColumn("Image Src", width="medium"),
                     "Status": st.column_config.TextColumn("Status", width="small"),
                 },
                 use_container_width=True,
