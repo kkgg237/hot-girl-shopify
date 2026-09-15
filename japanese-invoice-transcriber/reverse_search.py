@@ -18,6 +18,13 @@ from typing import Any, Optional
 from urllib.parse import quote, quote_plus
 
 import streamlit as st
+import streamlit.components.v1 as components
+
+COMPONENT_DIR = Path(__file__).parent / "folder_picker_component"
+_native_folder_picker = components.declare_component(
+    "native_folder_picker",
+    path=str(COMPONENT_DIR),
+)
 
 try:
     import anthropic
@@ -401,7 +408,7 @@ def render_reverse_search_tab() -> None:
     """Render the Reverse Image Search & Garment Research Streamlit tab."""
     st.markdown("## 🔎 Reverse Image Search & Product Research")
     st.caption(
-        "Select photos or a folder from your computer or external drive to identify designer garments, "
+        "Select a photo folder from your Mac/PC or external drive to identify designer garments, "
         "apply Set vs. Separate rules, research resale comps, and generate standardized Shopify titles."
     )
 
@@ -410,72 +417,48 @@ def render_reverse_search_tab() -> None:
 
     items_to_process = []
 
-    st.markdown("### 📁 Direct Local Folder Scanner")
-    st.caption("Point to any folder on your computer or external drive to scan and process all photos directly from disk with zero upload waiting time.")
+    st.markdown("### 📁 Native Folder Selector")
+    st.caption("Click the button below to open your native Mac Finder / PC file chooser window and select your photo folder directly.")
 
-    default_folder = st.session_state.get("selected_folder_path", "")
+    folder_picker_result = _native_folder_picker(key="native_folder_picker_ui")
+    if folder_picker_result and isinstance(folder_picker_result, list):
+        st.session_state["native_folder_files"] = folder_picker_result
 
-    col_input, col_browse = st.columns([3.5, 1.2])
+    native_files = st.session_state.get("native_folder_files", [])
+    if native_files and isinstance(native_files, list) and native_files:
+        st.success(f"🖼️ Selected **{len(native_files)}** photo(s) from your chosen folder!")
+        for item in native_files:
+            try:
+                raw_bytes = base64.b64decode(item.get("data_b64", ""))
+            except Exception:
+                raw_bytes = b""
+            items_to_process.append({
+                "name": item.get("name", "folder_image.jpg"),
+                "bytes": raw_bytes,
+                "mime": item.get("mime", "image/jpeg"),
+                "url": "",
+            })
 
-    with col_input:
+    with st.expander("🖥️ Local Server Disk Path (Advanced / Server Filesystem)", expanded=False):
+        default_folder = st.session_state.get("selected_folder_path", "")
         folder_path_str = st.text_input(
-            "Local Directory / Folder Path",
+            "Server Directory Path",
             value=default_folder,
-            placeholder="/path/to/your/look_photos_folder",
+            placeholder="/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/photos",
             key="folder_path_text_input",
-            help="Enter any folder path on disk or mounted external drive."
         )
         st.session_state["selected_folder_path"] = folder_path_str
+        is_recursive = st.checkbox("Scan Subfolders (Recursive)", value=True, key="folder_recursive_checkbox")
 
-    with col_browse:
-        st.write(" ")
-        st.write(" ")
-        if st.button("📁 Browse Folders", key="open_folder_popup", use_container_width=True):
-            if hasattr(st, "dialog"):
-                folder_picker_dialog()
-
-    col_options, col_presets = st.columns([1.5, 3])
-    with col_options:
-        is_recursive = st.checkbox(
-            "Scan Subfolders (Recursive)",
-            value=True,
-            key="folder_recursive_checkbox",
-        )
-    with col_presets:
-        st.caption("Quick Folder Shortcuts:")
-        q1, q2, q3, q4 = st.columns(4)
-        with q1:
-            if st.button("💾 /media", key="preset_media"):
-                st.session_state["selected_folder_path"] = "/media"
-                st.rerun()
-        with q2:
-            if st.button("💾 /mnt", key="preset_mnt"):
-                st.session_state["selected_folder_path"] = "/mnt"
-                st.rerun()
-        with q3:
-            if st.button("💼 workspace", key="preset_work"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace"
-                st.rerun()
-        with q4:
-            if st.button("🛍️ photos", key="preset_photos"):
-                st.session_state["selected_folder_path"] = "/home/kat/workspace/hot-girl-shopify/japanese-invoice-transcriber/output/photos"
-                st.rerun()
-
-    if folder_path_str:
-        p = Path(folder_path_str).expanduser()
-        if p.exists() and p.is_dir():
-            crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
-            st.success(f"📁 **Active Folder:** `{p}` — Found **{len(crawled_items)}** photo(s) across **{len(subdirs)}** subfolder(s) (Direct disk access — 0 upload time).")
-
-            if crawled_items:
-                items_to_process = crawled_items
-                with st.expander(f"📋 List of Found Files ({len(crawled_items)} images)"):
-                    for item_meta in crawled_items[:50]:
-                        st.write(f"- `{item_meta['name']}` ({item_meta['size_bytes'] / 1024:.1f} KB)")
-                    if len(crawled_items) > 50:
-                        st.caption(f"...and {len(crawled_items) - 50} more images.")
-        else:
-            st.warning("⚠️ Directory path does not exist or is not a folder.")
+        if folder_path_str and not items_to_process:
+            p = Path(folder_path_str).expanduser()
+            if p.exists() and p.is_dir():
+                crawled_items, subdirs = crawl_local_directory(p, recursive=is_recursive)
+                st.success(f"📁 **Server Folder:** `{p}` — Found **{len(crawled_items)}** photo(s).")
+                if crawled_items:
+                    items_to_process = crawled_items
+            else:
+                st.warning("⚠️ Server directory path does not exist.")
 
     with st.expander("📤 Manual File Upload Fallback (Drag & Drop)", expanded=not items_to_process):
         uploaded_files = st.file_uploader(

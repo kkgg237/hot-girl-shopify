@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 6px;
+      background: transparent;
+    }
+    .folder-card {
+      background: #ffffff;
+      border: 2px dashed #ff4b4b;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+    .folder-card:hover {
+      background: #fff8f8;
+      border-color: #d93838;
+      box-shadow: 0 4px 14px rgba(255, 75, 75, 0.12);
+    }
+    .folder-btn {
+      background: #ff4b4b;
+      color: white;
+      font-weight: 700;
+      padding: 16px 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-block;
+      text-align: center;
+      font-size: 17px;
+      box-shadow: 0 3px 10px rgba(255, 75, 75, 0.3);
+      user-select: none;
+      transition: all 0.2s ease;
+      border: none;
+    }
+    .folder-btn:hover {
+      background: #d93838;
+      box-shadow: 0 4px 14px rgba(217, 56, 56, 0.4);
+    }
+    .folder-btn:active {
+      transform: scale(0.98);
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #555;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 14px;
+      color: #111;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="folder-card" onclick="document.getElementById('nativeFolderInput').click()">
+    <button class="folder-btn" type="button">
+      📁 Click to Select Folder from Computer / External Drive
+    </button>
+    <div class="hint">Opens your Mac Finder / PC file chooser directly — click any folder and press Open!</div>
+    <input type="file" id="nativeFolderInput" webkitdirectory directory multiple style="display:none;" onchange="processFolder(this.files)">
+    <div id="status"></div>
+  </div>
+
+  <script>
+    function setComponentReady() {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:componentReady",
+        apiVersion: 1
+      }, "*");
+    }
+
+    function setFrameHeight(height) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setFrameHeight",
+        height: height
+      }, "*");
+    }
+
+    function setComponentValue(value) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setComponentValue",
+        value: value
+      }, "*");
+    }
+
+    function processFolder(files) {
+      const statusDiv = document.getElementById("status");
+      if (!files || files.length === 0) {
+        statusDiv.innerHTML = "No folder selected.";
+        return;
+      }
+
+      const validExts = [".jpg", ".jpeg", ".png", ".webp"];
+      const imageFiles = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const lowerName = file.name.toLowerCase();
+        if (validExts.some(ext => lowerName.endsWith(ext))) {
+          imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length === 0) {
+        statusDiv.innerHTML = "⚠️ No image files (.jpg, .png, .webp) found in selected folder.";
+        return;
+      }
+
+      statusDiv.innerHTML = `⏳ Reading ${imageFiles.length} photo(s) from folder...`;
+
+      const results = [];
+      let loadedCount = 0;
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          const b64 = dataUrl.split(",")[1] || "";
+          
+          results.push({
+            name: file.webkitRelativePath || file.name,
+            mime: file.type || "image/jpeg",
+            data_b64: b64,
+            size: file.size
+          });
+
+          loadedCount++;
+          statusDiv.innerHTML = `⏳ Reading photos: ${loadedCount} / ${imageFiles.length}...`;
+
+          if (loadedCount === imageFiles.length) {
+            statusDiv.innerHTML = `✅ Selected ${results.length} photo(s) from folder!`;
+            setComponentValue(results);
+          }
+        };
+
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Initialize component
+    setComponentReady();
+    setFrameHeight(160);
+  </script>
+</body>
+</html>
