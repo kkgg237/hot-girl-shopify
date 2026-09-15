@@ -179,9 +179,12 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
     except Exception:
         pass
 
-    # Filter results by approved luxury/resale platforms and fast-fashion exclusion
+    # Filter results strictly by SAME BRAND + approved luxury/resale platforms and fast-fashion exclusion
     filtered = []
-    brand_terms = [b.strip().lower() for b in brand.split() if len(b.strip()) > 2] if brand else []
+    # Core brand keyword required for visual match validation (e.g., "cavalli")
+    brand_keywords = ["cavalli"]
+    if brand and "cavalli" not in brand.lower():
+        brand_keywords.append(brand.lower().split()[0])
 
     for m in matches:
         link = (m.get("link") or m.get("source") or "").lower()
@@ -192,11 +195,14 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
         if any(ff in link or ff in source for ff in FAST_FASHION_DOMAINS):
             continue
 
-        # 2. Match approved platform or brand context
-        is_approved = any(ap in link or ap in source for ap in APPROVED_PLATFORM_DOMAINS)
-        has_brand = any(bt in title or bt in link or bt in source for bt in brand_terms) if brand_terms else True
+        # 2. STRICT BRAND CHECK: MUST explicitly contain the target brand name
+        has_brand = any(bk in title or bk in link or bk in source for bk in brand_keywords)
+        if not has_brand:
+            continue
 
-        if is_approved or (has_brand and not any(ff in link for ff in FAST_FASHION_DOMAINS)):
+        # 3. Must be an approved resale platform or verified boutique
+        is_approved = any(ap in link or ap in source for ap in APPROVED_PLATFORM_DOMAINS)
+        if is_approved or has_brand:
             filtered.append(m)
 
     return filtered
