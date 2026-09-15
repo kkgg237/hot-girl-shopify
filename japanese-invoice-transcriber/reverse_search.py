@@ -789,7 +789,7 @@ def generate_shopify_import_csv(results: list[dict[str, Any]]) -> str:
         handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
 
         designer = item.get("designer", "").strip()
-        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else "Past Studies"
+        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
 
         year_era = item.get("year_era", "2000s")
         garment_type = item.get("garment_type", "Garment")
@@ -882,7 +882,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
     for idx, item in enumerate(results, 1):
         title = item.get("suggested_title") or f"Item {idx}"
         designer = item.get("designer", "").strip()
-        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else "Past Studies"
+        vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
         garment_type = item.get("garment_type", "Garment")
         year_era = item.get("year_era", "2000s")
         collection = item.get("collection", "")
@@ -1332,51 +1332,178 @@ def render_reverse_search_tab() -> None:
 
     results = st.session_state.get("reverse_search_results", [])
     if results:
-        st.markdown(f"### Research Manifest & QA ({len(results)} items)")
+        st.markdown(f"### 📋 Research Manifest & Workflow ({len(results)} items)")
 
-        col_exp1, col_exp2, col_exp3 = st.columns([1.5, 1.5, 2])
-        with col_exp1:
-            st.download_button(
-                label="🛍️ Download Official Shopify Product CSV",
-                data=generate_shopify_import_csv(results),
-                file_name="shopify_product_import.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True,
-            )
-        with col_exp2:
-            st.download_button(
-                label="📊 Download Research Manifest CSV",
-                data=generate_manifest_csv(results),
-                file_name="reverse_search_manifest.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-        with col_exp3:
-            if st.button("🚀 Push Drafts Directly to Shopify", type="secondary", use_container_width=True):
-                with st.spinner("Pushing draft listings to Shopify Admin API..."):
-                    pushed_ok, failed_err, logs = push_research_results_to_shopify(results)
-                    if pushed_ok > 0:
-                        st.success(f"🎉 Created **{pushed_ok} draft product(s)** in your Shopify store!")
-                    if failed_err > 0:
-                        st.error(f"⚠️ Failed to push {failed_err} product(s).")
-                    with st.expander("📋 View Shopify API Push Logs", expanded=True):
-                        for log in logs:
-                            st.write(log)
-
-        view_tab_combined, view_tab_table = st.tabs([
-            "📸 Combined Photo Cards & Editable Fields",
-            "📊 Bulk Spreadsheet View (st.data_editor)",
+        tab_step1, tab_step2, tab_step3 = st.tabs([
+            "1 · Title, Brand & Description Editor",
+            "2 · Pricing & QA Once-Over",
+            "3 · Shopify Export & Direct Push",
         ])
 
-        with view_tab_combined:
-            for idx, res in enumerate(results):
-                # Normalize Y2K -> 2000s
-                if str(res.get("year_era", "")).strip().lower() in ["y2k", "y2k era"]:
-                    res["year_era"] = "2000s"
+        # =========================================================================
+        # TAB 1: Title, Brand & Description Columns
+        # =========================================================================
+        with tab_step1:
+            st.info(
+                "💡 **Step 1:** Review and edit garment description fields, brand/designer, and era. "
+                "Shopify titles auto-regenerate in real-time as you edit!"
+            )
 
+            sub_v1, sub_v2 = st.tabs(["📸 Combined Photo Cards & Editable Fields", "📊 Bulk Spreadsheet View (st.data_editor)"])
+
+            with sub_v1:
+                for idx, res in enumerate(results):
+                    # Normalize Y2K -> 2000s
+                    if str(res.get("year_era", "")).strip().lower() in ["y2k", "y2k era"]:
+                        res["year_era"] = "2000s"
+
+                    with st.container(border=True):
+                        col_img, col_fields = st.columns([1.3, 3.7])
+
+                        with col_img:
+                            if res.get("image_path") and Path(res["image_path"]).exists():
+                                st.image(res["image_path"], use_container_width=True)
+                            elif res.get("public_image_url"):
+                                st.image(res["public_image_url"], use_container_width=True)
+                            elif res.get("image_bytes"):
+                                st.image(res["image_bytes"], use_container_width=True)
+                            st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
+
+                        with col_fields:
+                            f1, f2, f3 = st.columns(3)
+                            with f1:
+                                new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"des_{idx}")
+                                new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
+                                new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
+                            with f2:
+                                new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
+                                new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
+                                new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
+                            with f3:
+                                new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
+                                new_notes = st.text_input("Notes / Details", value=res.get("notes", ""), key=f"notes_{idx}")
+
+                            # Save updated metadata
+                            res["designer"] = new_designer
+                            res["year_era"] = new_era
+                            res["item_type"] = new_item_type
+                            res["collection"] = new_collection
+                            res["print_color"] = new_print
+                            res["garment_type"] = new_garment
+                            res["fabric"] = new_fabric
+                            res["notes"] = new_notes
+
+                            # Auto-regenerate title using Shopify Title Formula
+                            recalculated_title = format_shopify_title(
+                                designer=new_designer,
+                                year_era=new_era,
+                                collection=new_collection,
+                                print_color=new_print,
+                                garment_type=new_garment,
+                                is_set=(new_item_type == "Set"),
+                                notes=new_notes,
+                            )
+                            res["suggested_title"] = st.text_input(
+                                "Generated Shopify Title (Auto-updates during QA)",
+                                value=recalculated_title or res.get("suggested_title", ""),
+                                key=f"title_{idx}",
+                            )
+
+            with sub_v2:
+                table_rows = []
+                for res in results:
+                    query = res.get("search_query") or res.get("suggested_title", "")
+                    img_url = res.get("public_image_url")
+                    if not img_url and res.get("image_bytes"):
+                        img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
+                        res["public_image_url"] = img_url
+                    if not img_url:
+                        img_url = res.get("image_url", "")
+                    links = build_search_urls(query, img_url)
+
+                    era_val = res.get("year_era", "2000s")
+                    if str(era_val).strip().lower() in ["y2k", "y2k era"]:
+                        era_val = "2000s"
+
+                    table_rows.append({
+                        "Source": res.get("filename") or res.get("image_url") or "External Drive Photo",
+                        "Item Type": res.get("item_type", "Single"),
+                        "Designer / Brand": res.get("designer", ""),
+                        "Year / Era": era_val,
+                        "Collection": res.get("collection", ""),
+                        "Print / Color": res.get("print_color", ""),
+                        "Garment Type": res.get("garment_type", ""),
+                        "Fabric": res.get("fabric", ""),
+                        "Shopify Title": res.get("suggested_title", ""),
+                        "Search Query": query,
+                        "Bing Visual Link": links.get("Bing Visual", ""),
+                        "Google Lens Link": links.get("Google Lens", ""),
+                        "Grailed Link": links.get("Grailed", ""),
+                        "Vestiaire Link": links.get("Vestiaire Collective", ""),
+                        "1stDibs Link": links.get("1stDibs", ""),
+                        "eBay Link": links.get("eBay", ""),
+                        "The RealReal Link": links.get("The RealReal", ""),
+                        "Depop Link": links.get("Depop", ""),
+                        "Notes": res.get("notes", ""),
+                    })
+
+                column_config = {
+                    "Source": st.column_config.TextColumn("Source / Photo Name", width="medium", disabled=True),
+                    "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
+                    "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
+                    "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
+                    "Collection": st.column_config.TextColumn("Collection Name", width="medium"),
+                    "Print / Color": st.column_config.TextColumn("Print / Colorway", width="medium"),
+                    "Garment Type": st.column_config.TextColumn("Garment Type", width="medium"),
+                    "Fabric": st.column_config.TextColumn("Fabric / Material", width="small"),
+                    "Shopify Title": st.column_config.TextColumn("Generated Shopify Title", width="large"),
+                    "Search Query": st.column_config.TextColumn("Search Query", width="medium"),
+                    "Bing Visual Link": st.column_config.LinkColumn("Bing Visual", display_text="👁️ Bing Visual"),
+                    "Google Lens Link": st.column_config.LinkColumn("Google Lens", display_text="🔎 Lens"),
+                    "Grailed Link": st.column_config.LinkColumn("Grailed", display_text="🛍️ Grailed"),
+                    "Vestiaire Link": st.column_config.LinkColumn("Vestiaire", display_text="👗 Vestiaire"),
+                    "1stDibs Link": st.column_config.LinkColumn("1stDibs", display_text="💎 1stDibs"),
+                    "eBay Link": st.column_config.LinkColumn("eBay", display_text="🏷️ eBay"),
+                    "The RealReal Link": st.column_config.LinkColumn("The RealReal", display_text="📦 RealReal"),
+                    "Depop Link": st.column_config.LinkColumn("Depop", display_text="🛍️ Depop"),
+                    "Notes": st.column_config.TextColumn("Notes", width="large"),
+                }
+
+                edited_df = st.data_editor(
+                    table_rows,
+                    column_config=column_config,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    key="reverse_search_data_editor",
+                )
+
+                if edited_df is not None:
+                    for row, orig in zip(edited_df, results):
+                        orig["item_type"] = row.get("Item Type", orig.get("item_type"))
+                        orig["designer"] = row.get("Designer / Brand", orig.get("designer"))
+                        orig["year_era"] = row.get("Year / Era", orig.get("year_era"))
+                        orig["collection"] = row.get("Collection", orig.get("collection"))
+                        orig["print_color"] = row.get("Print / Color", orig.get("print_color"))
+                        orig["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
+                        orig["fabric"] = row.get("Fabric", orig.get("fabric"))
+                        orig["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
+                        orig["search_query"] = row.get("Search Query", orig.get("search_query"))
+                        orig["notes"] = row.get("Notes", orig.get("notes"))
+
+            st.success("✅ **Metadata & Descriptions Saved!** Switch to **2 · Pricing & QA Once-Over** above.")
+
+        # =========================================================================
+        # TAB 2: Pricing & QA Once-Over
+        # =========================================================================
+        with tab_step2:
+            st.info(
+                "💡 **Step 2:** Review market comps (Low/High), input purchase cost, do your pricing once-over, "
+                "and fix any Brand/Vendor issues. Inputting a Brand automatically updates the Shopify Title!"
+            )
+
+            for idx, res in enumerate(results):
                 with st.container(border=True):
-                    col_img, col_fields = st.columns([1.3, 3.7])
+                    col_img, col_qa = st.columns([1.3, 3.7])
 
                     with col_img:
                         if res.get("image_path") and Path(res["image_path"]).exists():
@@ -1385,49 +1512,31 @@ def render_reverse_search_tab() -> None:
                             st.image(res["public_image_url"], use_container_width=True)
                         elif res.get("image_bytes"):
                             st.image(res["image_bytes"], use_container_width=True)
-                        st.caption(f"**Source:** `{res.get('filename') or 'Photo'}`")
+                        st.caption(f"**Photo:** `{res.get('filename') or 'Item'}`")
 
-                    with col_fields:
-                        f1, f2, f3 = st.columns(3)
-                        with f1:
-                            new_designer = st.text_input("Designer / Brand (Leave blank if unknown)", value=res.get("designer", ""), key=f"des_{idx}")
-                            new_era = st.text_input("Year / Era", value=res.get("year_era", "2000s"), key=f"era_{idx}")
-                            new_item_type = st.selectbox("Item Type", ["Single", "Set"], index=1 if res.get("item_type") == "Set" else 0, key=f"type_{idx}")
-                        with f2:
-                            new_collection = st.text_input("Collection Name", value=res.get("collection", ""), key=f"coll_{idx}")
-                            new_print = st.text_input("Print / Colorway", value=res.get("print_color", ""), key=f"print_{idx}")
-                            new_garment = st.text_input("Garment Type", value=res.get("garment_type", ""), key=f"garment_{idx}")
-                        with f3:
-                            new_fabric = st.text_input("Fabric / Material", value=res.get("fabric", ""), key=f"fab_{idx}")
-                            res["notes"] = st.text_input("Notes", value=res.get("notes", ""), key=f"notes_{idx}")
+                    with col_qa:
+                        # Fix Brand & Title during QA
+                        f_qa1, f_qa2 = st.columns([1.2, 2.8])
+                        with f_qa1:
+                            qa_designer = st.text_input("Brand / Vendor (Fix/Input)", value=res.get("designer", ""), key=f"qa_des_{idx}")
+                            if qa_designer != res.get("designer"):
+                                res["designer"] = qa_designer
+                                # Auto-recalculate title when brand is entered in QA
+                                res["suggested_title"] = format_shopify_title(
+                                    designer=qa_designer,
+                                    year_era=res.get("year_era", ""),
+                                    collection=res.get("collection", ""),
+                                    print_color=res.get("print_color", ""),
+                                    garment_type=res.get("garment_type", ""),
+                                    is_set=(res.get("item_type") == "Set"),
+                                    notes=res.get("notes", ""),
+                                )
+                        with f_qa2:
+                            qa_title = st.text_input("Shopify Title (Auto-updated)", value=res.get("suggested_title", ""), key=f"qa_title_{idx}")
+                            res["suggested_title"] = qa_title
 
-                        # Save updated metadata
-                        res["designer"] = new_designer
-                        res["year_era"] = new_era
-                        res["item_type"] = new_item_type
-                        res["collection"] = new_collection
-                        res["print_color"] = new_print
-                        res["garment_type"] = new_garment
-                        res["fabric"] = new_fabric
-
-                        # Auto-regenerate title using Shopify Title Formula
-                        recalculated_title = format_shopify_title(
-                            designer=new_designer,
-                            year_era=new_era,
-                            collection=new_collection,
-                            print_color=new_print,
-                            garment_type=new_garment,
-                            is_set=(new_item_type == "Set"),
-                            notes=res.get("notes", ""),
-                        )
-                        res["suggested_title"] = st.text_input(
-                            "Shopify Title Formula (Auto-updates during QA)",
-                            value=recalculated_title or res.get("suggested_title", ""),
-                            key=f"title_{idx}",
-                        )
-
-                        # Pricing Once-Over Section
-                        st.markdown("**💰 Pricing & Valuation Once-Over:**")
+                        # Pricing Once-Over
+                        st.markdown("**💰 Pricing Once-Over:**")
                         p_min = int(res.get("min_price_usd") or 0)
                         p_max = int(res.get("max_price_usd") or 0)
                         p_cost = float(res.get("cost_price_usd") or 0.0)
@@ -1439,38 +1548,19 @@ def render_reverse_search_tab() -> None:
 
                         pr1, pr2, pr3, pr4 = st.columns(4)
                         with pr1:
-                            res["cost_price_usd"] = st.number_input("Purchase Cost ($USD)", value=int(p_cost), key=f"cost_{idx}")
+                            res["cost_price_usd"] = st.number_input("Purchase Cost ($USD)", value=int(p_cost), key=f"qa_cost_{idx}")
                         with pr2:
-                            res["min_price_usd"] = st.number_input("Low Comp ($USD)", value=int(p_min), key=f"pmin_{idx}")
+                            res["min_price_usd"] = st.number_input("Low Comp ($USD)", value=int(p_min), key=f"qa_pmin_{idx}")
                         with pr3:
-                            res["max_price_usd"] = st.number_input("High Comp ($USD)", value=int(p_max), key=f"pmax_{idx}")
+                            res["max_price_usd"] = st.number_input("High Comp ($USD)", value=int(p_max), key=f"qa_pmax_{idx}")
                         with pr4:
-                            res["listing_price_usd"] = st.number_input("🔥 Final Listing Price ($USD)", value=int(p_list), key=f"plist_{idx}")
+                            res["listing_price_usd"] = st.number_input("🔥 Final Listing Price ($USD)", value=int(p_list), key=f"qa_plist_{idx}")
 
-                        if p_list > 0:
-                            cost_txt = f" (Cost: ${p_cost:.0f})" if p_cost > 0 else ""
-                            st.info(f"💵 **Listing Price:** **${p_list} USD**{cost_txt} | Low Comp: **${p_min}** | High Comp: **${p_max}**")
-
+                        # Visual Match Comps
                         v_matches = res.get("visual_matches") or []
-                        img_url = res.get("public_image_url")
-                        if not img_url and res.get("image_bytes"):
-                            img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
-                            res["public_image_url"] = img_url
-                            if "reverse_search_results" in st.session_state and idx < len(st.session_state["reverse_search_results"]):
-                                st.session_state["reverse_search_results"][idx]["public_image_url"] = img_url
-                        if not img_url:
-                            img_url = res.get("image_url", "")
-
-                        p_min = int(res.get("min_price_usd") or 0)
-                        p_max = int(res.get("max_price_usd") or 0)
-                        if p_min > 0 or p_max > 0:
-                            st.info(f"💵 **Estimated Market Resale Price Range:** **${p_min} – ${p_max} USD** (Low: **${p_min}** | High: **${p_max}** based on exact comps & market valuation)")
-
                         if v_matches:
                             match_data = []
-                            # Display top 2 to 4 exact matches from reputable platforms
-                            top_matches = v_matches[:4]
-                            for vm in top_matches:
+                            for vm in v_matches[:4]:
                                 title = vm.get("title", "Matched Item")
                                 source = vm.get("source", "Marketplace")
                                 link = vm.get("link", "#")
@@ -1482,7 +1572,7 @@ def render_reverse_search_tab() -> None:
                                     "Price": price_val,
                                     "Listing Link": link,
                                 })
-                            st.caption("Showing top exact matches from reputable resale platforms (Grailed, Vestiaire, 1stDibs, The RealReal, eBay, Depop, Poshmark). Fast fashion filtered out.")
+                            st.caption("Approved resale platform matches (Grailed, Vestiaire, 1stDibs, TRR, eBay, Depop, Poshmark):")
                             st.dataframe(
                                 match_data,
                                 column_config={
@@ -1497,94 +1587,112 @@ def render_reverse_search_tab() -> None:
                         else:
                             st.caption("No exact visual matches found on approved resale platforms.")
 
-        with view_tab_table:
-            table_rows = []
-            for res in results:
-                query = res.get("search_query") or res.get("suggested_title", "")
-                img_url = res.get("public_image_url")
-                if not img_url and res.get("image_bytes"):
-                    img_url = save_image_for_public_lens(res["image_bytes"], res.get("filename", ""))
-                    res["public_image_url"] = img_url
-                if not img_url:
-                    img_url = res.get("image_url", "")
-                links = build_search_urls(query, img_url)
+            st.success("✅ **Pricing Once-Over Saved!** Switch to **3 · Shopify Export & Direct Push** above.")
 
-                era_val = res.get("year_era", "2000s")
-                if str(era_val).strip().lower() in ["y2k", "y2k era"]:
-                    era_val = "2000s"
+        # =========================================================================
+        # TAB 3: Export & Direct Push Page
+        # =========================================================================
+        with tab_step3:
+            st.info("💡 **Step 3:** Final view of all formatted Shopify CSV values. Download CSV or push directly to Shopify!")
 
-                table_rows.append({
-                    "Source": res.get("filename") or res.get("image_url") or "External Drive Photo",
-                    "Item Type": res.get("item_type", "Single"),
-                    "Designer / Brand": res.get("designer", ""),
-                    "Year / Era": era_val,
-                    "Collection": res.get("collection", ""),
-                    "Print / Color": res.get("print_color", ""),
-                    "Garment Type": res.get("garment_type", ""),
-                    "Fabric": res.get("fabric", ""),
-                    "Shopify Title": res.get("suggested_title", ""),
-                    "Est. Min Price ($)": int(res.get("min_price_usd") or 0),
-                    "Est. Max Price ($)": int(res.get("max_price_usd") or 0),
-                    "Search Query": query,
-                    "Bing Visual Link": links.get("Bing Visual", ""),
-                    "Google Lens Link": links.get("Google Lens", ""),
-                    "Grailed Link": links.get("Grailed", ""),
-                    "Vestiaire Link": links.get("Vestiaire Collective", ""),
-                    "1stDibs Link": links.get("1stDibs", ""),
-                    "eBay Link": links.get("eBay", ""),
-                    "The RealReal Link": links.get("The RealReal", ""),
-                    "Depop Link": links.get("Depop", ""),
-                    "Notes": res.get("notes", ""),
+            tot_items = len(results)
+            tot_val = sum(int(r.get("listing_price_usd") or 0) for r in results)
+            avg_val = int(tot_val / tot_items) if tot_items else 0
+
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.metric("📦 Total Draft Products", tot_items)
+            with m2:
+                st.metric("💰 Total Catalog Listing Value", f"${tot_val:,} USD")
+            with m3:
+                st.metric("🏷️ Average Listing Price", f"${avg_val:,} USD")
+
+            col_exp1, col_exp2, col_exp3 = st.columns([1.5, 1.5, 2])
+            with col_exp1:
+                st.download_button(
+                    label="🛍️ Download Official Shopify Product CSV",
+                    data=generate_shopify_import_csv(results),
+                    file_name="shopify_product_import.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with col_exp2:
+                st.download_button(
+                    label="📊 Download Research Manifest CSV",
+                    data=generate_manifest_csv(results),
+                    file_name="reverse_search_manifest.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            with col_exp3:
+                if st.button("🚀 Push Drafts Directly to Shopify", type="secondary", use_container_width=True):
+                    with st.spinner("Pushing draft listings to Shopify Admin API..."):
+                        pushed_ok, failed_err, logs = push_research_results_to_shopify(results)
+                        if pushed_ok > 0:
+                            st.success(f"🎉 Created **{pushed_ok} draft product(s)** in your Shopify store!")
+                        if failed_err > 0:
+                            st.error(f"⚠️ Failed to push {failed_err} product(s).")
+                        with st.expander("📋 View Shopify API Push Logs", expanded=True):
+                            for log in logs:
+                                st.write(log)
+
+            st.markdown("### 📊 Formatted Shopify CSV Export Values Preview")
+
+            preview_rows = []
+            for idx, res in enumerate(results, 1):
+                title = res.get("suggested_title") or f"Item {idx}"
+                handle = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or f"item-{idx}"
+                designer = res.get("designer", "").strip()
+                vendor = designer.title() if designer and designer.lower() not in ["unknown", "generic", "unbranded", "none", "n/a", "unsure"] else ""
+                year_era = res.get("year_era", "2000s")
+                garment_type = res.get("garment_type", "Garment")
+                collection = res.get("collection", "")
+                list_p = res.get("listing_price_usd") or calculate_listing_price(
+                    cost=res.get("cost_price_usd", 0),
+                    min_comp=res.get("min_price_usd", 0),
+                    max_comp=res.get("max_price_usd", 0),
+                )
+                cost_p = res.get("cost_price_usd") or ""
+                img_url = res.get("public_image_url") or res.get("image_url") or ""
+
+                tags_list = ["vintage", "designer", year_era]
+                if designer:
+                    tags_list.append(designer.lower())
+                if garment_type:
+                    tags_list.append(garment_type.lower())
+                if collection:
+                    tags_list.append(collection.lower())
+
+                preview_rows.append({
+                    "Handle": handle,
+                    "Title": title,
+                    "Vendor": vendor,
+                    "Type": garment_type.title(),
+                    "Tags": ", ".join(dict.fromkeys(tags_list)),
+                    "Variant Price ($)": int(list_p or 0),
+                    "Cost Per Item ($)": cost_p,
+                    "Low Comp ($)": int(res.get("min_price_usd") or 0),
+                    "High Comp ($)": int(res.get("max_price_usd") or 0),
+                    "Status": "draft",
+                    "Image URL": img_url,
                 })
 
-            column_config = {
-                "Source": st.column_config.TextColumn("Source / Photo Name", width="medium", disabled=True),
-                "Item Type": st.column_config.SelectboxColumn("Item Type", options=["Single", "Set"], width="small"),
-                "Designer / Brand": st.column_config.TextColumn("Designer / Brand", width="medium"),
-                "Year / Era": st.column_config.TextColumn("Year / Era", width="small"),
-                "Collection": st.column_config.TextColumn("Collection Name", width="medium"),
-                "Print / Color": st.column_config.TextColumn("Print / Colorway", width="medium"),
-                "Garment Type": st.column_config.TextColumn("Garment Type", width="medium"),
-                "Fabric": st.column_config.TextColumn("Fabric / Material", width="small"),
-                "Shopify Title": st.column_config.TextColumn("Generated Shopify Title", width="large"),
-                "Est. Min Price ($)": st.column_config.NumberColumn("Min Price ($)", format="$%d", width="small"),
-                "Est. Max Price ($)": st.column_config.NumberColumn("Max Price ($)", format="$%d", width="small"),
-                "Search Query": st.column_config.TextColumn("Search Query", width="medium"),
-                "Bing Visual Link": st.column_config.LinkColumn("Bing Visual", display_text="👁️ Bing Visual"),
-                "Google Lens Link": st.column_config.LinkColumn("Google Lens", display_text="🔎 Lens"),
-                "Grailed Link": st.column_config.LinkColumn("Grailed", display_text="🛍️ Grailed"),
-                "Vestiaire Link": st.column_config.LinkColumn("Vestiaire", display_text="👗 Vestiaire"),
-                "1stDibs Link": st.column_config.LinkColumn("1stDibs", display_text="💎 1stDibs"),
-                "eBay Link": st.column_config.LinkColumn("eBay", display_text="🏷️ eBay"),
-                "The RealReal Link": st.column_config.LinkColumn("The RealReal", display_text="📦 RealReal"),
-                "Depop Link": st.column_config.LinkColumn("Depop", display_text="🛍️ Depop"),
-                "Notes": st.column_config.TextColumn("Notes", width="large"),
-            }
-
-            edited_df = st.data_editor(
-                table_rows,
-                column_config=column_config,
+            st.dataframe(
+                preview_rows,
+                column_config={
+                    "Handle": st.column_config.TextColumn("Handle", width="medium"),
+                    "Title": st.column_config.TextColumn("Title", width="large"),
+                    "Vendor": st.column_config.TextColumn("Vendor / Brand", width="medium"),
+                    "Type": st.column_config.TextColumn("Product Type", width="medium"),
+                    "Tags": st.column_config.TextColumn("Tags", width="medium"),
+                    "Variant Price ($)": st.column_config.NumberColumn("Listing Price ($)", format="$%d", width="small"),
+                    "Cost Per Item ($)": st.column_config.TextColumn("Cost ($)", width="small"),
+                    "Low Comp ($)": st.column_config.NumberColumn("Low Comp ($)", format="$%d", width="small"),
+                    "High Comp ($)": st.column_config.NumberColumn("High Comp ($)", format="$%d", width="small"),
+                    "Status": st.column_config.TextColumn("Status", width="small"),
+                    "Image URL": st.column_config.LinkColumn("Image Link", display_text="🖼️ View Image"),
+                },
                 use_container_width=True,
-                num_rows="dynamic",
-                key="reverse_search_data_editor",
+                hide_index=True,
             )
-
-            if edited_df is not None:
-                updated_results = []
-                for row, orig in zip(edited_df, results):
-                    item_copy = dict(orig)
-                    item_copy["item_type"] = row.get("Item Type", orig.get("item_type"))
-                    item_copy["designer"] = row.get("Designer / Brand", orig.get("designer"))
-                    item_copy["year_era"] = row.get("Year / Era", orig.get("year_era"))
-                    item_copy["collection"] = row.get("Collection", orig.get("collection"))
-                    item_copy["print_color"] = row.get("Print / Color", orig.get("print_color"))
-                    item_copy["garment_type"] = row.get("Garment Type", orig.get("garment_type"))
-                    item_copy["fabric"] = row.get("Fabric", orig.get("fabric"))
-                    item_copy["suggested_title"] = row.get("Shopify Title", orig.get("suggested_title"))
-                    item_copy["min_price_usd"] = row.get("Est. Min Price ($)", orig.get("min_price_usd"))
-                    item_copy["max_price_usd"] = row.get("Est. Max Price ($)", orig.get("max_price_usd"))
-                    item_copy["search_query"] = row.get("Search Query", orig.get("search_query"))
-                    item_copy["notes"] = row.get("Notes", orig.get("notes"))
-                    updated_results.append(item_copy)
-
-                st.session_state["reverse_search_results"] = updated_results
