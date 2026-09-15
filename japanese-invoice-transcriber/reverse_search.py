@@ -183,6 +183,54 @@ def fetch_serpapi_visual_matches(image_url: str, brand: str = "Cavalli", engine:
     return filtered
 
 
+def extract_print_color_from_matches(matches: list[dict[str, Any]], default_print: str = "") -> str:
+    """Extract descriptive color, print, or pattern details from visual match listing titles to bolster Shopify titles."""
+    if not matches:
+        return default_print
+
+    # Key vintage/designer print & pattern descriptors to extract
+    keywords = [
+        "newspaper print", "gazette print", "newspaper", "gazette",
+        "floral print", "floral", "flowers",
+        "zebra print", "tiger print", "animal print", "zebra", "tiger",
+        "snake print", "snakeskin", "reptile print", "reptile",
+        "tattoo print", "tattoo effect", "tattoo",
+        "mosaic print", "mosaic",
+        "abstract print", "abstract",
+        "crystal embellished", "embellished", "rhinestone", "beaded",
+        "burnout", "sheer mesh", "geometric knit", "satin halter"
+    ]
+
+    colors = ["blue", "purple", "green", "beige", "red", "black", "pink", "brown", "gold", "silver", "white", "nude", "yellow"]
+
+    found_color = ""
+    found_print = ""
+
+    for m in matches[:10]:
+        title = (m.get("title") or m.get("snippet") or "").lower()
+
+        if not found_color:
+            for c in colors:
+                if f" {c} " in f" {title} " or title.startswith(f"{c} ") or title.endswith(f" {c}"):
+                    found_color = c
+                    break
+
+        if not found_print:
+            for kw in keywords:
+                if kw in title:
+                    found_print = kw
+                    break
+
+        if found_color and found_print:
+            break
+
+    combined = f"{found_color} {found_print}".strip() if (found_color or found_print) else default_print
+    if default_print and combined:
+        if default_print.lower() not in combined.lower():
+            combined = f"{default_print} {combined}".strip()
+    return combined or default_print
+
+
 def extract_prices_from_visual_matches(matches: list[dict[str, Any]]) -> tuple[int, int]:
     """Extract min and max numeric prices ($USD) from exact visual match listings."""
     prices = []
@@ -820,6 +868,18 @@ def render_reverse_search_tab() -> None:
                     if pub_url:
                         matches = fetch_serpapi_visual_matches(pub_url, brand=designer, engine="bing_reverse_image")
                         ai_data["visual_matches"] = matches
+                        bolstered_print = extract_print_color_from_matches(matches, ai_data.get("print_color", ""))
+                        if bolstered_print:
+                            ai_data["print_color"] = bolstered_print
+                            ai_data["suggested_title"] = format_shopify_title(
+                                designer=ai_data.get("designer", ""),
+                                year_era=ai_data.get("year_era", ""),
+                                collection=ai_data.get("collection", ""),
+                                print_color=bolstered_print,
+                                garment_type=ai_data.get("garment_type", ""),
+                                is_set=(ai_data.get("item_type") == "Set"),
+                                notes=ai_data.get("notes", ""),
+                            )
                         min_p, max_p = extract_prices_from_visual_matches(matches)
                         if min_p and max_p:
                             ai_data["min_price_usd"] = min_p
