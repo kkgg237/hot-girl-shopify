@@ -1186,67 +1186,51 @@ def render_reverse_search_tab() -> None:
 
     items_to_process = []
 
-    # 1. Local Folder Path Selector (if chosen via dialog)
-    sel_path = st.session_state.get("selected_folder_path")
-    if sel_path and Path(sel_path).exists() and Path(sel_path).is_dir():
-        crawled_items, _ = crawl_local_directory(Path(sel_path), recursive=True)
-        if crawled_items:
-            st.success(f"📁 Loaded **{len(crawled_items)}** photo(s) from local directory `{sel_path}`!")
-            for c in crawled_items:
-                items_to_process.append({
-                    "name": c["name"],
-                    "path": c["path"],
-                    "mime": "image/jpeg",
-                    "bytes": None,
-                    "url": "",
-                })
+    # 1. Primary Photo File & Folder Uploader
+    uploaded_files = st.file_uploader(
+        "🖼️ Select or Drag & Drop Photo Folder / Look Photos Here",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+        key="folder_photos_uploader",
+    )
+    if uploaded_files:
+        for f in uploaded_files:
+            items_to_process.append({
+                "name": f.name,
+                "bytes": f.getvalue(),
+                "mime": f.type or "image/jpeg",
+                "url": "",
+            })
 
-    # 2. Native OS Folder Chooser (Client Webkit directory)
+    # 2. Local Server / External Drive Path Selector
     if not items_to_process:
-        folder_picker_result = _native_folder_picker(key="native_folder_picker_ui")
-        if folder_picker_result and isinstance(folder_picker_result, list) and len(folder_picker_result) > 0:
-            st.session_state["native_folder_files"] = folder_picker_result
+        sel_path = st.session_state.get("selected_folder_path")
+        if sel_path and Path(sel_path).exists() and Path(sel_path).is_dir():
+            crawled_items, _ = crawl_local_directory(Path(sel_path), recursive=True)
+            if crawled_items:
+                for c in crawled_items:
+                    items_to_process.append({
+                        "name": c["name"],
+                        "path": c["path"],
+                        "mime": "image/jpeg",
+                        "bytes": None,
+                        "url": "",
+                    })
 
-        native_files = st.session_state.get("native_folder_files", [])
-        if native_files and isinstance(native_files, list) and native_files:
-            st.success(f"🖼️ Loaded **{len(native_files)}** photo(s) from selected folder ready for research!")
-            for item in native_files:
-                try:
-                    raw_bytes = base64.b64decode(item.get("data_b64", ""))
-                except Exception:
-                    raw_bytes = b""
-                items_to_process.append({
-                    "name": item.get("name", "folder_image.jpg"),
-                    "bytes": raw_bytes,
-                    "mime": item.get("mime", "image/jpeg"),
-                    "url": "",
-                })
-
-    # 3. Manual Upload Fallback
-    with st.expander("📤 Manual File Upload Fallback / Server Folder Path", expanded=not items_to_process):
-        uploaded_files = st.file_uploader(
-            "Upload look photos manually",
-            type=["jpg", "jpeg", "png", "webp"],
-            accept_multiple_files=True,
-            key="folder_photos_uploader",
-        )
-        if uploaded_files and not items_to_process:
-            st.success(f"🖼️ Uploaded **{len(uploaded_files)}** photo(s)!")
-            for f in uploaded_files:
-                items_to_process.append({
-                    "name": f.name,
-                    "bytes": f.getvalue(),
-                    "mime": f.type or "image/jpeg",
-                    "url": "",
-                })
-
+    # Status indicator & Server Directory Browser option
+    c_pick1, c_pick2 = st.columns([3, 1])
+    with c_pick1:
+        if items_to_process:
+            st.success(f"🖼️ Loaded **{len(items_to_process)}** photo(s) ready for research!")
+        else:
+            st.info("💡 **Tip:** Drag & drop an entire folder or select multiple photos above, or browse a server folder below.")
+    with c_pick2:
         if hasattr(st, "dialog"):
-            if st.button("📁 Browse Local Directory Path on Server", key="open_server_dir_dialog"):
+            if st.button("📁 Browse Server Directory", key="open_server_dir_dialog", use_container_width=True):
                 folder_picker_dialog()
 
     if items_to_process:
-        if st.button("🔄 Reset / Select Different Photo Folder", key="reset_folder_selection"):
-            st.session_state["native_folder_files"] = []
+        if st.button("🔄 Reset / Clear Selected Photos", key="reset_folder_selection"):
             st.session_state["selected_folder_path"] = None
             st.rerun()
 
