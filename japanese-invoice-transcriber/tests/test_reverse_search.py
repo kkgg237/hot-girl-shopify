@@ -44,11 +44,11 @@ def test_format_shopify_title():
         designer="Roberto Cavalli",
         year_era="2003",
         collection="Mon Amour",
-        print_color="White Tiger Tattoo Graphic Denim",
+        print_color="White Tiger Tattoo Graphic",
         garment_type="Jacket Skirt",
         is_set=True,
     )
-    assert title == "roberto cavalli 2003 mon amour white tiger tattoo graphic denim jacket skirt set"
+    assert title == "2003 Roberto Cavalli Mon Amour White Tiger Tattoo Graphic Skirt Set"
 
 
 def test_format_shopify_title_y2k_normalization():
@@ -56,11 +56,36 @@ def test_format_shopify_title_y2k_normalization():
         designer="Jean Paul Gaultier",
         year_era="Y2K",
         collection="",
-        print_color="mesh tattoo",
+        print_color="tattoo",
         garment_type="top",
         is_set=False,
     )
-    assert title == "jean paul gaultier 2000s mesh tattoo top"
+    assert title == "2000s Jean Paul Gaultier Tattoo Top"
+
+
+def test_plain_language_garment_type_and_fabric_filtering():
+    # Silk is high end -> included
+    title_silk = format_shopify_title(
+        designer="Roberto Cavalli",
+        year_era="2002",
+        color="Blue",
+        print_pattern="Zebra Print",
+        extra_details="Rhinestone",
+        garment_type="Asymmetrical Mesh Halter Top",
+        fabric="Silk",
+    )
+    assert title_silk == "2002 Roberto Cavalli Blue Zebra Print Rhinestone Silk Top"
+
+    # Cotton / Mesh is ordinary -> fabric excluded, plain garment "Tank"
+    title_cotton = format_shopify_title(
+        designer="Just Cavalli",
+        year_era="2000s",
+        color="Black",
+        print_pattern="Floral",
+        garment_type="Ribbed Mesh Cami Tank Top",
+        fabric="Cotton",
+    )
+    assert title_cotton == "2000s Just Cavalli Black Floral Tank"
 
 
 def test_get_directory_info(tmp_path: Path):
