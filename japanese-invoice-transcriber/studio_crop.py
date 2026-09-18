@@ -374,9 +374,9 @@ def render_studio_crop_tab():
             if st.button(batch_btn_label, type="primary", use_container_width=True, key=f"btn_batch_process_{prod_id}"):
                 import time
                 now_str = time.strftime("%I:%M:%S %p")
-                with st.spinner(f"Processing {len(images)} photo(s) with active settings..."):
+                with st.spinner(f"Processing all {len(images)} photo(s) in parallel..."):
                     import gc
-                    with ThreadPoolExecutor(max_workers=1) as executor:
+                    with ThreadPoolExecutor(max_workers=min(len(images), 3)) as executor:
                         futures = [
                             executor.submit(
                                 process_single_image_worker,
