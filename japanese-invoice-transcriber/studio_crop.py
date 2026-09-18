@@ -164,6 +164,13 @@ def apply_photo_skills(
     return current_img
 
 def render_studio_crop_tab():
+    # Force auto-clearing of stale Streamlit session state from older app versions
+    if st.session_state.get("studio_crop_version") != "2.0":
+        st.session_state["studio_crop_version"] = "2.0"
+        for k in list(st.session_state.keys()):
+            if k != "studio_crop_version":
+                del st.session_state[k]
+
     st.markdown("### Studio Photo Skills & Processing Pipeline")
     
     st.markdown("#### ⚙️ Modular Photo Skills Pipeline")
