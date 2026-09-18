@@ -2,7 +2,7 @@
 
 Documented in RULES.md (2026-08-13).
 Modular Partitioned Photo Skills:
-  - Background Equalization with Custom Color Picker & Presets
+  - Background Equalization with Custom Color Saver & Presets
   - Soft Tabletop Exposure & Contact Shadow Retention
   - 3:4 Auto-Crop & Category Framing Centering
   - Zero-Cutout Outer Edge Extension
@@ -49,7 +49,7 @@ def get_shopify_credentials():
 
 @st.cache_data(ttl=300)
 def fetch_active_shopify_products():
-    """Fetch active listings from Shopify Admin API."""
+    """Fetch active listings from Shopify Admin API. Strictly excludes products without images, sorted newest first."""
     shop, token = get_shopify_credentials()
     if not token:
         return []
@@ -58,7 +58,14 @@ def fetch_active_shopify_products():
     try:
         res = urllib.request.urlopen(req)
         data = json.loads(res.read().decode("utf-8"))
-        return data.get("products", [])
+        products = data.get("products", [])
+        
+        # Strictly filter ONLY products that have 1 or more active images!
+        products_with_images = [p for p in products if p.get("images") and len(p.get("images")) > 0]
+        
+        # Sort newest first (by id descending)
+        products_with_images.sort(key=lambda p: p.get("id", 0), reverse=True)
+        return products_with_images
     except Exception as e:
         st.error(f"Error fetching Shopify products: {e}")
         return []
@@ -172,9 +179,10 @@ def render_studio_crop_tab():
             if k != "studio_crop_version":
                 del st.session_state[k]
 
+    if "saved_custom_colors" not in st.session_state:
+        st.session_state["saved_custom_colors"] = ["#F8F2F2", "#E5E5E5"]
+
     st.markdown("### Studio Photo Skills & Processing Pipeline")
-    
-    st.markdown("#### ⚙️ Modular Photo Skills Pipeline")
     st.caption("Partitioned photo transformation skills. Check or uncheck individual skills below to apply them to live active listings (retroactive) or raw camera exports.")
 
     col_bg, col_crop = st.columns([1.2, 1.0])
@@ -192,42 +200,57 @@ def render_studio_crop_tab():
         if bg_option.startswith("Equalize"):
             bg_mode = "pure_white"
             
-            st.markdown("##### 🎨 Background Color Picker & Sliders")
-            col_picker, col_preset = st.columns([1, 1])
+            st.markdown("##### 🎨 Background Color & Presets")
             
+            preset_options = [
+                "Pure White (#FFFFFF)",
+                "Warm Cyc (#F8F2F2)",
+                "Studio Light Grey (#E5E5E5)",
+                "Dark Charcoal (#222222)",
+                "Pure Black (#000000)",
+            ] + [f"Saved: {c}" for c in st.session_state["saved_custom_colors"]] + ["Custom Color Picker"]
+
+            col_preset, col_picker = st.columns([1.1, 1.0])
             with col_preset:
-                preset_choice = st.selectbox(
-                    "Quick Presets",
-                    ["Pure White (#FFFFFF)", "Warm Cyc (#F8F2F2)", "Studio Light Grey (#E5E5E5)", "Dark Charcoal (#222222)", "Pure Black (#000000)", "Custom Picker"],
-                    index=0,
-                    key="bg_preset_select_v2"
-                )
-            
+                preset_choice = st.selectbox("Presets & Saved Colors", preset_options, index=0, key="bg_preset_select_v2")
+
             with col_picker:
                 default_hex = "#FFFFFF"
-                if preset_choice.startswith("Warm"):
+                if "Warm" in preset_choice:
                     default_hex = "#F8F2F2"
-                elif preset_choice.startswith("Studio Light"):
+                elif "Light Grey" in preset_choice:
                     default_hex = "#E5E5E5"
-                elif preset_choice.startswith("Dark"):
+                elif "Charcoal" in preset_choice:
                     default_hex = "#222222"
-                elif preset_choice.startswith("Pure Black"):
+                elif "Pure Black" in preset_choice:
                     default_hex = "#000000"
+                elif preset_choice.startswith("Saved:"):
+                    default_hex = preset_choice.replace("Saved: ", "").strip()
 
-                picked_hex = st.color_picker("Color Picker", value=default_hex, key="bg_color_picker_v2")
+                picked_hex = st.color_picker("Custom Color", value=default_hex, key="bg_color_picker_v2")
                 target_bg_color = hex_to_rgb(picked_hex)
+
+            # Save Custom Color Button
+            col_save1, col_save2 = st.columns([1, 1])
+            with col_save1:
+                if st.button("💾 Save Selected Color", key="btn_save_color"):
+                    if picked_hex not in st.session_state["saved_custom_colors"]:
+                        st.session_state["saved_custom_colors"].append(picked_hex)
+                        st.success(f"✓ Saved {picked_hex} to presets!")
 
         elif bg_option.startswith("Soft"):
             bg_mode = "soft_20"
         else:
             bg_mode = "none"
 
-        edge_padding = st.slider(
-            "🛡️ Piping & Edge Safety Padding (px)",
+        st.markdown("---")
+        edge_padding = st.number_input(
+            "🛡️ Piping & Edge Safety Margin (px)",
             min_value=0,
-            max_value=12,
+            max_value=20,
             value=4,
-            help="Expands protected subject boundary outward to guarantee dark piping, leather seams, and bottom edges are 100% protected and never bleached."
+            step=1,
+            help="Expands protected subject boundary outward (in pixels) to guarantee dark piping, leather seams, and bottom edges are 100% protected."
         )
 
     with col_crop:
@@ -244,18 +267,18 @@ def render_studio_crop_tab():
 
         products = fetch_active_shopify_products()
         if not products:
-            st.info("No active Shopify products found or SHOPIFY_ADMIN_TOKEN required in .env")
+            st.info("No active Shopify products with images found.")
             return
 
-        prod_titles = [f"{p['title']} ({p['vendor']}) — ID: {p['id']}" for p in products]
-        selected_idx = st.selectbox("Select Active Product to Audit & Fix", range(len(prod_titles)), format_func=lambda i: prod_titles[i])
+        prod_titles = [f"{p['title']} ({len(p.get('images', []))} photos) — {p.get('vendor', 'Past Studies')}" for p in products]
+        selected_idx = st.selectbox("Select Active Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i])
         
         prod = products[selected_idx]
         prod_id = prod["id"]
         prod_title = prod["title"]
         images = prod.get("images", [])
 
-        st.markdown(f"##### Product: **{prod_title}** ({len(images)} active photos)")
+        st.markdown(f"##### Product: **{prod_title}** ({len(images)} active photos) — ID: `{prod_id}`")
         category_name = prod.get("product_type") or prod_title
 
         for idx, img_info in enumerate(images):
@@ -264,9 +287,12 @@ def render_studio_crop_tab():
 
             st.markdown("---")
             st.markdown(f"#### **Photo {idx+1} of {len(images)}** (ID: `{img_id}`)")
-            col1, col2, col3 = st.columns([1, 1, 1.1])
+            
+            state_key = f"edited_img_{prod_id}_{img_id}"
 
-            # Row 1: Perfectly Aligned Column Headers
+            col1, col2, col3 = st.columns([1, 1, 1])
+
+            # Row 1: Aligned Column Headers
             with col1:
                 st.markdown("**1. Original Active Photo**")
             with col2:
@@ -274,15 +300,35 @@ def render_studio_crop_tab():
             with col3:
                 st.markdown("**3. Approval & Push**")
 
-            state_key = f"edited_img_{prod_id}_{img_id}"
-
-            # Row 2: Image Before
+            # Row 2: BOTH Images Side-by-Side on Exact Same Baseline!
             with col1:
                 st.image(img_src, use_container_width=True)
 
-            # Row 3: Action & Preview After
             with col2:
-                if st.button(f"⚡ Apply Selected Skills", key=f"btn_edit_{img_id}", use_container_width=True):
+                if state_key in st.session_state:
+                    st.image(st.session_state[state_key], use_container_width=True)
+                else:
+                    st.info("Click *'⚡ Apply Selected Skills'* below to generate preview.")
+
+            with col3:
+                if state_key in st.session_state:
+                    if st.button(f"✓ Push Photo {idx+1} to Shopify", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
+                        fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
+                        success = update_shopify_product_image(prod_id, img_id, fixed_img)
+                        if success:
+                            st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
+
+                    if st.session_state.get(f"pushed_ok_{prod_id}_{img_id}"):
+                        st.success(f"✓ Successfully updated Photo {idx+1} on Shopify!")
+                else:
+                    st.caption("Awaiting preview generation...")
+
+            # Row 3: Action Controls Below Images
+            with col1:
+                st.caption("Active Shopify Image")
+
+            with col2:
+                if st.button(f"⚡ Apply Selected Skills (Photo {idx+1})", key=f"btn_edit_{img_id}", use_container_width=True):
                     req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
                     raw_bytes = urllib.request.urlopen(req).read()
                     
@@ -294,30 +340,12 @@ def render_studio_crop_tab():
                         do_autocrop=do_autocrop,
                         category=category_name,
                         do_detail_crop=do_detail_crop,
-                        edge_padding=edge_padding,
+                        edge_padding=int(edge_padding),
                     )
                     buf = io.BytesIO()
                     fixed_pil.save(buf, format="JPEG", quality=95)
                     st.session_state[state_key] = buf.getvalue()
-
-                if state_key in st.session_state:
-                    st.image(st.session_state[state_key], use_container_width=True)
-                else:
-                    st.caption("👈 Click *'⚡ Apply Selected Skills'* above to generate preview.")
-
-            # Row 4: Approval & Shopify Push
-            with col3:
-                if state_key in st.session_state:
-                    if st.button(f"✓ Push to Shopify", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
-                        fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
-                        success = update_shopify_product_image(prod_id, img_id, fixed_img)
-                        if success:
-                            st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
-
-                    if st.session_state.get(f"pushed_ok_{prod_id}_{img_id}"):
-                        st.success(f"✓ Successfully updated Photo {idx+1} on Shopify!")
-                else:
-                    st.caption("Awaiting preview generation...")
+                    st.rerun()
 
     else:
         st.markdown("#### New Raw Shoots (Upload Camera Exports)")
@@ -341,7 +369,7 @@ def render_studio_crop_tab():
                     do_autocrop=do_autocrop,
                     category=category_name,
                     do_detail_crop=do_detail_crop,
-                    edge_padding=edge_padding,
+                    edge_padding=int(edge_padding),
                 )
                 with cols[idx % len(cols)]:
                     st.image(transformed_pil, caption=f"{file.name} (Transformed)", use_container_width=True)
