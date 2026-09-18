@@ -232,7 +232,7 @@ def render_studio_crop_tab():
     st.markdown("### Studio Photo Skills & Processing Pipeline")
 
     # Condensed 2-Column Controls Strip
-    with st.expander("⚙️ Configure Applied Skills & Color Presets", expanded=True):
+    with st.expander("Configure Applied Skills & Color Presets", expanded=True):
         col_bg, col_crop = st.columns([1.2, 1.0])
 
         with col_bg:
@@ -279,10 +279,10 @@ def render_studio_crop_tab():
 
                 with col_btn:
                     st.write("")
-                    if st.button("💾 Save Color", key="btn_save_color_v4", use_container_width=True):
+                    if st.button("Save Color", key="btn_save_color_v4", use_container_width=True):
                         if picked_hex not in st.session_state["saved_custom_colors"]:
                             st.session_state["saved_custom_colors"].append(picked_hex)
-                            st.success(f"Saved!")
+                            st.success("Saved!")
 
             elif bg_option.startswith("Soft"):
                 bg_mode = "soft_20"
@@ -290,7 +290,7 @@ def render_studio_crop_tab():
                 bg_mode = "none"
 
             edge_padding = st.number_input(
-                "🛡️ Piping & Edge Safety Margin (px)",
+                "Piping & Edge Safety Margin (px)",
                 min_value=0,
                 max_value=20,
                 value=4,
@@ -331,11 +331,11 @@ def render_studio_crop_tab():
 
         col_b1, col_b2, col_b3 = st.columns([1.2, 1.2, 0.8])
         with col_b1:
-            batch_btn_label = f"🔄 Reprocess ALL {len(images)} Photos" if any_edited else f"⚡ Batch Process ALL Photos ({len(images)})"
+            batch_btn_label = f"Reprocess ALL {len(images)} Photos" if any_edited else f"Batch Process ALL Photos ({len(images)})"
             if st.button(batch_btn_label, type="primary", use_container_width=True, key=f"btn_batch_process_{prod_id}"):
                 import time
                 now_str = time.strftime("%I:%M:%S %p")
-                with st.spinner(f"⚡ Processing {len(images)} photo(s) with active settings..."):
+                with st.spinner(f"Processing {len(images)} photo(s) with active settings..."):
                     import gc
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         futures = [
@@ -362,11 +362,11 @@ def render_studio_crop_tab():
                             except Exception as err:
                                 st.error(f"Error in batch image worker: {err}")
                     gc.collect()
-                st.success(f"✓ Processing complete for all {len(images)} photo(s) at {now_str}!")
+                st.success(f"Processing complete for all {len(images)} photo(s) at {now_str}")
                 st.rerun()
 
         with col_b2:
-            btn_label = f"✓ Push {len(processed_keys)} Processed Photo(s) to Shopify" if any_edited else "✓ Push Processed Photos to Shopify"
+            btn_label = f"Push {len(processed_keys)} Processed Photo(s) to Shopify" if any_edited else "Push Processed Photos to Shopify"
             if st.button(btn_label, type="primary", use_container_width=True, disabled=not any_edited, key=f"btn_batch_push_{prod_id}"):
                 with st.spinner(f"Pushing {len(processed_keys)} processed photo(s) directly to Shopify..."):
                     to_push = []
@@ -401,19 +401,19 @@ def render_studio_crop_tab():
                         pass
 
                 if pushed_count > 0:
-                    st.success(f"✓ Successfully updated {pushed_count} photo(s) on Shopify!")
+                    st.success(f"Successfully updated {pushed_count} photo(s) on Shopify!")
                 else:
                     st.error("Failed to push photos to Shopify. Check API credentials.")
                 st.rerun()
 
         with col_b3:
-            if st.button("🗑️ Clear Previews", use_container_width=True, disabled=not any_edited, key=f"btn_clear_previews_{prod_id}"):
+            if st.button("Clear Previews", use_container_width=True, disabled=not any_edited, key=f"btn_clear_previews_{prod_id}"):
                 for img in images:
                     img_id = img["id"]
                     st.session_state.pop(f"edited_img_{prod_id}_{img_id}", None)
                     st.session_state.pop(f"pushed_ok_{prod_id}_{img_id}", None)
                     st.session_state.pop(f"processed_time_{prod_id}_{img_id}", None)
-                st.toast("🗑️ Cleared previews for this product! Ready to reprocess cleanly.")
+                st.toast("Cleared previews for this product!")
                 st.rerun()
 
         st.markdown("---")
@@ -438,26 +438,27 @@ def render_studio_crop_tab():
                         st.image(img_src, use_container_width=True)
 
                     with img_col2:
+                        st.caption("2. Transformed Preview")
                         if is_processed:
-                            ts = st.session_state.get(time_key, "")
-                            st.caption(f"2. Transformed Preview 🟢 ({ts})" if ts else "2. Transformed Preview 🟢")
                             try:
                                 preview_img = Image.open(io.BytesIO(st.session_state[state_key]))
                                 st.image(preview_img, use_container_width=True)
+                                ts = st.session_state.get(time_key, "")
+                                if ts:
+                                    st.caption(f"Updated {ts}")
                             except Exception as err:
                                 st.error(f"Failed to render preview: {err}")
                         else:
-                            st.caption("2. Transformed Preview")
                             st.info("Click button below to generate preview.")
 
                     # Individual Action Bar below images
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        proc_btn_label = f"🔄 Reprocess Photo {idx+1}" if is_processed else f"⚡ Process Photo {idx+1}"
+                        proc_btn_label = f"Reprocess Photo {idx+1}" if is_processed else f"Process Photo {idx+1}"
                         if st.button(proc_btn_label, key=f"btn_edit_{img_id}", use_container_width=True):
                             import time
                             now_str = time.strftime("%I:%M:%S %p")
-                            with st.spinner(f"⚡ Reprocessing Photo {idx+1}..."):
+                            with st.spinner(f"Reprocessing Photo {idx+1}..."):
                                 req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
                                 raw_bytes = urllib.request.urlopen(req, timeout=12).read()
                                 
@@ -475,19 +476,19 @@ def render_studio_crop_tab():
                                 fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
                                 st.session_state[state_key] = buf.getvalue()
                                 st.session_state[time_key] = now_str
-                            st.toast(f"✓ Reprocessed Photo {idx+1} at {now_str}!")
+                            st.toast(f"Reprocessed Photo {idx+1} at {now_str}")
                             st.rerun()
 
                     with btn_col2:
                         if state_key in st.session_state:
-                            if st.button(f"✓ Push Photo {idx+1}", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
+                            if st.button(f"Push Photo {idx+1}", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
                                 fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
                                 success = update_shopify_product_image(prod_id, img_id, fixed_img)
                                 if success:
                                     st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
 
                             if st.session_state.get(f"pushed_ok_{prod_id}_{img_id}"):
-                                st.success("✓ Updated on Shopify!")
+                                st.success("Updated on Shopify!")
 
     else:
         st.markdown("#### New Raw Shoots (Upload Camera Exports)")
