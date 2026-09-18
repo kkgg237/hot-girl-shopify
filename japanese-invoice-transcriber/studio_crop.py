@@ -1,9 +1,12 @@
 """Studio Auto-Crop & Retroactive Background Fixer Tab for Past Studies.
 
 Documented in RULES.md (2026-08-13).
-Integrates:
-  1. Retroactive Background Fixer for Active Shopify Listings (ZERO re-cropping, full human oversight)
-  2. Auto-Crop 3:4 Listing Generator (for new raw camera exports)
+Modular Partitioned Photo Skills:
+  - Background Equalization with Custom Color Picker & Presets
+  - Soft Tabletop Exposure & Contact Shadow Retention
+  - 3:4 Auto-Crop & Category Framing Centering
+  - Zero-Cutout Outer Edge Extension
+  - Garment Item-Focus Detail Crop
 """
 from __future__ import annotations
 
@@ -27,10 +30,16 @@ if str(CROP_PIPELINE_DIR) not in sys.path:
 from crop_pipeline.tabletop_exposure import (
     process_pure_white_bg_equalization,
     process_tabletop_exposure,
+    extend_photo_edges_seamless,
 )
 
 TARGET_W = 1536
 TARGET_H = 2048
+
+def hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
+    """Convert hex string '#RRGGBB' to (R, G, B) tuple."""
+    hex_str = hex_str.lstrip('#')
+    return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
 def get_shopify_credentials():
     from shopify_inventory import get_shop, get_token
@@ -84,32 +93,138 @@ def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.
         st.error(f"Shopify Image Update Failed: {e}")
         return False
 
-def fix_active_photo_background_only(img_bytes: bytes, is_bag: bool = False) -> Image.Image:
-    """Fix background lighting ONLY. Zero re-cropping or framing changes."""
+def apply_photo_skills(
+    img_bytes: bytes,
+    bg_mode: str = "pure_white",
+    target_bg_color: tuple[int, int, int] = (255, 255, 255),
+    do_edge_extension: bool = False,
+    do_autocrop: bool = False,
+    category: str = "Tops",
+    do_detail_crop: bool = False,
+) -> Image.Image:
+    """Modular pipeline applying selected photo processing skills to an image."""
     orig_img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    img_np = np.array(orig_img_pil)
-    h, w, _ = img_np.shape
+    current_img = orig_img_pil
 
-    gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-    bg_val = np.median(gray[0:30, 0:30])
-    diff = cv2.absdiff(gray, int(bg_val))
-    alpha_mask = (diff > 15).astype(np.uint8) * 255
+    # 1. Background Equalization Skill
+    if bg_mode in ("pure_white", "soft_20"):
+        try:
+            from crop_pipeline.subject import extract_alpha
+            rgba = extract_alpha(current_img, "isnet-general-use")
+            alpha_mask = np.array(rgba.split()[3])
+        except Exception:
+            img_np = np.array(current_img)
+            gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            bg_val = np.median(gray[0:30, 0:30])
+            diff = cv2.absdiff(gray, int(bg_val))
+            alpha_mask = (diff > 15).astype(np.uint8) * 255
 
-    if is_bag:
-        # Soft 20 Contact Shadow Retention for Handbags
-        return process_tabletop_exposure(orig_img_pil, alpha_mask, curve_gamma=0.78, highlight_lift=1.06)
-    else:
-        # Pure White Equalization (#FFFFFF) for Clothing
-        return process_pure_white_bg_equalization(orig_img_pil, alpha_mask)
+        if bg_mode == "soft_20":
+            current_img = process_tabletop_exposure(current_img, alpha_mask, curve_gamma=0.78, highlight_lift=1.06)
+        else:
+            current_img = process_pure_white_bg_equalization(current_img, alpha_mask, target_color=target_bg_color)
+
+    # 2. Outer Edge Extension Skill (Zero Model Cutout)
+    if do_edge_extension:
+        current_img = extend_photo_edges_seamless(current_img, target_w=TARGET_W, target_h=TARGET_H)
+
+    # 3. Auto-Crop & Framing Centering Skill (3:4 Ratio)
+    if do_autocrop:
+        try:
+            from crop_pipeline.subject import detect_subject
+            from crop_pipeline.crop import compute_crop_box, compute_region_crop_box
+
+            subj = detect_subject(current_img, "isnet-general-use")
+            src_w, src_h = current_img.size
+
+            if do_detail_crop:
+                if "bottom" in category.lower():
+                    region = (0.25, 1.0)
+                else:
+                    region = (0.08, 0.65)
+                crop_box = compute_region_crop_box((src_w, src_h), subj, (TARGET_W, TARGET_H), region_of_subject=region)
+            else:
+                if "bag" in category.lower() or "accessory" in category.lower():
+                    subj_height_frac = 0.68
+                    v_bias = 0.05
+                elif "bottom" in category.lower():
+                    subj_height_frac = 0.78
+                    v_bias = 0.0
+                else:
+                    subj_height_frac = 0.84
+                    v_bias = -0.04
+
+                crop_box = compute_crop_box((src_w, src_h), subj, (TARGET_W, TARGET_H), subj_height_frac, vertical_bias=v_bias)
+
+            cropped = current_img.crop(crop_box)
+            current_img = cropped.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
+        except Exception as e:
+            st.warning(f"Auto-crop fallback due to subject detection: {e}")
+
+    return current_img
 
 def render_studio_crop_tab():
-    st.markdown("### Studio Auto-Crop & Retroactive Background Fixer")
+    st.markdown("### Studio Photo Skills & Processing Pipeline")
     
-    mode = st.radio("Select Workflow Mode", ["1 · Retroactive Fixer (Active Shopify Listings)", "2 · Auto-Crop 3:4 Generator (New Raw Shoots)"], horizontal=True)
+    st.markdown("#### ⚙️ Modular Photo Skills Pipeline")
+    st.caption("Partitioned photo transformation skills. Check or uncheck individual skills below to apply them to live active listings (retroactive) or raw camera exports.")
 
-    if mode.startswith("1"):
-        st.markdown("#### Retroactive Background Fixer (Active Shopify Store)")
-        st.caption("Browse live active listings → Edit background (NO re-cropping) → Preview Before/After → Human Approval.")
+    col_bg, col_crop = st.columns([1.2, 1.0])
+
+    with col_bg:
+        st.markdown("**1. Background Equalization Skill**")
+        bg_option = st.radio(
+            "Select Background Processing",
+            ["Equalize Background Color", "Soft Tabletop Contact Shadow (Bags/Accessories)", "Off (Keep Original Background)"],
+            index=0,
+            key="bg_option_radio"
+        )
+        
+        target_bg_color = (255, 255, 255)
+        if bg_option.startswith("Equalize"):
+            bg_mode = "pure_white"
+            
+            st.markdown("##### 🎨 Background Color Picker & Sliders")
+            col_picker, col_preset = st.columns([1, 1])
+            
+            with col_preset:
+                preset_choice = st.selectbox(
+                    "Quick Presets",
+                    ["Pure White (#FFFFFF)", "Warm Cyc (#F8F2F2)", "Studio Light Grey (#E5E5E5)", "Dark Charcoal (#222222)", "Pure Black (#000000)", "Custom Picker"],
+                    index=0,
+                    key="bg_preset_select"
+                )
+            
+            with col_picker:
+                default_hex = "#FFFFFF"
+                if preset_choice.startswith("Warm"):
+                    default_hex = "#F8F2F2"
+                elif preset_choice.startswith("Studio Light"):
+                    default_hex = "#E5E5E5"
+                elif preset_choice.startswith("Dark"):
+                    default_hex = "#222222"
+                elif preset_choice.startswith("Pure Black"):
+                    default_hex = "#000000"
+
+                picked_hex = st.color_picker("Color Picker", value=default_hex, key="bg_color_picker")
+                target_bg_color = hex_to_rgb(picked_hex)
+
+        elif bg_option.startswith("Soft"):
+            bg_mode = "soft_20"
+        else:
+            bg_mode = "none"
+
+    with col_crop:
+        st.markdown("**2. Framing & Canvas Skills**")
+        do_autocrop = st.checkbox("3:4 Auto-Crop & Framing Centering", value=False, help="Re-frame photo to 1536x2048 canvas using category headroom rules")
+        do_edge_ext = st.checkbox("Zero-Cutout Outer Edge Extension", value=False, help="Replicate outer edges seamlessly to widen canvas without clipping model")
+        do_detail_crop = st.checkbox("Garment Item-Focus Detail Crop", value=False, help="Focus crop directly on garment silhouette")
+
+    st.markdown("---")
+    target_source = st.radio("Select Target Source", ["Retroactive Audit (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True)
+
+    if target_source.startswith("Retroactive"):
+        st.markdown("#### Retroactive Audit & Fix (Active Shopify Store)")
 
         products = fetch_active_shopify_products()
         if not products:
@@ -125,12 +240,7 @@ def render_studio_crop_tab():
         images = prod.get("images", [])
 
         st.markdown(f"##### Product: **{prod_title}** ({len(images)} active photos)")
-        is_bag = any(k in (prod.get("product_type") or "").lower() or k in prod_title.lower() for k in ["bag", "tote", "clutch", "handbag", "purse"])
-        
-        if is_bag:
-            st.info("🏷️ Detected Bag/Accessory category: Applies **Soft 20 Background Equalization + Tabletop Contact Shadow Retention**.")
-        else:
-            st.info("🏷️ Detected Clothing/Model category: Applies **Pure White Equalization (#FFFFFF) + Zero Model Cutout**.")
+        category_name = prod.get("product_type") or prod_title
 
         for idx, img_info in enumerate(images):
             img_id = img_info["id"]
@@ -141,44 +251,64 @@ def render_studio_crop_tab():
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:
-                st.markdown("**Current Active Shopify Photo (Before)**")
+                st.markdown("**Current Active Photo (Before)**")
                 st.image(img_src, use_container_width=True)
 
             state_key = f"edited_img_{prod_id}_{img_id}"
 
             with col2:
-                if st.button(f"Edit Background (Photo {idx+1})", key=f"btn_edit_{img_id}"):
+                if st.button(f"Apply Selected Skills (Photo {idx+1})", key=f"btn_edit_{img_id}"):
                     req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
                     raw_bytes = urllib.request.urlopen(req).read()
                     
-                    fixed_pil = fix_active_photo_background_only(raw_bytes, is_bag=is_bag)
+                    fixed_pil = apply_photo_skills(
+                        raw_bytes,
+                        bg_mode=bg_mode,
+                        target_bg_color=target_bg_color,
+                        do_edge_extension=do_edge_ext,
+                        do_autocrop=do_autocrop,
+                        category=category_name,
+                        do_detail_crop=do_detail_crop,
+                    )
                     buf = io.BytesIO()
                     fixed_pil.save(buf, format="JPEG", quality=95)
                     st.session_state[state_key] = buf.getvalue()
 
                 if state_key in st.session_state:
-                    st.markdown("**Background Fixed Preview (After)**")
+                    st.markdown("**Transformed Preview (After)**")
                     st.image(st.session_state[state_key], use_container_width=True)
 
             with col3:
                 if state_key in st.session_state:
-                    st.markdown("**Human Approval & Shopify Push**")
-                    if st.button(f"✓ Approve & Update Shopify (Photo {idx+1})", key=f"btn_push_{img_id}", type="primary"):
+                    st.markdown("**Human Approval & Push**")
+                    if st.button(f"✓ Approve & Push to Shopify (Photo {idx+1})", key=f"btn_push_{img_id}", type="primary"):
                         fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
                         success = update_shopify_product_image(prod_id, img_id, fixed_img)
                         if success:
                             st.success(f"✓ Successfully updated Photo {idx+1} on Shopify!")
 
     else:
-        st.markdown("#### Auto-Crop 3:4 Listing Generator (New Raw Shoots)")
-        st.caption("Upload raw camera exports → Auto-crop 3:4 e-commerce listing set.")
-
+        st.markdown("#### New Raw Shoots (Upload Camera Exports)")
         col_cat, col_sku = st.columns([1, 1])
         with col_cat:
-            category = st.selectbox("Product Category", ["Tops (Shirts / Jackets)", "Bottoms (Pants / Skirts)", "Dresses & Jumpsuits", "Handbags & Accessories"])
+            category_name = st.selectbox("Product Category", ["Tops (Shirts / Jackets)", "Bottoms (Pants / Skirts)", "Dresses & Jumpsuits", "Handbags & Accessories"])
         with col_sku:
             sku = st.text_input("SKU Code", value="SKU_STUDIO_001")
 
         uploaded_files = st.file_uploader("Drop raw uncropped camera photos", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
         if uploaded_files:
             st.markdown(f"#### Processing {len(uploaded_files)} raw photos for SKU `{sku}`...")
+            cols = st.columns(min(len(uploaded_files), 4))
+            for idx, file in enumerate(uploaded_files):
+                raw_bytes = file.read()
+                transformed_pil = apply_photo_skills(
+                    raw_bytes,
+                    bg_mode=bg_mode,
+                    target_bg_color=target_bg_color,
+                    do_edge_extension=do_edge_ext,
+                    do_autocrop=do_autocrop,
+                    category=category_name,
+                    do_detail_crop=do_detail_crop,
+                )
+                with cols[idx % len(cols)]:
+                    st.image(transformed_pil, caption=f"{file.name} (Transformed)", use_container_width=True)
