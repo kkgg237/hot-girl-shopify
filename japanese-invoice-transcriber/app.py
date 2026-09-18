@@ -7000,9 +7000,7 @@ home_tab, studio_crop_tab, reverse_search_tab, commercial_tab, catalogue_tab, dr
 ])
 
 with studio_crop_tab:
-    import importlib
     import studio_crop
-    importlib.reload(studio_crop)
     studio_crop.render_studio_crop_tab()
 
 with reverse_search_tab:

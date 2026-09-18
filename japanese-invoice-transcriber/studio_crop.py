@@ -74,7 +74,7 @@ def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.
         return False
 
     buf = io.BytesIO()
-    img_pil.save(buf, format="JPEG", quality=95)
+    img_pil.save(buf, format="JPEG", quality=98, subsampling=0)
     b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     url = f"https://{shop}/admin/api/2024-10/products/{product_id}/images/{image_id}.json"
@@ -96,6 +96,35 @@ def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.
         st.error(f"Shopify Image Update Failed: {e}")
         return False
 
+def get_alpha_mask_safe(img: Image.Image, model_name: str = "isnet-general-use") -> np.ndarray:
+    w, h = img.size
+    max_dim = 1200
+    if max(w, h) > max_dim:
+        scale = max_dim / float(max(w, h))
+        small_w, small_h = max(1, int(w * scale)), max(1, int(h * scale))
+        small_img = img.resize((small_w, small_h), Image.Resampling.BILINEAR)
+    else:
+        small_img = img
+
+    from crop_pipeline.subject import extract_alpha
+    rgba_small = extract_alpha(small_img, model_name)
+    alpha_small = rgba_small.split()[3]
+
+    if (small_img.width, small_img.height) != (w, h):
+        alpha_full = alpha_small.resize((w, h), Image.Resampling.LANCZOS)
+    else:
+        alpha_full = alpha_small
+
+    return np.array(alpha_full)
+
+
+def detect_subject_safe(img: Image.Image, model_name: str = "isnet-general-use"):
+    from crop_pipeline.subject import mask_to_box
+    alpha_arr = get_alpha_mask_safe(img, model_name)
+    alpha_pil = Image.fromarray(alpha_arr)
+    return mask_to_box(alpha_pil)
+
+
 def apply_photo_skills(
     img_bytes: bytes,
     bg_mode: str = "pure_white",
@@ -106,16 +135,14 @@ def apply_photo_skills(
     do_detail_crop: bool = False,
     edge_padding: int = 4,
 ) -> Image.Image:
-    """Modular pipeline applying selected photo processing skills to an image."""
+    """Modular pipeline applying selected photo processing skills to an image while preserving 100% full original resolution."""
     orig_img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     current_img = orig_img_pil
 
     # 1. Background Equalization Skill
     if bg_mode in ("pure_white", "soft_20"):
         try:
-            from crop_pipeline.subject import extract_alpha
-            rgba = extract_alpha(current_img, "isnet-general-use")
-            alpha_mask = np.array(rgba.split()[3])
+            alpha_mask = get_alpha_mask_safe(current_img, "isnet-general-use")
         except Exception:
             img_np = np.array(current_img)
             gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
@@ -135,10 +162,9 @@ def apply_photo_skills(
     # 3. Auto-Crop & Framing Centering Skill (3:4 Ratio)
     if do_autocrop:
         try:
-            from crop_pipeline.subject import detect_subject
             from crop_pipeline.crop import compute_crop_box, compute_region_crop_box
 
-            subj = detect_subject(current_img, "isnet-general-use")
+            subj = detect_subject_safe(current_img, "isnet-general-use")
             src_w, src_h = current_img.size
 
             if do_detail_crop:
@@ -194,15 +220,11 @@ def process_single_image_worker(
         edge_padding=edge_padding,
     )
     buf = io.BytesIO()
-    fixed_pil.save(buf, format="JPEG", quality=95)
+    fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
     return img_id, buf.getvalue()
 
 def render_studio_crop_tab():
-    if st.session_state.get("studio_crop_version") != "2.2":
-        st.session_state["studio_crop_version"] = "2.2"
-        for k in list(st.session_state.keys()):
-            if k != "studio_crop_version":
-                del st.session_state[k]
+    st.session_state["studio_crop_version"] = "2.2"
 
     if "saved_custom_colors" not in st.session_state:
         st.session_state["saved_custom_colors"] = ["#F8F2F2", "#E5E5E5"]
@@ -273,17 +295,18 @@ def render_studio_crop_tab():
                 max_value=20,
                 value=4,
                 step=1,
+                key="studio_edge_padding_v2",
                 help="Expands protected subject boundary outward (in pixels) to guarantee dark piping, leather seams, and bottom edges are 100% protected."
             )
 
         with col_crop:
             st.markdown("**2. Framing & Canvas Skills**")
-            do_autocrop = st.checkbox("3:4 Auto-Crop & Framing Centering", value=False, help="Re-frame photo to 1536x2048 canvas using category headroom rules")
-            do_edge_ext = st.checkbox("Zero-Cutout Outer Edge Extension", value=False, help="Replicate outer edges seamlessly to widen canvas without clipping model")
-            do_detail_crop = st.checkbox("Garment Item-Focus Detail Crop", value=False, help="Focus crop directly on garment silhouette")
+            do_autocrop = st.checkbox("3:4 Auto-Crop & Framing Centering", value=False, key="studio_do_autocrop_v2", help="Re-frame photo to 1536x2048 canvas using category headroom rules")
+            do_edge_ext = st.checkbox("Zero-Cutout Outer Edge Extension", value=False, key="studio_do_edge_ext_v2", help="Replicate outer edges seamlessly to widen canvas without clipping model")
+            do_detail_crop = st.checkbox("Garment Item-Focus Detail Crop", value=False, key="studio_do_detail_crop_v2", help="Focus crop directly on garment silhouette")
 
     st.markdown("---")
-    target_source = st.radio("Select Target Source", ["Retroactive Audit (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True)
+    target_source = st.radio("Select Target Source", ["Retroactive Audit (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True, key="studio_target_source_radio_v2")
 
     if target_source.startswith("Retroactive"):
         products = fetch_active_shopify_products()
@@ -292,7 +315,7 @@ def render_studio_crop_tab():
             return
 
         prod_titles = [f"{p['title']} ({len(p.get('images', []))} photos) — {p.get('vendor', 'Past Studies')}" for p in products]
-        selected_idx = st.selectbox("Select Active Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i])
+        selected_idx = st.selectbox("Select Active Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i], key="studio_crop_product_selectbox_v2")
         
         prod = products[selected_idx]
         prod_id = prod["id"]
@@ -302,12 +325,19 @@ def render_studio_crop_tab():
 
         st.markdown(f"#### Product: **{prod_title}** ({len(images)} photos) — ID: `{prod_id}`")
 
-        # Global Bulk Batch Action Toolbar
-        col_b1, col_b2 = st.columns([1, 1])
+        # Global Bulk Batch Action Toolbar (3 Columns: Process, Push, Clear)
+        processed_keys = [f"edited_img_{prod_id}_{img['id']}" for img in images if f"edited_img_{prod_id}_{img['id']}" in st.session_state]
+        any_edited = len(processed_keys) > 0
+
+        col_b1, col_b2, col_b3 = st.columns([1.2, 1.2, 0.8])
         with col_b1:
-            if st.button("⚡ Batch Process ALL Photos in Listing", type="primary", use_container_width=True, key=f"btn_batch_process_{prod_id}"):
-                with st.spinner(f"⚡ Processing {len(images)} photos in parallel via multi-threading..."):
-                    with ThreadPoolExecutor(max_workers=min(len(images), 6)) as executor:
+            batch_btn_label = f"🔄 Reprocess ALL {len(images)} Photos" if any_edited else f"⚡ Batch Process ALL Photos ({len(images)})"
+            if st.button(batch_btn_label, type="primary", use_container_width=True, key=f"btn_batch_process_{prod_id}"):
+                import time
+                now_str = time.strftime("%I:%M:%S %p")
+                with st.spinner(f"⚡ Processing {len(images)} photo(s) with active settings..."):
+                    import gc
+                    with ThreadPoolExecutor(max_workers=1) as executor:
                         futures = [
                             executor.submit(
                                 process_single_image_worker,
@@ -324,29 +354,66 @@ def render_studio_crop_tab():
                             for img_info in images
                         ]
                         for future in futures:
-                            img_id, img_bytes = future.result()
-                            st.session_state[f"edited_img_{prod_id}_{img_id}"] = img_bytes
-                st.success(f"✓ Parallel batch processing complete for {len(images)} photos!")
+                            try:
+                                img_id, img_bytes = future.result()
+                                if img_bytes:
+                                    st.session_state[f"edited_img_{prod_id}_{img_id}"] = img_bytes
+                                    st.session_state[f"processed_time_{prod_id}_{img_id}"] = now_str
+                            except Exception as err:
+                                st.error(f"Error in batch image worker: {err}")
+                    gc.collect()
+                st.success(f"✓ Processing complete for all {len(images)} photo(s) at {now_str}!")
                 st.rerun()
 
         with col_b2:
-            all_edited = all(f"edited_img_{prod_id}_{img['id']}" in st.session_state for img in images)
-            if st.button("✓ Push ALL Processed Photos to Shopify", type="primary", use_container_width=True, disabled=not all_edited, key=f"btn_batch_push_{prod_id}"):
-                with st.spinner(f"Pushing {len(images)} updated photos to Shopify..."):
-                    def push_worker(img_info):
-                        img_id = img_info["id"]
-                        state_key = f"edited_img_{prod_id}_{img_id}"
-                        if state_key in st.session_state:
-                            fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
-                            ok = update_shopify_product_image(prod_id, img_id, fixed_img)
-                            if ok:
-                                st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
-                                return True
-                        return False
+            btn_label = f"✓ Push {len(processed_keys)} Processed Photo(s) to Shopify" if any_edited else "✓ Push Processed Photos to Shopify"
+            if st.button(btn_label, type="primary", use_container_width=True, disabled=not any_edited, key=f"btn_batch_push_{prod_id}"):
+                with st.spinner(f"Pushing {len(processed_keys)} processed photo(s) directly to Shopify..."):
+                    to_push = []
+                    for img in images:
+                        s_key = f"edited_img_{prod_id}_{img['id']}"
+                        if s_key in st.session_state:
+                            to_push.append((img['id'], st.session_state[s_key]))
 
-                    with ThreadPoolExecutor(max_workers=min(len(images), 4)) as executor:
-                        list(executor.map(push_worker, images))
-                st.success(f"✓ Successfully pushed all {len(images)} photos to Shopify!")
+                    def push_worker(item):
+                        image_id, img_bytes = item
+                        try:
+                            fixed_img = Image.open(io.BytesIO(img_bytes))
+                            ok = update_shopify_product_image(prod_id, image_id, fixed_img)
+                            return image_id, ok
+                        except Exception:
+                            return image_id, False
+
+                    results = []
+                    if to_push:
+                        with ThreadPoolExecutor(max_workers=min(len(to_push), 4)) as executor:
+                            results = list(executor.map(push_worker, to_push))
+
+                    pushed_count = 0
+                    for image_id, ok in results:
+                        if ok:
+                            st.session_state[f"pushed_ok_{prod_id}_{image_id}"] = True
+                            pushed_count += 1
+
+                    try:
+                        fetch_active_shopify_products.clear()
+                    except Exception:
+                        pass
+
+                if pushed_count > 0:
+                    st.success(f"✓ Successfully updated {pushed_count} photo(s) on Shopify!")
+                else:
+                    st.error("Failed to push photos to Shopify. Check API credentials.")
+                st.rerun()
+
+        with col_b3:
+            if st.button("🗑️ Clear Previews", use_container_width=True, disabled=not any_edited, key=f"btn_clear_previews_{prod_id}"):
+                for img in images:
+                    img_id = img["id"]
+                    st.session_state.pop(f"edited_img_{prod_id}_{img_id}", None)
+                    st.session_state.pop(f"pushed_ok_{prod_id}_{img_id}", None)
+                    st.session_state.pop(f"processed_time_{prod_id}_{img_id}", None)
+                st.toast("🗑️ Cleared previews for this product! Ready to reprocess cleanly.")
                 st.rerun()
 
         st.markdown("---")
@@ -357,6 +424,8 @@ def render_studio_crop_tab():
             img_id = img_info["id"]
             img_src = img_info["src"]
             state_key = f"edited_img_{prod_id}_{img_id}"
+            time_key = f"processed_time_{prod_id}_{img_id}"
+            is_processed = state_key in st.session_state
 
             with grid_cols[idx % 2]:
                 with st.container(border=True):
@@ -369,32 +438,44 @@ def render_studio_crop_tab():
                         st.image(img_src, use_container_width=True)
 
                     with img_col2:
-                        st.caption("2. Transformed Preview")
-                        if state_key in st.session_state:
-                            st.image(st.session_state[state_key], use_container_width=True)
+                        if is_processed:
+                            ts = st.session_state.get(time_key, "")
+                            st.caption(f"2. Transformed Preview 🟢 ({ts})" if ts else "2. Transformed Preview 🟢")
+                            try:
+                                preview_img = Image.open(io.BytesIO(st.session_state[state_key]))
+                                st.image(preview_img, use_container_width=True)
+                            except Exception as err:
+                                st.error(f"Failed to render preview: {err}")
                         else:
-                            st.info("Click '⚡ Process Photo' below to generate preview.")
+                            st.caption("2. Transformed Preview")
+                            st.info("Click button below to generate preview.")
 
                     # Individual Action Bar below images
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        if st.button(f"⚡ Process Photo {idx+1}", key=f"btn_edit_{img_id}", use_container_width=True):
-                            req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
-                            raw_bytes = urllib.request.urlopen(req, timeout=12).read()
-                            
-                            fixed_pil = apply_photo_skills(
-                                raw_bytes,
-                                bg_mode=bg_mode,
-                                target_bg_color=target_bg_color,
-                                do_edge_extension=do_edge_ext,
-                                do_autocrop=do_autocrop,
-                                category=category_name,
-                                do_detail_crop=do_detail_crop,
-                                edge_padding=int(edge_padding),
-                            )
-                            buf = io.BytesIO()
-                            fixed_pil.save(buf, format="JPEG", quality=95)
-                            st.session_state[state_key] = buf.getvalue()
+                        proc_btn_label = f"🔄 Reprocess Photo {idx+1}" if is_processed else f"⚡ Process Photo {idx+1}"
+                        if st.button(proc_btn_label, key=f"btn_edit_{img_id}", use_container_width=True):
+                            import time
+                            now_str = time.strftime("%I:%M:%S %p")
+                            with st.spinner(f"⚡ Reprocessing Photo {idx+1}..."):
+                                req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
+                                raw_bytes = urllib.request.urlopen(req, timeout=12).read()
+                                
+                                fixed_pil = apply_photo_skills(
+                                    raw_bytes,
+                                    bg_mode=bg_mode,
+                                    target_bg_color=target_bg_color,
+                                    do_edge_extension=do_edge_ext,
+                                    do_autocrop=do_autocrop,
+                                    category=category_name,
+                                    do_detail_crop=do_detail_crop,
+                                    edge_padding=int(edge_padding),
+                                )
+                                buf = io.BytesIO()
+                                fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
+                                st.session_state[state_key] = buf.getvalue()
+                                st.session_state[time_key] = now_str
+                            st.toast(f"✓ Reprocessed Photo {idx+1} at {now_str}!")
                             st.rerun()
 
                     with btn_col2:

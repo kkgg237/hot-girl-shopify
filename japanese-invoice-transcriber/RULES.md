@@ -111,3 +111,17 @@ Approved style example:
 - Send detail shots at 1200–1500px; fine scuffs/edge fraying are lost at 800px.
 - Raise the 8-image cap if listings have more angles.
 - A dedicated condition-only model pass (separate from description copy).
+
+## Image Quality & Resolution Standards (MANDATORY)
+
+Enforced across all image processing pipelines (`studio_crop.py`, `tabletop_exposure.py`, `crop_pipeline`, and any future photo editing skills).
+
+### Core Quality Directive
+**NEVER reduce or degrade image quality during photo processing.**
+
+1. **Zero Resolution Downscaling:** Background equalization and studio lighting skills MUST preserve 100% of the original photo's native pixel dimensions (e.g. `2780x4171`, `4000x6000`). Never cap or shrink photo resolution unless explicitly executing a canvas framing skill (such as Mode 2 3:4 Auto-Crop).
+2. **Full Chroma Preservation (`subsampling=0`):** All JPEG exports MUST use 4:4:4 uncompressed chroma format (`subsampling=0`). Default 4:2:0 subsampling cuts color resolution in half and causes fuzzy edges on delicate mesh, stitching, and vibrant patterns.
+3. **Maximum JPEG Export Quality (`quality=98`):** All photo exports MUST use `quality=98` or higher to eliminate JPEG compression artifacts.
+4. **Color Profile Retention (`icc_profile`):** Always retain the source image's embedded ICC color profile so camera sRGB color fidelity is identical across browsers and mobile displays.
+5. **Decoupled AI Segmentation:** Compute AI background segmentation masks on lightweight thumbnails (`max_dim=1200`), then upscale the mask with `LANCZOS` interpolation and apply it directly to the **100% full-resolution original photo**. This guarantees low RAM usage and instant speed without altering a single pixel of the subject or garment resolution.
+

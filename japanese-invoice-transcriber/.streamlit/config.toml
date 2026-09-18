@@ -1,11 +1,6 @@
-[theme]
-base = "light"
-primaryColor = "#0f172a"
-backgroundColor = "#f8fafc"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#0f172a"
-
 [server]
-maxMessageSize = 500
-maxUploadSize = 500
-enableStaticServing = true
+address = "::"
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 200
