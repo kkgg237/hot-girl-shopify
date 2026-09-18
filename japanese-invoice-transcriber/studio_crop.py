@@ -475,14 +475,14 @@ def render_studio_crop_tab():
                     img_col1, img_col2 = st.columns(2)
                     with img_col1:
                         st.caption("1. Original Active Photo")
-                        st.image(img_src, use_container_width=True)
+                        st.markdown(f'<img src="{img_src}" style="width:100%; border-radius:4px; display:block; margin-bottom:8px;">', unsafe_allow_html=True)
 
                     with img_col2:
                         st.caption("2. Transformed Preview")
                         if is_processed:
                             try:
-                                preview_img = Image.open(io.BytesIO(st.session_state[state_key]))
-                                st.image(preview_img, use_container_width=True)
+                                b64_str = base64.b64encode(st.session_state[state_key]).decode("utf-8")
+                                st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:4px; display:block; margin-bottom:8px;">', unsafe_allow_html=True)
                                 ts = st.session_state.get(time_key, "")
                                 if ts:
                                     st.caption(f"Updated {ts}")
