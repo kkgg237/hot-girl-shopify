@@ -101,6 +101,7 @@ def apply_photo_skills(
     do_autocrop: bool = False,
     category: str = "Tops",
     do_detail_crop: bool = False,
+    edge_padding: int = 4,
 ) -> Image.Image:
     """Modular pipeline applying selected photo processing skills to an image."""
     orig_img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
@@ -120,9 +121,9 @@ def apply_photo_skills(
             alpha_mask = (diff > 15).astype(np.uint8) * 255
 
         if bg_mode == "soft_20":
-            current_img = process_tabletop_exposure(current_img, alpha_mask, curve_gamma=0.78, highlight_lift=1.06)
+            current_img = process_tabletop_exposure(current_img, alpha_mask, curve_gamma=0.78, highlight_lift=1.06, edge_padding=edge_padding)
         else:
-            current_img = process_pure_white_bg_equalization(current_img, alpha_mask, target_color=target_bg_color)
+            current_img = process_pure_white_bg_equalization(current_img, alpha_mask, target_color=target_bg_color, edge_padding=edge_padding)
 
     # 2. Outer Edge Extension Skill (Zero Model Cutout)
     if do_edge_extension:
@@ -221,6 +222,14 @@ def render_studio_crop_tab():
         else:
             bg_mode = "none"
 
+        edge_padding = st.slider(
+            "🛡️ Piping & Edge Safety Padding (px)",
+            min_value=0,
+            max_value=12,
+            value=4,
+            help="Expands protected subject boundary outward to guarantee dark piping, leather seams, and bottom edges are 100% protected and never bleached."
+        )
+
     with col_crop:
         st.markdown("**2. Framing & Canvas Skills**")
         do_autocrop = st.checkbox("3:4 Auto-Crop & Framing Centering", value=False, help="Re-frame photo to 1536x2048 canvas using category headroom rules")
@@ -276,6 +285,7 @@ def render_studio_crop_tab():
                         do_autocrop=do_autocrop,
                         category=category_name,
                         do_detail_crop=do_detail_crop,
+                        edge_padding=edge_padding,
                     )
                     buf = io.BytesIO()
                     fixed_pil.save(buf, format="JPEG", quality=95)
@@ -316,6 +326,7 @@ def render_studio_crop_tab():
                     do_autocrop=do_autocrop,
                     category=category_name,
                     do_detail_crop=do_detail_crop,
+                    edge_padding=edge_padding,
                 )
                 with cols[idx % len(cols)]:
                     st.image(transformed_pil, caption=f"{file.name} (Transformed)", use_container_width=True)

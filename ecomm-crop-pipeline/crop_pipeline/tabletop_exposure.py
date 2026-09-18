@@ -27,11 +27,18 @@ def process_tabletop_exposure(
     alpha_mask: np.ndarray,
     curve_gamma: float = 0.85,
     highlight_lift: float = 0.98,
+    edge_padding: int = 3,
 ) -> Image.Image:
     """Fast, low-memory Photoshop LAB L-channel exposure curve via cv2.LUT."""
     orig_img_pil = orig_img_pil.convert("RGB")
     img_np = np.array(orig_img_pil, dtype=np.uint8)
     
+    # Protect dark piping & outer seams from being clipped
+    if edge_padding > 0:
+        k_size = edge_padding * 2 + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
+        alpha_mask = cv2.dilate(alpha_mask, kernel, iterations=1)
+
     # 1. Background weight mask
     bg_weight = (255 - alpha_mask).astype(np.float32) / 255.0
     bg_weight = cv2.GaussianBlur(bg_weight, (7, 7), 0)[:, :, np.newaxis]
@@ -116,13 +123,21 @@ def process_pure_white_bg_equalization(
     orig_img_pil: Image.Image,
     alpha_mask: np.ndarray,
     target_color: tuple[int, int, int] = (255, 255, 255),
+    edge_padding: int = 3,
 ) -> Image.Image:
     """Studio Background Equalization with customizable target background color/tint.
     Lifts studio background to target_color (default #FFFFFF pure white)
-    while keeping model, skin, face, hair, and clothing 100% UNTOUCHED.
+    while keeping model, skin, face, hair, piping, and clothing 100% UNTOUCHED.
     """
     orig_img_pil = orig_img_pil.convert("RGB")
     img_np = np.array(orig_img_pil, dtype=np.float32)
+
+    # Protect dark piping & outer seams from being clipped
+    if edge_padding > 0:
+        k_size = edge_padding * 2 + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
+        alpha_mask = cv2.dilate(alpha_mask, kernel, iterations=1)
+
     alpha_float = alpha_mask.astype(np.float32) / 255.0
     alpha_feathered = cv2.GaussianBlur(alpha_float, (7, 7), 0)
     bg_weight = np.expand_dims(1.0 - alpha_feathered, axis=2)
