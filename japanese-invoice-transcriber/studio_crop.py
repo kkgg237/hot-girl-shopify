@@ -221,6 +221,20 @@ def apply_photo_skills(
 
     return current_img
 
+def download_image_with_retry(img_src: str, max_retries: int = 3) -> bytes:
+    req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            return urllib.request.urlopen(req, timeout=20).read()
+        except Exception as e:
+            last_err = e
+            time.sleep(1)
+    if last_err:
+        raise last_err
+    raise RuntimeError("Failed to download image after retries")
+
+
 def process_single_image_worker(
     img_info: dict,
     prod_id: int,
@@ -234,8 +248,7 @@ def process_single_image_worker(
 ) -> tuple[int, bytes]:
     img_id = img_info["id"]
     img_src = img_info["src"]
-    req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
-    raw_bytes = urllib.request.urlopen(req, timeout=12).read()
+    raw_bytes = download_image_with_retry(img_src)
 
     fixed_pil = apply_photo_skills(
         raw_bytes,
@@ -499,8 +512,7 @@ def render_studio_crop_tab():
                             import time
                             now_str = time.strftime("%I:%M:%S %p")
                             with st.spinner(f"Reprocessing Photo {idx+1}..."):
-                                req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
-                                raw_bytes = urllib.request.urlopen(req, timeout=12).read()
+                                raw_bytes = download_image_with_retry(img_src)
                                 
                                 fixed_pil = apply_photo_skills(
                                     raw_bytes,
