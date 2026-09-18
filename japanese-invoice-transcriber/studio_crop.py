@@ -263,17 +263,26 @@ def render_studio_crop_tab():
             img_src = img_info["src"]
 
             st.markdown("---")
-            st.markdown(f"**Photo {idx+1} of {len(images)}** (ID: `{img_id}`)")
-            col1, col2, col3 = st.columns([1, 1, 1])
+            st.markdown(f"#### **Photo {idx+1} of {len(images)}** (ID: `{img_id}`)")
+            col1, col2, col3 = st.columns([1, 1, 1.1])
 
+            # Row 1: Perfectly Aligned Column Headers
             with col1:
-                st.markdown("**Current Active Photo (Before)**")
-                st.image(img_src, use_container_width=True)
+                st.markdown("**1. Original Active Photo**")
+            with col2:
+                st.markdown("**2. Transformed Preview**")
+            with col3:
+                st.markdown("**3. Approval & Push**")
 
             state_key = f"edited_img_{prod_id}_{img_id}"
 
+            # Row 2: Image Before
+            with col1:
+                st.image(img_src, use_container_width=True)
+
+            # Row 3: Action & Preview After
             with col2:
-                if st.button(f"Apply Selected Skills (Photo {idx+1})", key=f"btn_edit_{img_id}"):
+                if st.button(f"⚡ Apply Selected Skills", key=f"btn_edit_{img_id}", use_container_width=True):
                     req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
                     raw_bytes = urllib.request.urlopen(req).read()
                     
@@ -292,17 +301,23 @@ def render_studio_crop_tab():
                     st.session_state[state_key] = buf.getvalue()
 
                 if state_key in st.session_state:
-                    st.markdown("**Transformed Preview (After)**")
                     st.image(st.session_state[state_key], use_container_width=True)
+                else:
+                    st.caption("👈 Click *'⚡ Apply Selected Skills'* above to generate preview.")
 
+            # Row 4: Approval & Shopify Push
             with col3:
                 if state_key in st.session_state:
-                    st.markdown("**Human Approval & Push**")
-                    if st.button(f"✓ Approve & Push to Shopify (Photo {idx+1})", key=f"btn_push_{img_id}", type="primary"):
+                    if st.button(f"✓ Push to Shopify", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
                         fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
                         success = update_shopify_product_image(prod_id, img_id, fixed_img)
                         if success:
-                            st.success(f"✓ Successfully updated Photo {idx+1} on Shopify!")
+                            st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
+
+                    if st.session_state.get(f"pushed_ok_{prod_id}_{img_id}"):
+                        st.success(f"✓ Successfully updated Photo {idx+1} on Shopify!")
+                else:
+                    st.caption("Awaiting preview generation...")
 
     else:
         st.markdown("#### New Raw Shoots (Upload Camera Exports)")
