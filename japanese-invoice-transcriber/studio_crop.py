@@ -177,7 +177,7 @@ def render_studio_crop_tab():
             "Select Background Processing",
             ["Equalize Background Color", "Soft Tabletop Contact Shadow (Bags/Accessories)", "Off (Keep Original Background)"],
             index=0,
-            key="bg_option_radio"
+            key="bg_option_radio_v2"
         )
         
         target_bg_color = (255, 255, 255)
@@ -192,7 +192,7 @@ def render_studio_crop_tab():
                     "Quick Presets",
                     ["Pure White (#FFFFFF)", "Warm Cyc (#F8F2F2)", "Studio Light Grey (#E5E5E5)", "Dark Charcoal (#222222)", "Pure Black (#000000)", "Custom Picker"],
                     index=0,
-                    key="bg_preset_select"
+                    key="bg_preset_select_v2"
                 )
             
             with col_picker:
@@ -206,7 +206,7 @@ def render_studio_crop_tab():
                 elif preset_choice.startswith("Pure Black"):
                     default_hex = "#000000"
 
-                picked_hex = st.color_picker("Color Picker", value=default_hex, key="bg_color_picker")
+                picked_hex = st.color_picker("Color Picker", value=default_hex, key="bg_color_picker_v2")
                 target_bg_color = hex_to_rgb(picked_hex)
 
         elif bg_option.startswith("Soft"):
