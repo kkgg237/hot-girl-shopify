@@ -32,6 +32,34 @@ from crop_pipeline.tabletop_exposure import (
 TARGET_W = 1536
 TARGET_H = 2048
 
+PREVIEW_CACHE_DIR = Path("/tmp/studio_crop_cache")
+PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_cached_preview(prod_id: int, image_id: int) -> bytes | None:
+    cache_file = PREVIEW_CACHE_DIR / f"{prod_id}_{image_id}.jpg"
+    if cache_file.exists():
+        try:
+            return cache_file.read_bytes()
+        except Exception:
+            return None
+    return None
+
+def save_cached_preview(prod_id: int, image_id: int, img_bytes: bytes):
+    try:
+        cache_file = PREVIEW_CACHE_DIR / f"{prod_id}_{image_id}.jpg"
+        cache_file.write_bytes(img_bytes)
+    except Exception:
+        pass
+
+def clear_cached_previews(prod_id: int, images: list[dict]):
+    for img in images:
+        cache_file = PREVIEW_CACHE_DIR / f"{prod_id}_{img['id']}.jpg"
+        if cache_file.exists():
+            try:
+                cache_file.unlink()
+            except Exception:
+                pass
+
 def hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
     """Convert hex string '#RRGGBB' to (R, G, B) tuple."""
     hex_str = hex_str.lstrip('#')
@@ -221,7 +249,9 @@ def process_single_image_worker(
     )
     buf = io.BytesIO()
     fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
-    return img_id, buf.getvalue()
+    out_bytes = buf.getvalue()
+    save_cached_preview(prod_id, img_id, out_bytes)
+    return img_id, out_bytes
 
 def render_studio_crop_tab():
     st.session_state["studio_crop_version"] = "2.2"
@@ -325,6 +355,15 @@ def render_studio_crop_tab():
 
         st.markdown(f"#### Product: **{prod_title}** ({len(images)} photos) — ID: `{prod_id}`")
 
+        # Populate disk-cached previews into session state
+        for img in images:
+            i_id = img["id"]
+            s_k = f"edited_img_{prod_id}_{i_id}"
+            if s_k not in st.session_state:
+                c_bytes = get_cached_preview(prod_id, i_id)
+                if c_bytes:
+                    st.session_state[s_k] = c_bytes
+
         # Global Bulk Batch Action Toolbar (3 Columns: Process, Push, Clear)
         processed_keys = [f"edited_img_{prod_id}_{img['id']}" for img in images if f"edited_img_{prod_id}_{img['id']}" in st.session_state]
         any_edited = len(processed_keys) > 0
@@ -408,6 +447,7 @@ def render_studio_crop_tab():
 
         with col_b3:
             if st.button("Clear Previews", use_container_width=True, disabled=not any_edited, key=f"btn_clear_previews_{prod_id}"):
+                clear_cached_previews(prod_id, images)
                 for img in images:
                     img_id = img["id"]
                     st.session_state.pop(f"edited_img_{prod_id}_{img_id}", None)
@@ -474,8 +514,10 @@ def render_studio_crop_tab():
                                 )
                                 buf = io.BytesIO()
                                 fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
-                                st.session_state[state_key] = buf.getvalue()
+                                out_bytes = buf.getvalue()
+                                st.session_state[state_key] = out_bytes
                                 st.session_state[time_key] = now_str
+                                save_cached_preview(prod_id, img_id, out_bytes)
                             st.toast(f"Reprocessed Photo {idx+1} at {now_str}")
                             st.rerun()
 
