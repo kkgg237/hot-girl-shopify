@@ -38,7 +38,7 @@ if __name__ == "__main__":
     import streamlit.runtime as _rt
     if not _rt.exists():
         import streamlit.web.cli as stcli
-        sys.argv = ["streamlit", "run", __file__, "--server.headless=false", "--"]
+        sys.argv = ["streamlit", "run", __file__, "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false", "--server.address=0.0.0.0", "--server.port=8501", "--"]
         sys.exit(stcli.main())
 
 
@@ -6988,8 +6988,10 @@ home_tab, studio_crop_tab, reverse_search_tab, commercial_tab, catalogue_tab, dr
 ])
 
 with studio_crop_tab:
-    from studio_crop import render_studio_crop_tab
-    render_studio_crop_tab()
+    import importlib
+    import studio_crop
+    importlib.reload(studio_crop)
+    studio_crop.render_studio_crop_tab()
 
 with reverse_search_tab:
     from reverse_search import render_reverse_search_tab
