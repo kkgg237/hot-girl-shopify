@@ -108,6 +108,18 @@ h1, h2, h3, h4, h5, h6, .display, .display-num {
 [data-testid="stHeader"] { background: transparent; }
 .block-container { padding-top: 2rem; padding-bottom: 6rem; max-width: 1280px; }
 
+/* Tab bar wrapping and visibility */
+div[data-baseweb="tab-list"] {
+    flex-wrap: wrap !important;
+    gap: 4px 12px !important;
+    border-bottom: 1px solid #ddd !important;
+}
+button[data-baseweb="tab"] {
+    padding: 8px 14px !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+}
+
 /* Page header — logo-only, no text */
 .ps-header { border-bottom: 1px solid #111; padding: 0.5rem 0 1rem;
              margin-bottom: 2rem; display: flex; align-items: center; }
