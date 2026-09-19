@@ -1199,9 +1199,8 @@ async function dropLoadAll() {
   if (drop.state.currentId && drop.state.drops.find(d => d.id === drop.state.currentId)) {
     sel.value = String(drop.state.currentId)
   } else if (drop.state.drops.length) {
-    // Prefer most recent draft or scheduled drop over an already published one
-    const activeDrop = drop.state.drops.find(d => d.status === 'draft' || d.status === 'scheduled') || drop.state.drops[0]
-    drop.state.currentId = activeDrop.id
+    // Select the newest drop by default
+    drop.state.currentId = drop.state.drops[0].id
     sel.value = String(drop.state.currentId)
   } else {
     drop.state.currentId = null
@@ -1332,7 +1331,9 @@ function updateScheduleUi(d) {
   } else {
     status.textContent = d.status
   }
-  if (!isScheduled && !schedInput.value) {
+  const inputTime = schedInput.value ? scheduleWallToIso(schedInput.value) : null
+  const inputMs = inputTime ? Date.parse(inputTime) : NaN
+  if (!isScheduled && (!schedInput.value || !Number.isFinite(inputMs) || inputMs <= Date.now())) {
     const tomorrowNoon = new Date(Date.now() + 24 * 3600 * 1000)
     tomorrowNoon.setHours(12, 0, 0, 0)
     schedInput.value = scheduleIsoToInput(tomorrowNoon)
