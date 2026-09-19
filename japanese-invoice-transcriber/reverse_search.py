@@ -1289,14 +1289,15 @@ def render_reverse_search_tab() -> None:
 
         def _process_single_item(args):
             idx, item = args
-            image_bytes = item.get("bytes")
-            if not image_bytes and item.get("path"):
+            orig_bytes = item.get("bytes")
+            orig_path = item.get("path")
+            if not orig_bytes and orig_path:
                 try:
-                    image_bytes = item["path"].read_bytes()
+                    orig_bytes = Path(orig_path).read_bytes()
                 except Exception:
                     pass
 
-            if not image_bytes and item.get("url"):
+            if not orig_bytes and item.get("url"):
                 try:
                     import urllib.request
                     req = urllib.request.Request(
@@ -1304,33 +1305,43 @@ def render_reverse_search_tab() -> None:
                         headers={"User-Agent": "Mozilla/5.0 (PastStudies Tools)"},
                     )
                     with urllib.request.urlopen(req, timeout=15) as resp:
-                        image_bytes = resp.read()
+                        orig_bytes = resp.read()
                 except Exception:
                     pass
 
-            if image_bytes:
-                # Optimize high-res studio photo for 50x faster CDN uploads & vision analysis
-                image_bytes = optimize_image_bytes(image_bytes, max_dim=1200, quality=80)
+            if not orig_bytes:
+                return None
 
-            if image_bytes and client:
+            # Fast lightweight 1200px image for AI vision & Google/Bing Lens CDN upload
+            lens_bytes = optimize_image_bytes(orig_bytes, max_dim=1200, quality=80)
+
+            # Preserve 100% full-resolution original studio photo for Shopify product listing
+            if orig_path and Path(orig_path).exists():
+                full_res_path = Path(orig_path)
+            else:
+                img_hash = hashlib.md5(orig_bytes).hexdigest()
+                ext = Path(item["name"]).suffix.lower() if item.get("name") else ".jpg"
+                if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+                    ext = ".jpg"
+                STATIC_ORIGINALS_DIR = Path(__file__).parent / "static" / "originals"
+                STATIC_ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
+                orig_file = STATIC_ORIGINALS_DIR / f"{img_hash}_orig{ext}"
+                if not orig_file.exists():
+                    orig_file.write_bytes(orig_bytes)
+                full_res_path = orig_file
+
+            if client:
                 try:
                     ai_data = analyze_garment_image_with_ai(
-                        image_bytes=image_bytes,
+                        image_bytes=lens_bytes,
                         filename=item["name"],
                         mime_type=item["mime"],
                         client=client,
                     )
-                    pub_url = save_image_for_public_lens(image_bytes, item["name"])
+                    pub_url = save_image_for_public_lens(lens_bytes, item["name"])
                     ai_data["public_image_url"] = pub_url
-                    img_hash = hashlib.md5(image_bytes).hexdigest()
-                    ext = Path(item["name"]).suffix.lower() if item["name"] else ".jpg"
-                    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-                        ext = ".jpg"
-                    local_file = STATIC_LENS_DIR / f"{img_hash}{ext}"
-                    if not local_file.exists():
-                        local_file.write_bytes(image_bytes)
-                    ai_data["image_path"] = str(local_file)
-                    ai_data["image_url"] = item["url"]
+                    ai_data["image_path"] = str(full_res_path)
+                    ai_data["image_url"] = item.get("url", "")
                     designer = ai_data.get("designer") or "Cavalli"
                     if pub_url:
                         matches = fetch_serpapi_visual_matches(pub_url, brand=designer, engine="bing_reverse_image")
