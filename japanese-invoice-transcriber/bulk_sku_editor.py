@@ -308,6 +308,8 @@ def _api_put(path: str, body: dict) -> tuple[int, dict]:
     token = get_token()
     if not shop or not token:
         return 0, {"error": "Shopify not configured"}
+    if not path.startswith("/"):
+        path = f"/{path}"
     url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}{path}"
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(

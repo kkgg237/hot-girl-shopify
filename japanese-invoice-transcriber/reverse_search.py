@@ -1184,7 +1184,7 @@ def push_research_results_to_shopify(results: list[dict[str, Any]]) -> tuple[int
             body_html=body_html,
         )
 
-        status_code, resp = _api_post(shop, token, "products.json", {"product": payload})
+        status_code, resp = _api_post(shop, token, "/products.json", {"product": payload})
         if status_code in (200, 201) and "product" in resp:
             p_id = resp["product"].get("id")
             pushed_count += 1

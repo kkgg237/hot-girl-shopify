@@ -131,6 +131,8 @@ def _api_get(
     """
     import socket as _socket
 
+    if not path.startswith("/"):
+        path = f"/{path}"
     url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}{path}"
     req = urllib.request.Request(
         url, headers={
@@ -1164,6 +1166,8 @@ DEFAULT_API_VERSION = "2024-10"
 
 def _api_post(shop: str, token: str, path: str, body: dict, timeout: int = 30) -> tuple[int, dict]:
     """POST to a Shopify Admin REST endpoint. Returns (status_code, parsed_json)."""
+    if not path.startswith("/"):
+        path = f"/{path}"
     url = f"https://{shop}/admin/api/{DEFAULT_API_VERSION}{path}"
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
