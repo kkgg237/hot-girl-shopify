@@ -79,6 +79,64 @@ def compute_crop_box(
     return (int(round(left)), int(round(top)), int(round(right)), int(round(bottom)))
 
 
+def compute_crop_box_bottom_anchored(
+    source_size: Tuple[int, int],
+    subject: SubjectBox,
+    output_size: Tuple[int, int],
+    subject_height_fraction: float = 0.72,
+    bottom_margin_fraction: float = 0.15,
+) -> Tuple[int, int, int, int]:
+    """Return crop box where the bottom of the subject is anchored at a fixed canvas baseline.
+
+    Guarantees every bag base or shoe sole sits at exactly (1.0 - bottom_margin_fraction)
+    of the output canvas height (e.g. 15% padding from bottom = Y=85% pixel line).
+    """
+    src_w, src_h = source_size
+    out_w, out_h = output_size
+    aspect = out_w / out_h
+
+    crop_h = subject.height / max(subject_height_fraction, 1e-3)
+    crop_w = crop_h * aspect
+
+    if crop_w > src_w:
+        crop_w = float(src_w)
+        crop_h = crop_w / aspect
+    if crop_h > src_h:
+        crop_h = float(src_h)
+        crop_w = crop_h * aspect
+
+    # Anchor subject bottom to (1.0 - bottom_margin_fraction) of crop height
+    top = subject.bottom - (1.0 - bottom_margin_fraction) * crop_h
+    bottom = top + crop_h
+
+    cx = subject.center[0]
+    left = cx - crop_w / 2.0
+    right = left + crop_w
+
+    # Slide window safely within source bounds
+    if left < 0:
+        right -= left
+        left = 0.0
+    if top < 0:
+        bottom -= top
+        top = 0.0
+    if right > src_w:
+        diff = right - src_w
+        left -= diff
+        right = float(src_w)
+    if bottom > src_h:
+        diff = bottom - src_h
+        top -= diff
+        bottom = float(src_h)
+
+    left = max(0.0, left)
+    top = max(0.0, top)
+    right = min(float(src_w), right)
+    bottom = min(float(src_h), bottom)
+
+    return (int(round(left)), int(round(top)), int(round(right)), int(round(bottom)))
+
+
 def compute_region_crop_box(
     source_size: Tuple[int, int],
     subject: SubjectBox,

@@ -1199,7 +1199,9 @@ async function dropLoadAll() {
   if (drop.state.currentId && drop.state.drops.find(d => d.id === drop.state.currentId)) {
     sel.value = String(drop.state.currentId)
   } else if (drop.state.drops.length) {
-    drop.state.currentId = drop.state.drops[0].id
+    // Prefer most recent draft or scheduled drop over an already published one
+    const activeDrop = drop.state.drops.find(d => d.status === 'draft' || d.status === 'scheduled') || drop.state.drops[0]
+    drop.state.currentId = activeDrop.id
     sel.value = String(drop.state.currentId)
   } else {
     drop.state.currentId = null
@@ -1330,11 +1332,17 @@ function updateScheduleUi(d) {
   } else {
     status.textContent = d.status
   }
+  if (!isScheduled && !schedInput.value) {
+    const tomorrowNoon = new Date(Date.now() + 24 * 3600 * 1000)
+    tomorrowNoon.setHours(12, 0, 0, 0)
+    schedInput.value = scheduleIsoToInput(tomorrowNoon)
+  }
   unschedBtn.style.display = isScheduled ? '' : 'none'
   schedBtn.textContent = isScheduled ? 'Reschedule' : 'Schedule'
-  const locked = d.status === 'publishing' || d.status === 'published'
+  const locked = d.status === 'publishing'
   publishBtn.disabled = locked
   schedBtn.disabled = locked
+  publishBtn.textContent = d.status === 'published' ? 'Re-post now' : (locked ? 'Publishing…' : 'Post now')
 }
 
 function dropRender() {
@@ -2356,14 +2364,15 @@ function calOpenGridEvent(g) {
 
 function calOpenDropEvent(d) {
   const when = calDropSlot(d)
-  const canPost = d.status === 'failed' || d.status === 'scheduled'
+  const canPost = d.status !== 'publishing'
+  const postBtnLabel = d.status === 'failed' ? 'Retry now' : (d.status === 'published' ? 'Re-post now' : 'Post now')
   const html = '<h3>' + escapeHtml(d.name || ('Drop #' + d.id)) + '</h3>'
     + '<div class="cm-sub">' + calStatusBadge(d.status) + ' story sequence' + (when ? (' · ' + fmtLocal(when.toISOString())) : '') + '</div>'
     + '<div class="cm-preview"><img src="/drops/' + d.id + '/preview/1" alt="cover" /></div>'
     + (d.error ? '<div class="cm-error">' + escapeHtml(d.error) + '</div>' : '')
     + '<div class="cm-actions">'
     + '<button type="button" class="primary" id="cm-open">Open in Product drop</button>'
-    + (canPost ? '<button type="button" id="cm-retry">' + (d.status === 'failed' ? 'Retry now' : 'Post now') + '</button>' : '')
+    + (canPost ? '<button type="button" id="cm-retry">' + postBtnLabel + '</button>' : '')
     + '</div>'
   calShowModal(html)
   document.getElementById('cm-open').addEventListener('click', () => { calCloseModal(); calJumpToDrop(d.id) })
@@ -2754,7 +2763,10 @@ app.post('/drops/:id/publish', (c) => {
   }
   if (!drop) return c.json({ ok: false, error: 'not found' }, 404)
   if (drop.status === 'publishing') return c.json({ ok: false, error: 'already publishing' }, 409)
-  if (drop.status === 'published') return c.json({ ok: false, error: 'already published' }, 409)
+  // Allow re-publishing an existing drop by resetting its status back to draft first
+  if (drop.status === 'published') {
+    updateDrop(db, id, { status: 'draft' })
+  }
   // Publishing a multi-frame drop posts each story sequentially and can run far
   // past the reverse-proxy's request timeout (Cloudflare ~100s). Returning here
   // and letting the client poll drop status avoids a misleading "failed" (an
@@ -2781,8 +2793,8 @@ app.post('/drops/:id/schedule', async (c) => {
   try {
     const existing = getDrop(db, id)
     if (!existing) return c.json({ ok: false, error: 'not found' }, 404)
-    if (existing.status === 'publishing' || existing.status === 'published') {
-      return c.json({ ok: false, error: `cannot schedule a ${existing.status} drop` }, 400)
+    if (existing.status === 'publishing') {
+      return c.json({ ok: false, error: 'cannot schedule a drop that is currently publishing' }, 400)
     }
     const drop = updateDrop(db, id, {
       status: 'scheduled',

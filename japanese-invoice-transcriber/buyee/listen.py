@@ -69,8 +69,31 @@ def _api_call(token: str, method: str, timeout: int = 60, **params) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def send_message(token: str, chat_id: int, text: str) -> Optional[dict]:
+def send_discord_webhook(text: str) -> None:
+    """Send notification to Discord #bot-notifications via webhook."""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return
+    try:
+        data = json.dumps({"content": text[:2000]}).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "PastStudies-Bot/1.0",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            pass
+    except Exception as e:
+        print(f"[listen] send_discord_webhook failed: {e}")
+
+
+def send_message(token: str, chat_id: int, text: str, notify_discord: bool = True) -> Optional[dict]:
     """Send a message to a chat. Truncates to Telegram's 4096-char limit."""
+    if notify_discord:
+        send_discord_webhook(text)
     text = text[:4000]
     try:
         return _api_call(token, "sendMessage", chat_id=chat_id, text=text)

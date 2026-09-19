@@ -305,11 +305,6 @@ export async function publishHandle(handle: string): Promise<PublishResult> {
     const bundle = getProductByHandle(db, handle)
     if (!bundle) throw new Error(`Product not found: ${handle}`)
 
-    const existing = db
-      .prepare(`SELECT * FROM posts WHERE handle = ? AND template = ? AND status = 'published'`)
-      .get(handle, TEMPLATE) as Post | undefined
-    if (existing) throw new Error(`Already published: ${handle}`)
-
     const createdAt = new Date().toISOString()
     const ins = db
       .prepare(
@@ -736,7 +731,6 @@ export async function publishDrop(dropId: number): Promise<PublishDropResult> {
   try {
     const existing = getDrop(db, dropId)
     if (!existing) throw new Error(`Drop ${dropId} not found`)
-    if (existing.status === 'published') throw new Error(`Drop ${dropId} already published`)
     if (existing.status === 'publishing') throw new Error(`Drop ${dropId} is currently publishing`)
 
     // Atomic claim: the scheduler loop and a manual "Post now" can race, so
@@ -744,7 +738,7 @@ export async function publishDrop(dropId: number): Promise<PublishDropResult> {
     const claim = db
       .prepare(
         `UPDATE drops SET status = 'publishing', error = NULL, updated_at = ?
-         WHERE id = ? AND status IN ('draft', 'scheduled', 'failed')`,
+         WHERE id = ? AND status IN ('draft', 'scheduled', 'failed', 'published')`,
       )
       .run(new Date().toISOString(), dropId)
     if (claim.changes === 0) throw new Error(`Drop ${dropId} is already being published`)

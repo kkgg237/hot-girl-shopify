@@ -6,14 +6,20 @@ Multi-Threaded Parallel Bulk Batch Processing & Condensed UI Grid.
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import urllib.request
 import urllib.parse
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 import numpy as np
 import cv2
 from PIL import Image
@@ -34,6 +40,28 @@ TARGET_H = 2048
 
 PREVIEW_CACHE_DIR = Path("/tmp/studio_crop_cache")
 PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+RAW_CACHE_DIR = Path("/tmp/shopify_raw_cache")
+RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+_HTTP_SESSION = None
+
+def get_http_session() -> requests.Session:
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        s = requests.Session()
+        retries = Retry(
+            total=4,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504, 429],
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retries, pool_connections=25, pool_maxsize=25)
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        s.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"})
+        _HTTP_SESSION = s
+    return _HTTP_SESSION
 
 def get_cached_preview(prod_id: int, image_id: int) -> bytes | None:
     cache_file = PREVIEW_CACHE_DIR / f"{prod_id}_{image_id}.jpg"
@@ -71,28 +99,98 @@ def get_shopify_credentials():
     token = get_token()
     return shop, token
 
-@st.cache_data(ttl=300)
-def fetch_active_shopify_products():
-    """Fetch active listings from Shopify Admin API. Strictly excludes products without images, sorted newest first."""
+@st.cache_data(ttl=120)
+def fetch_active_shopify_products_search(search_query: str = "") -> list[dict]:
+    """Fetch active & draft listings from Shopify Admin GraphQL API across all 3,300+ store items sorted newest first."""
     shop, token = get_shopify_credentials()
     if not token:
         return []
-    url = f"https://{shop}/admin/api/2024-10/products.json?status=active&limit=100"
-    req = urllib.request.Request(url, headers={"X-Shopify-Access-Token": token})
+
+    # Accept both active and draft products; support tag:tag_name and freeform text search
+    if search_query.strip():
+        q_str = f"(status:active OR status:draft) ({search_query.strip()})"
+    else:
+        q_str = "status:active OR status:draft"
+
+    gql = """
+    query ($q: String!) {
+      products(first: 250, query: $q, sortKey: CREATED_AT, reverse: true) {
+        edges {
+          node {
+            id
+            createdAt
+            status
+            title
+            vendor
+            productType
+            tags
+            images(first: 30) {
+              edges {
+                node {
+                  id
+                  url
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    req = urllib.request.Request(
+        f"https://{shop}/admin/api/2024-10/graphql.json",
+        data=json.dumps({"query": gql, "variables": {"q": q_str}}).encode("utf-8"),
+        headers={
+            "X-Shopify-Access-Token": token,
+            "Content-Type": "application/json"
+        }
+    )
+
     try:
         res = urllib.request.urlopen(req)
         data = json.loads(res.read().decode("utf-8"))
-        products = data.get("products", [])
+        edges = data.get("data", {}).get("products", {}).get("edges", [])
         
-        # Strictly filter ONLY products that have 1 or more active images!
-        products_with_images = [p for p in products if p.get("images") and len(p.get("images")) > 0]
-        
-        # Sort newest first (by id descending)
-        products_with_images.sort(key=lambda p: p.get("id", 0), reverse=True)
-        return products_with_images
+        products = []
+        for edge in edges:
+            node = edge["node"]
+            raw_p_gid = node.get("id", "")
+            p_id = int(raw_p_gid.split("/")[-1]) if "/" in raw_p_gid else int(raw_p_gid) if raw_p_gid.isdigit() else raw_p_gid
+            created_at = node.get("createdAt", "")
+            status = node.get("status", "ACTIVE")
+            tags = node.get("tags", [])
+            
+            img_edges = node.get("images", {}).get("edges", [])
+            images = []
+            for img_edge in img_edges:
+                i_node = img_edge["node"]
+                raw_i_gid = i_node.get("id", "")
+                i_id = int(raw_i_gid.split("/")[-1]) if "/" in raw_i_gid else int(raw_i_gid) if raw_i_gid.isdigit() else raw_i_gid
+                images.append({"id": i_id, "src": i_node.get("url", "")})
+            
+            # STRICT FILTER: ONLY PRODUCTS WITH 1 OR MORE IMAGES!
+            if len(images) > 0:
+                products.append({
+                    "id": p_id,
+                    "created_at": created_at,
+                    "status": status,
+                    "title": node.get("title", ""),
+                    "vendor": node.get("vendor", "Past Studies"),
+                    "product_type": node.get("productType", ""),
+                    "tags": tags,
+                    "images": images,
+                })
+
+        # Guarantee newest first sorting
+        products.sort(key=lambda p: (p.get("created_at", ""), p.get("id", 0)), reverse=True)
+        return products
     except Exception as e:
         st.error(f"Error fetching Shopify products: {e}")
         return []
+
+def fetch_active_shopify_products():
+    return fetch_active_shopify_products_search("")
 
 def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.Image) -> bool:
     """Update an active image on Shopify with the background-equalized image."""
@@ -124,6 +222,8 @@ def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.
         st.error(f"Shopify Image Update Failed: {e}")
         return False
 
+_REMBG_LOCK = threading.Lock()
+
 def get_alpha_mask_safe(img: Image.Image, model_name: str = "isnet-general-use") -> np.ndarray:
     w, h = img.size
     max_dim = 1200
@@ -135,7 +235,8 @@ def get_alpha_mask_safe(img: Image.Image, model_name: str = "isnet-general-use")
         small_img = img
 
     from crop_pipeline.subject import extract_alpha
-    rgba_small = extract_alpha(small_img, model_name)
+    with _REMBG_LOCK:
+        rgba_small = extract_alpha(small_img, model_name)
     alpha_small = rgba_small.split()[3]
 
     if (small_img.width, small_img.height) != (w, h):
@@ -162,10 +263,21 @@ def apply_photo_skills(
     category: str = "Tops",
     do_detail_crop: bool = False,
     edge_padding: int = 4,
+    canvas_ratio: str = "3:4 (Shopify Default)",
+    framing_preset: str = "Auto (Category Default)",
+    img_position: int = 1,
 ) -> Image.Image:
     """Modular pipeline applying selected photo processing skills to an image while preserving 100% full original resolution."""
     orig_img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     current_img = orig_img_pil
+
+    # Resolve Canvas Dimensions
+    if "Square" in canvas_ratio or "1:1" in canvas_ratio:
+        target_w, target_h = 2048, 2048
+    elif "Portrait" in canvas_ratio or "4:5" in canvas_ratio:
+        target_w, target_h = 1638, 2048
+    else:
+        target_w, target_h = TARGET_W, TARGET_H
 
     # 1. Background Equalization Skill
     if bg_mode in ("pure_white", "soft_20"):
@@ -185,26 +297,38 @@ def apply_photo_skills(
 
     # 2. Outer Edge Extension Skill (Zero Model Cutout)
     if do_edge_extension:
-        current_img = extend_photo_edges_seamless(current_img, target_w=TARGET_W, target_h=TARGET_H)
+        current_img = extend_photo_edges_seamless(current_img, target_w=target_w, target_h=target_h)
 
-    # 3. Auto-Crop & Framing Centering Skill (3:4 Ratio)
+    # 3. Auto-Crop & Framing Centering Skill
     if do_autocrop:
         try:
-            from crop_pipeline.crop import compute_crop_box, compute_region_crop_box
+            from crop_pipeline.crop import compute_crop_box, compute_crop_box_bottom_anchored, compute_region_crop_box
 
             subj = detect_subject_safe(current_img, "isnet-general-use")
             src_w, src_h = current_img.size
 
-            if do_detail_crop:
+            # Smart framing resolution
+            is_detail_shot = do_detail_crop or ("Macro" in framing_preset) or (img_position > 2 and ("bag" in category.lower() or "accessory" in category.lower()))
+
+            if is_detail_shot:
                 if "bottom" in category.lower():
                     region = (0.25, 1.0)
                 else:
                     region = (0.08, 0.65)
-                crop_box = compute_region_crop_box((src_w, src_h), subj, (TARGET_W, TARGET_H), region_of_subject=region)
+                crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=region)
+            elif "Handbag" in framing_preset or ("Auto" in framing_preset and ("bag" in category.lower() or "accessory" in category.lower())):
+                # Fixed Retail Display Shelf Baseline: 15% bottom padding (Y=85% pixel line)
+                crop_box = compute_crop_box_bottom_anchored((src_w, src_h), subj, (target_w, target_h), subject_height_fraction=0.68, bottom_margin_fraction=0.15)
+            elif "Footwear" in framing_preset or ("Auto" in framing_preset and "shoe" in category.lower()):
+                # Fixed Floor Baseline for Shoes: 12% bottom padding (Y=88% pixel line)
+                crop_box = compute_crop_box_bottom_anchored((src_w, src_h), subj, (target_w, target_h), subject_height_fraction=0.75, bottom_margin_fraction=0.12)
             else:
-                if "bag" in category.lower() or "accessory" in category.lower():
-                    subj_height_frac = 0.68
-                    v_bias = 0.05
+                if "Full-Body" in framing_preset:
+                    subj_height_frac = 0.84
+                    v_bias = -0.04
+                elif "Tops" in framing_preset:
+                    subj_height_frac = 0.82
+                    v_bias = -0.02
                 elif "bottom" in category.lower():
                     subj_height_frac = 0.78
                     v_bias = 0.0
@@ -212,24 +336,42 @@ def apply_photo_skills(
                     subj_height_frac = 0.84
                     v_bias = -0.04
 
-                crop_box = compute_crop_box((src_w, src_h), subj, (TARGET_W, TARGET_H), subj_height_frac, vertical_bias=v_bias)
+                crop_box = compute_crop_box((src_w, src_h), subj, (target_w, target_h), subj_height_frac, vertical_bias=v_bias)
 
             cropped = current_img.crop(crop_box)
-            current_img = cropped.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
+            current_img = cropped.resize((target_w, target_h), Image.Resampling.LANCZOS)
         except Exception as e:
             st.warning(f"Auto-crop fallback due to subject detection: {e}")
 
     return current_img
 
-def download_image_with_retry(img_src: str, max_retries: int = 3) -> bytes:
-    req = urllib.request.Request(img_src, headers={"User-Agent": "Mozilla/5.0"})
+def download_image_with_retry(img_src: str, img_id: int | None = None, max_retries: int = 3) -> bytes:
+    """Option 1 (Persistent Keep-Alive Connection Pool) + Option 3 (Source Disk Cache)."""
+    cache_key = f"raw_{img_id}.jpg" if img_id else f"raw_{hashlib.md5(img_src.encode()).hexdigest()}.jpg"
+    cache_path = RAW_CACHE_DIR / cache_key
+    if cache_path.exists() and cache_path.stat().st_size > 5000:
+        try:
+            return cache_path.read_bytes()
+        except Exception:
+            pass
+
+    session = get_http_session()
     last_err = None
     for attempt in range(max_retries):
         try:
-            return urllib.request.urlopen(req, timeout=20).read()
+            res = session.get(img_src, timeout=20)
+            res.raise_for_status()
+            img_bytes = res.content
+            if len(img_bytes) > 5000:
+                try:
+                    cache_path.write_bytes(img_bytes)
+                except Exception:
+                    pass
+                return img_bytes
         except Exception as e:
             last_err = e
             time.sleep(1)
+
     if last_err:
         raise last_err
     raise RuntimeError("Failed to download image after retries")
@@ -245,10 +387,13 @@ def process_single_image_worker(
     category_name: str,
     do_detail_crop: bool,
     edge_padding: int,
+    canvas_ratio: str = "3:4 (Shopify Default)",
+    framing_preset: str = "Auto (Category Default)",
+    img_position: int = 1,
 ) -> tuple[int, bytes]:
     img_id = img_info["id"]
     img_src = img_info["src"]
-    raw_bytes = download_image_with_retry(img_src)
+    raw_bytes = download_image_with_retry(img_src, img_id=img_id)
 
     fixed_pil = apply_photo_skills(
         raw_bytes,
@@ -259,6 +404,9 @@ def process_single_image_worker(
         category=category_name,
         do_detail_crop=do_detail_crop,
         edge_padding=edge_padding,
+        canvas_ratio=canvas_ratio,
+        framing_preset=framing_preset,
+        img_position=img_position,
     )
     buf = io.BytesIO()
     fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
@@ -344,7 +492,25 @@ def render_studio_crop_tab():
 
         with col_crop:
             st.markdown("**2. Framing & Canvas Skills**")
-            do_autocrop = st.checkbox("3:4 Auto-Crop & Framing Centering", value=False, key="studio_do_autocrop_v2", help="Re-frame photo to 1536x2048 canvas using category headroom rules")
+            col_c1, col_c2 = st.columns([1.0, 1.0])
+            with col_c1:
+                canvas_ratio = st.selectbox(
+                    "Canvas Ratio",
+                    ["3:4 (Shopify Default)", "Square 1:1", "Portrait 4:5", "Native High-Res"],
+                    index=0,
+                    key="studio_canvas_ratio_v3",
+                    help="Target output dimension and aspect ratio"
+                )
+            with col_c2:
+                framing_preset = st.selectbox(
+                    "Framing Rule",
+                    ["Auto (Category Default)", "Full-Body / Model", "Tops & Dresses", "Handbag (Shelf Line)", "Footwear / Shoes", "Macro Detail"],
+                    index=0,
+                    key="studio_framing_preset_v3",
+                    help="Headroom & subject centering calibration"
+                )
+
+            do_autocrop = st.checkbox("Apply Auto-Crop & Framing", value=False, key="studio_do_autocrop_v2", help="Re-frame photo using selected Canvas & Framing rules")
             do_edge_ext = st.checkbox("Zero-Cutout Outer Edge Extension", value=False, key="studio_do_edge_ext_v2", help="Replicate outer edges seamlessly to widen canvas without clipping model")
             do_detail_crop = st.checkbox("Garment Item-Focus Detail Crop", value=False, key="studio_do_detail_crop_v2", help="Focus crop directly on garment silhouette")
 
@@ -352,13 +518,14 @@ def render_studio_crop_tab():
     target_source = st.radio("Select Target Source", ["Retroactive Audit (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True, key="studio_target_source_radio_v2")
 
     if target_source.startswith("Retroactive"):
-        products = fetch_active_shopify_products()
+        search_query = st.text_input("🔍 Search Products by Title, Brand, SKU, or Tag (e.g. Chanel, Fendi, tag:bag, Y2K)", value="", key="studio_product_search_input_v1")
+        products = fetch_active_shopify_products_search(search_query)
         if not products:
-            st.info("No active Shopify products with images found.")
+            st.info(f"No Shopify products with images matching '{search_query}' found.")
             return
 
-        prod_titles = [f"{p['title']} ({len(p.get('images', []))} photos) — {p.get('vendor', 'Past Studies')}" for p in products]
-        selected_idx = st.selectbox("Select Active Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i], key="studio_crop_product_selectbox_v2")
+        prod_titles = [f"[{p.get('status', 'ACTIVE')}] {p['title']} ({len(p.get('images', []))} photos) — {p.get('vendor', 'Past Studies')}" for p in products]
+        selected_idx = st.selectbox("Select Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i], key="studio_crop_product_selectbox_v2")
         
         prod = products[selected_idx]
         prod_id = prod["id"]
@@ -402,8 +569,11 @@ def render_studio_crop_tab():
                                 category_name,
                                 do_detail_crop,
                                 int(edge_padding),
+                                canvas_ratio,
+                                framing_preset,
+                                idx + 1,
                             )
-                            for img_info in images
+                            for idx, img_info in enumerate(images)
                         ]
                         for future in futures:
                             try:
@@ -512,7 +682,7 @@ def render_studio_crop_tab():
                             import time
                             now_str = time.strftime("%I:%M:%S %p")
                             with st.spinner(f"Reprocessing Photo {idx+1}..."):
-                                raw_bytes = download_image_with_retry(img_src)
+                                raw_bytes = download_image_with_retry(img_src, img_id=img_id)
                                 
                                 fixed_pil = apply_photo_skills(
                                     raw_bytes,
@@ -523,6 +693,9 @@ def render_studio_crop_tab():
                                     category=category_name,
                                     do_detail_crop=do_detail_crop,
                                     edge_padding=int(edge_padding),
+                                    canvas_ratio=canvas_ratio,
+                                    framing_preset=framing_preset,
+                                    img_position=idx + 1,
                                 )
                                 buf = io.BytesIO()
                                 fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
