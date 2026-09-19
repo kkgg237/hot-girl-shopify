@@ -12,8 +12,8 @@ git fetch origin "$BRANCH" >/dev/null 2>&1 || exit 0
 LOCAL_HASH=$(git rev-parse HEAD)
 REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
 
-if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-    echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] New commits detected on $BRANCH ($LOCAL_HASH -> $REMOTE_HASH). Deploying..."
+if ! git merge-base --is-ancestor "$REMOTE_HASH" "$LOCAL_HASH"; then
+    echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] New remote commits detected on $BRANCH ($LOCAL_HASH -> $REMOTE_HASH). Deploying..."
     git pull origin "$BRANCH"
     sudo systemctl restart "$SERVICE_NAME"
     echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Auto-deploy complete!"
