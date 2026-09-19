@@ -412,6 +412,9 @@ def process_single_image_worker(
     fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
     out_bytes = buf.getvalue()
     save_cached_preview(prod_id, img_id, out_bytes)
+    del fixed_pil, buf, raw_bytes
+    import gc
+    gc.collect()
     return img_id, out_bytes
 
 def render_studio_crop_tab():
@@ -556,7 +559,7 @@ def render_studio_crop_tab():
                 now_str = time.strftime("%I:%M:%S %p")
                 with st.spinner(f"Processing all {len(images)} photo(s) in parallel..."):
                     import gc
-                    with ThreadPoolExecutor(max_workers=min(len(images), 3)) as executor:
+                    with ThreadPoolExecutor(max_workers=min(len(images), 2)) as executor:
                         futures = [
                             executor.submit(
                                 process_single_image_worker,
