@@ -562,207 +562,266 @@ def render_studio_crop_tab():
             do_detail_crop = st.checkbox("Garment Item-Focus Detail Crop", value=False, key="studio_do_detail_crop_v2", help="Focus crop directly on garment silhouette")
 
     st.markdown("---")
-    target_source = st.radio("Select Target Source", ["Retroactive Audit (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True, key="studio_target_source_radio_v2")
+    target_source = st.radio("Select Target Source", ["Batch Queue Table (Active Shopify Products)", "New Raw Shoots (Upload Camera Exports)"], horizontal=True, key="studio_target_source_radio_v3")
 
-    if target_source.startswith("Retroactive"):
-        search_query = st.text_input("🔍 Search Products by Title, Brand, SKU, or Tag (e.g. Chanel, Fendi, tag:bag, Y2K)", value="", key="studio_product_search_input_v1")
+    if target_source.startswith("Batch Queue"):
+        col_s1, col_s2, col_s3 = st.columns([1.5, 1.0, 1.0])
+        with col_s1:
+            search_query = st.text_input("🔍 Search Products (Title, Brand, SKU, Tag)", value="", key="studio_batch_search_v2")
+        with col_s2:
+            status_filter = st.selectbox("Status Filter", ["All Statuses", "DRAFT Only", "ACTIVE Only"], index=0, key="studio_status_filter_v1")
+        with col_s3:
+            cat_filter = st.selectbox("Category Filter", ["All Categories", "Tops", "Bottoms", "Sets", "Dresses", "Handbags", "Shoes"], index=0, key="studio_cat_filter_v1")
+
         products = fetch_active_shopify_products_search(search_query)
         if not products:
-            st.info(f"No Shopify products with images matching '{search_query}' found.")
+            st.info(f"No Shopify products matching '{search_query}' found.")
             return
 
-        prod_titles = [f"[{p.get('status', 'ACTIVE')}] {p['title']} ({len(p.get('images', []))} photos) — {p.get('vendor', 'Past Studies')}" for p in products]
-        selected_idx = st.selectbox("Select Product to Audit & Fix (Newest First)", range(len(prod_titles)), format_func=lambda i: prod_titles[i], key="studio_crop_product_selectbox_v2")
-        
-        prod = products[selected_idx]
-        prod_id = prod["id"]
-        prod_title = prod["title"]
-        images = prod.get("images", [])
-        category_name = prod.get("product_type") or prod_title
+        # Apply filters
+        filtered_prods = []
+        for p in products:
+            st_val = p.get("status", "ACTIVE").upper()
+            if status_filter == "DRAFT Only" and st_val != "DRAFT":
+                continue
+            if status_filter == "ACTIVE Only" and st_val != "ACTIVE":
+                continue
+            
+            p_type = (p.get("product_type") or p.get("title") or "").lower()
+            if cat_filter != "All Categories":
+                c_target = cat_filter.lower()
+                if c_target == "tops" and not any(k in p_type for k in ("top", "shirt", "tank", "tee", "blouse", "sweater", "jacket")):
+                    continue
+                if c_target == "bottoms" and not any(k in p_type for k in ("bottom", "skirt", "pant", "jean", "short", "trouser")):
+                    continue
+                if c_target == "sets" and not any(k in p_type for k in ("set", "suit", "two piece", "co-ord", "matching")):
+                    continue
+                if c_target == "dresses" and not any(k in p_type for k in ("dress", "gown")):
+                    continue
+                if c_target == "handbags" and not any(k in p_type for k in ("bag", "handbag", "clutch", "tote")):
+                    continue
+                if c_target == "shoes" and not any(k in p_type for k in ("shoe", "boot", "heel", "sandal")):
+                    continue
+            filtered_prods.append(p)
 
-        st.markdown(f"#### Product: **{prod_title}** ({len(images)} photos) — ID: `{prod_id}`")
+        if not filtered_prods:
+            st.info("No products match the selected filters.")
+            return
 
-        # Populate disk-cached previews into session state
-        for img in images:
-            i_id = img["id"]
-            s_k = f"edited_img_{prod_id}_{i_id}"
-            if s_k not in st.session_state:
-                c_bytes = get_cached_preview(prod_id, i_id)
-                if c_bytes:
-                    st.session_state[s_k] = c_bytes
+        st.markdown(f"### Batch Queue Table ({len(filtered_prods)} Matching Products)")
 
-        # Global Bulk Batch Action Toolbar (3 Columns: Process, Push, Clear)
-        processed_keys = [f"edited_img_{prod_id}_{img['id']}" for img in images if f"edited_img_{prod_id}_{img['id']}" in st.session_state]
-        any_edited = len(processed_keys) > 0
+        # Master Checkbox & Toolbar
+        col_m1, col_m2 = st.columns([1.0, 3.0])
+        with col_m1:
+            select_all = st.checkbox("Select All Matching", value=True, key="studio_select_all_cb_v1")
 
-        col_b1, col_b2, col_b3 = st.columns([1.2, 1.2, 0.8])
-        with col_b1:
-            batch_btn_label = f"Reprocess ALL {len(images)} Photos" if any_edited else f"Batch Process ALL Photos ({len(images)})"
-            if st.button(batch_btn_label, type="primary", use_container_width=True, key=f"btn_batch_process_{prod_id}"):
+        selected_prod_ids = []
+        for p in filtered_prods:
+            p_id = p["id"]
+            cb_k = f"select_prod_{p_id}"
+            if select_all:
+                st.session_state[cb_k] = True
+            if st.session_state.get(cb_k, False):
+                selected_prod_ids.append(p_id)
+
+        st.caption(f"**{len(selected_prod_ids)} of {len(filtered_prods)} Products Selected** for Batch Action")
+
+        # Global Action Bar
+        col_act1, col_act2, col_act3 = st.columns([1.5, 1.5, 1.0])
+        with col_act1:
+            if st.button(f"⚡ Batch Process Selected ({len(selected_prod_ids)} Items)", type="primary", use_container_width=True, disabled=len(selected_prod_ids) == 0, key="btn_batch_process_queue_v1"):
                 import time
                 now_str = time.strftime("%I:%M:%S %p")
-                with st.spinner(f"Processing all {len(images)} photo(s) in parallel..."):
+                with st.spinner(f"Batch processing {len(selected_prod_ids)} product(s) in parallel..."):
                     import gc
-                    with ThreadPoolExecutor(max_workers=min(len(images), 2)) as executor:
-                        futures = [
-                            executor.submit(
-                                process_single_image_worker,
-                                img_info,
-                                prod_id,
-                                bg_mode,
-                                target_bg_color,
-                                do_edge_ext,
-                                do_autocrop,
-                                category_name,
-                                do_detail_crop,
-                                int(edge_padding),
-                                canvas_ratio,
-                                framing_preset,
-                                idx + 1,
-                            )
-                            for idx, img_info in enumerate(images)
-                        ]
-                        for future in futures:
-                            try:
-                                img_id, img_bytes = future.result()
-                                if img_bytes:
-                                    st.session_state[f"edited_img_{prod_id}_{img_id}"] = img_bytes
-                                    st.session_state[f"processed_time_{prod_id}_{img_id}"] = now_str
-                            except Exception as err:
-                                st.error(f"Error in batch image worker: {err}")
-                    gc.collect()
-                st.success(f"Processing complete for all {len(images)} photo(s) at {now_str}")
+                    for p in filtered_prods:
+                        p_id = p["id"]
+                        if p_id in selected_prod_ids:
+                            images = p.get("images", [])
+                            cat_name = p.get("product_type") or p.get("title") or ""
+                            with ThreadPoolExecutor(max_workers=min(len(images), 2)) as executor:
+                                futures = [
+                                    executor.submit(
+                                        process_single_image_worker,
+                                        img_info,
+                                        p_id,
+                                        bg_mode,
+                                        target_bg_color,
+                                        do_edge_ext,
+                                        do_autocrop,
+                                        cat_name,
+                                        do_detail_crop,
+                                        int(edge_padding),
+                                        canvas_ratio,
+                                        framing_preset,
+                                        idx + 1,
+                                    )
+                                    for idx, img_info in enumerate(images)
+                                ]
+                                for future in futures:
+                                    try:
+                                        img_id, img_bytes = future.result()
+                                        if img_bytes:
+                                            st.session_state[f"edited_img_{p_id}_{img_id}"] = img_bytes
+                                            st.session_state[f"processed_time_{p_id}_{img_id}"] = now_str
+                                    except Exception as err:
+                                        st.error(f"Error in image worker: {err}")
+                            gc.collect()
+                st.success(f"Successfully processed {len(selected_prod_ids)} products at {now_str}!")
                 st.rerun()
 
-        with col_b2:
-            btn_label = f"Push {len(processed_keys)} Processed Photo(s) to Shopify" if any_edited else "Push Processed Photos to Shopify"
-            if st.button(btn_label, type="primary", use_container_width=True, disabled=not any_edited, key=f"btn_batch_push_{prod_id}"):
-                with st.spinner(f"Pushing {len(processed_keys)} processed photo(s) directly to Shopify..."):
-                    to_push = []
-                    for img in images:
-                        s_key = f"edited_img_{prod_id}_{img['id']}"
-                        if s_key in st.session_state:
-                            to_push.append((img['id'], st.session_state[s_key]))
+        with col_act2:
+            if st.button(f"🚀 Push {len(selected_prod_ids)} Approved Products to Shopify", type="primary", use_container_width=True, disabled=len(selected_prod_ids) == 0, key="btn_batch_push_queue_v1"):
+                pushed_prods = 0
+                with st.spinner(f"Pushing {len(selected_prod_ids)} products directly to Shopify..."):
+                    for p in filtered_prods:
+                        p_id = p["id"]
+                        if p_id in selected_prod_ids:
+                            images = p.get("images", [])
+                            to_push = []
+                            for img in images:
+                                s_key = f"edited_img_{p_id}_{img['id']}"
+                                inc_k = f"inc_img_{p_id}_{img['id']}"
+                                if s_key in st.session_state and st.session_state.get(inc_k, True):
+                                    to_push.append((img['id'], st.session_state[s_key]))
 
-                    def push_worker(item):
-                        image_id, img_bytes = item
-                        try:
-                            fixed_img = Image.open(io.BytesIO(img_bytes))
-                            ok = update_shopify_product_image(prod_id, image_id, fixed_img)
-                            return image_id, ok
-                        except Exception:
-                            return image_id, False
+                            if to_push:
+                                def push_worker_single(item):
+                                    img_id, img_bytes = item
+                                    try:
+                                        fixed_img = Image.open(io.BytesIO(img_bytes))
+                                        ok = update_shopify_product_image(p_id, img_id, fixed_img)
+                                        return img_id, ok
+                                    except Exception:
+                                        return img_id, False
 
-                    results = []
-                    if to_push:
-                        with ThreadPoolExecutor(max_workers=min(len(to_push), 4)) as executor:
-                            results = list(executor.map(push_worker, to_push))
+                                with ThreadPoolExecutor(max_workers=min(len(to_push), 4)) as executor:
+                                    res_list = list(executor.map(push_worker_single, to_push))
 
-                    pushed_count = 0
-                    for image_id, ok in results:
-                        if ok:
-                            st.session_state[f"pushed_ok_{prod_id}_{image_id}"] = True
-                            pushed_count += 1
+                                ok_cnt = sum(1 for _, ok in res_list if ok)
+                                if ok_cnt > 0:
+                                    pushed_prods += 1
+                                    for img_id, ok in res_list:
+                                        if ok:
+                                            st.session_state[f"pushed_ok_{p_id}_{img_id}"] = True
 
-                    try:
-                        fetch_active_shopify_products.clear()
-                    except Exception:
-                        pass
+                try:
+                    fetch_active_shopify_products.clear()
+                except Exception:
+                    pass
 
-                if pushed_count > 0:
-                    st.success(f"Successfully updated {pushed_count} photo(s) on Shopify!")
+                if pushed_prods > 0:
+                    st.success(f"Successfully updated {pushed_prods} product(s) on Shopify!")
                 else:
-                    st.error("Failed to push photos to Shopify. Check API credentials.")
+                    st.warning("No processed photos pushed. Please run Batch Process first.")
                 st.rerun()
 
-        with col_b3:
-            if st.button("Clear Previews", use_container_width=True, disabled=not any_edited, key=f"btn_clear_previews_{prod_id}"):
-                clear_cached_previews(prod_id, images)
-                for img in images:
-                    img_id = img["id"]
-                    st.session_state.pop(f"edited_img_{prod_id}_{img_id}", None)
-                    st.session_state.pop(f"pushed_ok_{prod_id}_{img_id}", None)
-                    st.session_state.pop(f"processed_time_{prod_id}_{img_id}", None)
-                st.toast("Cleared previews for this product!")
+        with col_act3:
+            if st.button("Clear Selected Previews", use_container_width=True, disabled=len(selected_prod_ids) == 0, key="btn_clear_queue_v1"):
+                for p in filtered_prods:
+                    p_id = p["id"]
+                    if p_id in selected_prod_ids:
+                        images = p.get("images", [])
+                        clear_cached_previews(p_id, images)
+                        for img in images:
+                            i_id = img["id"]
+                            st.session_state.pop(f"edited_img_{p_id}_{i_id}", None)
+                            st.session_state.pop(f"pushed_ok_{p_id}_{i_id}", None)
+                            st.session_state.pop(f"processed_time_{p_id}_{i_id}", None)
+                st.toast("Cleared previews for selected products!")
                 st.rerun()
 
         st.markdown("---")
 
-        # Compact Condensed Photo Grid (2 photo cards per row)
-        grid_cols = st.columns(2)
-        for idx, img_info in enumerate(images):
-            img_id = img_info["id"]
-            img_src = img_info["src"]
-            state_key = f"edited_img_{prod_id}_{img_id}"
-            time_key = f"processed_time_{prod_id}_{img_id}"
-            is_processed = state_key in st.session_state
+        # Table Rows & Expandable Pre-Push Review Drawers
+        for idx, prod in enumerate(filtered_prods):
+            prod_id = prod["id"]
+            prod_title = prod["title"]
+            images = prod.get("images", [])
+            status_tag = prod.get("status", "ACTIVE")
+            vendor = prod.get("vendor", "Past Studies")
+            cat_tag = prod.get("product_type") or "Garment"
 
-            with grid_cols[idx % 2]:
-                with st.container(border=True):
-                    st.markdown(f"**Photo {idx+1} of {len(images)}** (ID: `{img_id}`)")
-                    
-                    # Row of side-by-side images directly on the exact same Y baseline
-                    img_col1, img_col2 = st.columns(2)
-                    with img_col1:
-                        st.caption("1. Original Active Photo")
-                        st.markdown(f'<img src="{img_src}" style="width:100%; border-radius:4px; display:block; margin-bottom:8px;">', unsafe_allow_html=True)
+            # Check if processed
+            processed_keys = [f"edited_img_{prod_id}_{img['id']}" for img in images if f"edited_img_{prod_id}_{img['id']}" in st.session_state]
+            is_done = len(processed_keys) > 0
+            pushed_ok_cnt = sum(1 for img in images if st.session_state.get(f"pushed_ok_{prod_id}_{img['id']}"))
 
-                    with img_col2:
-                        st.caption("2. Transformed Preview")
-                        if is_processed:
-                            try:
-                                b64_str = base64.b64encode(st.session_state[state_key]).decode("utf-8")
-                                st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:4px; display:block; margin-bottom:8px;">', unsafe_allow_html=True)
-                                ts = st.session_state.get(time_key, "")
-                                if ts:
-                                    st.caption(f"Updated {ts}")
-                            except Exception as err:
-                                st.error(f"Failed to render preview: {err}")
-                        else:
-                            st.info("Click button below to generate preview.")
+            first_thumb = images[0]["src"] if images else ""
 
-                    # Individual Action Bar below images
-                    btn_col1, btn_col2 = st.columns(2)
-                    with btn_col1:
-                        proc_btn_label = f"Reprocess Photo {idx+1}" if is_processed else f"Process Photo {idx+1}"
-                        if st.button(proc_btn_label, key=f"btn_edit_{img_id}", use_container_width=True):
-                            import time
-                            now_str = time.strftime("%I:%M:%S %p")
-                            with st.spinner(f"Reprocessing Photo {idx+1}..."):
-                                raw_bytes = download_image_with_retry(img_src, img_id=img_id)
-                                
-                                fixed_pil = apply_photo_skills(
-                                    raw_bytes,
-                                    bg_mode=bg_mode,
-                                    target_bg_color=target_bg_color,
-                                    do_edge_extension=do_edge_ext,
-                                    do_autocrop=do_autocrop,
-                                    category=category_name,
-                                    do_detail_crop=do_detail_crop,
-                                    edge_padding=int(edge_padding),
-                                    canvas_ratio=canvas_ratio,
-                                    framing_preset=framing_preset,
-                                    img_position=idx + 1,
-                                )
-                                buf = io.BytesIO()
-                                fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
-                                out_bytes = buf.getvalue()
-                                st.session_state[state_key] = out_bytes
-                                st.session_state[time_key] = now_str
-                                save_cached_preview(prod_id, img_id, out_bytes)
-                            st.toast(f"Reprocessed Photo {idx+1} at {now_str}")
-                            st.rerun()
+            # Row Table Strip
+            with st.container(border=True):
+                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([0.4, 0.8, 3.5, 1.2, 1.5])
+                with r_col1:
+                    st.checkbox("", value=select_all, key=f"select_prod_{prod_id}")
+                with r_col2:
+                    if first_thumb:
+                        st.markdown(f'<img src="{first_thumb}" style="width:50px; height:66px; object-fit:cover; border-radius:4px;">', unsafe_allow_html=True)
+                with r_col3:
+                    st.markdown(f"**{prod_title}**")
+                    st.caption(f"ID: `{prod_id}` · Vendor: `{vendor}` · Category: `{cat_tag}`")
+                with r_col4:
+                    if pushed_ok_cnt > 0:
+                        st.success(f"✓ Pushed ({pushed_ok_cnt})")
+                    elif is_done:
+                        st.info(f"✓ Processed ({len(processed_keys)}/{len(images)})")
+                    else:
+                        st.caption("⏳ Pending Process")
+                with r_col5:
+                    drawer_label = f"👁 Review ({len(images)} Photos)" if is_done else f"👁 Inspect ({len(images)} Photos)"
 
-                    with btn_col2:
-                        if state_key in st.session_state:
-                            if st.button(f"Push Photo {idx+1}", key=f"btn_push_{img_id}", type="primary", use_container_width=True):
-                                fixed_img = Image.open(io.BytesIO(st.session_state[state_key]))
-                                success = update_shopify_product_image(prod_id, img_id, fixed_img)
-                                if success:
-                                    st.session_state[f"pushed_ok_{prod_id}_{img_id}"] = True
+                # Expandable Review Drawer
+                with st.expander(f"👁 Pre-Push Review Drawer — {prod_title}", expanded=False):
+                    st.markdown(f"##### Pre-Push Review & Photo Approval ({len(images)} Photos)")
 
-                            if st.session_state.get(f"pushed_ok_{prod_id}_{img_id}"):
-                                st.success("Updated on Shopify!")
+                    grid_cols = st.columns(min(len(images), 4))
+                    for img_i, img_info in enumerate(images):
+                        img_id = img_info["id"]
+                        img_src = img_info["src"]
+                        state_key = f"edited_img_{prod_id}_{img_id}"
+                        time_key = f"processed_time_{prod_id}_{img_id}"
+                        is_proc = state_key in st.session_state
+
+                        with grid_cols[img_i % len(grid_cols)]:
+                            st.markdown(f"**Photo {img_i+1}**")
+                            inc_key = f"inc_img_{prod_id}_{img_id}"
+                            st.checkbox("Include in Push", value=True, key=inc_key)
+
+                            if is_proc:
+                                try:
+                                    b64_str = base64.b64encode(st.session_state[state_key]).decode("utf-8")
+                                    st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:4px; display:block; margin-bottom:8px;">', unsafe_allow_html=True)
+                                except Exception:
+                                    st.image(img_src, use_container_width=True)
+                            else:
+                                st.image(img_src, caption="Original Active", use_container_width=True)
+
+                            if st.button(f"↻ Process {img_i+1}", key=f"btn_reproc_{prod_id}_{img_id}", use_container_width=True):
+                                import time
+                                now_str = time.strftime("%I:%M:%S %p")
+                                with st.spinner(f"Processing Photo {img_i+1}..."):
+                                    raw_bytes = download_image_with_retry(img_src, img_id=img_id)
+                                    fixed_pil = apply_photo_skills(
+                                        raw_bytes,
+                                        bg_mode=bg_mode,
+                                        target_bg_color=target_bg_color,
+                                        do_edge_extension=do_edge_ext,
+                                        do_autocrop=do_autocrop,
+                                        category=cat_tag,
+                                        do_detail_crop=do_detail_crop,
+                                        edge_padding=int(edge_padding),
+                                        canvas_ratio=canvas_ratio,
+                                        framing_preset=framing_preset,
+                                        img_position=img_i + 1,
+                                    )
+                                    buf = io.BytesIO()
+                                    fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
+                                    out_bytes = buf.getvalue()
+                                    st.session_state[state_key] = out_bytes
+                                    st.session_state[time_key] = now_str
+                                    save_cached_preview(prod_id, img_id, out_bytes)
+                                st.toast(f"Processed Photo {img_i+1} at {now_str}")
+                                st.rerun()
 
     else:
         st.markdown("#### New Raw Shoots (Upload Camera Exports)")
