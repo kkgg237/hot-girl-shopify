@@ -312,11 +312,11 @@ def apply_photo_skills(
 
             if is_detail_shot:
                 if any(b_kw in category.lower() for b_kw in ("bottom", "skirt", "pant", "jean", "short", "trouser")):
-                    # Tighter Zoomed Bottoms from waistband down through feet (100% feet & hem intact, 0% cutoff)
-                    top_y = subj.top + 0.35 * subj.height
+                    # Extra Tighter Zoomed Bottoms from upper hip/waistband down through feet (100% feet & hem intact, 0% cutoff)
+                    top_y = subj.top + 0.38 * subj.height
                     bot_y = subj.bottom + 0.04 * subj.height
                     body_h = bot_y - top_y
-                    crop_h = body_h / 0.92
+                    crop_h = body_h / 0.93
                     crop_w = crop_h * (target_w / target_h)
                     bottom = subj.bottom + 0.04 * crop_h
                     top = bottom - crop_h
