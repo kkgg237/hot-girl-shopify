@@ -308,15 +308,30 @@ def apply_photo_skills(
             src_w, src_h = current_img.size
 
             # Smart framing resolution
-            is_detail_shot = do_detail_crop or ("Macro" in framing_preset)
+            is_detail_shot = (do_detail_crop or ("Macro" in framing_preset)) and ("dress" not in category.lower())
 
             if is_detail_shot:
-                if "bottom" in category.lower():
-                    crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.20, 0.95), region_fill=0.88)
+                if any(b_kw in category.lower() for b_kw in ("bottom", "skirt", "pant", "jean", "short", "trouser")):
+                    # Lower half of body from waist down to feet (100% feet & hem intact, 0% cutoff)
+                    top_y = subj.top + 0.20 * subj.height
+                    bot_y = subj.bottom + 0.05 * subj.height
+                    body_h = bot_y - top_y
+                    crop_h = body_h / 0.88
+                    crop_w = crop_h * (target_w / target_h)
+                    bottom = subj.bottom + 0.05 * crop_h
+                    top = bottom - crop_h
+                    cx = (subj.left + subj.right) / 2.0
+                    left = cx - crop_w / 2.0
+                    right = left + crop_w
+                    if left < 0: right -= left; left = 0
+                    if top < 0: bottom -= top; top = 0
+                    if right > src_w: diff = right - src_w; left -= diff; right = src_w
+                    if bottom > src_h: diff = bottom - src_h; top -= diff; bottom = src_h
+                    crop_box = (int(round(left)), int(round(top)), int(round(right)), int(round(bottom)))
                 elif "handbag" in category.lower() or "bag" in category.lower() or "shoe" in category.lower() or "accessory" in category.lower():
                     crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.0, 1.0), region_fill=0.88)
                 else:
-                    # Moderate Zoom Half-Body Framing with 20% Top White Space
+                    # Moderate Zoom Half-Body Framing with 20% Top White Space (Tops / Sets top piece)
                     top_margin_frac = 0.20
                     body_frac = 0.48
                     fill_frac = 0.78
