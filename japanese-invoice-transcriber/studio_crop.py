@@ -308,18 +308,37 @@ def apply_photo_skills(
             src_w, src_h = current_img.size
 
             # Smart framing resolution
-            is_detail_shot = do_detail_crop or ("Macro" in framing_preset) or (img_position > 2 and ("bag" in category.lower() or "accessory" in category.lower()))
+            is_detail_shot = do_detail_crop or ("Macro" in framing_preset)
 
             if is_detail_shot:
                 if "bottom" in category.lower():
-                    region = (0.20, 0.95)
+                    crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.20, 0.95), region_fill=0.88)
                 elif "handbag" in category.lower() or "bag" in category.lower() or "shoe" in category.lower() or "accessory" in category.lower():
-                    region = (0.0, 1.0)
+                    crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.0, 1.0), region_fill=0.88)
                 else:
-                    # Garment Item Focus for Tops / Dresses / Outerwear:
-                    # Focuses from straps/neckline (-0.02) down to waist/hip (0.68) with 88% fill
-                    region = (-0.02, 0.68)
-                crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=region, region_fill=0.88)
+                    # Moderate Zoom Half-Body Framing with 20% Top White Space
+                    top_margin_frac = 0.20
+                    body_frac = 0.48
+                    fill_frac = 0.78
+                    body_top = subj.top
+                    body_bot = subj.top + body_frac * subj.height
+                    half_body_h = body_bot - body_top
+                    crop_h = half_body_h / fill_frac
+                    crop_w = crop_h * (target_w / target_h)
+                    top = body_top - top_margin_frac * crop_h
+                    bottom = top + crop_h
+                    cx = (subj.left + subj.right) / 2.0
+                    left = cx - crop_w / 2.0
+                    right = left + crop_w
+                    if left < 0:
+                        right -= left; left = 0
+                    if top < 0:
+                        bottom -= top; top = 0
+                    if right > src_w:
+                        diff = right - src_w; left -= diff; right = src_w
+                    if bottom > src_h:
+                        diff = bottom - src_h; top -= diff; bottom = src_h
+                    crop_box = (int(round(left)), int(round(top)), int(round(right)), int(round(bottom)))
             elif "Handbag" in framing_preset or ("Auto" in framing_preset and ("bag" in category.lower() or "accessory" in category.lower())):
                 # Fixed Retail Display Shelf Baseline: 15% bottom padding (Y=85% pixel line)
                 crop_box = compute_crop_box_bottom_anchored((src_w, src_h), subj, (target_w, target_h), subject_height_fraction=0.68, bottom_margin_fraction=0.15)
