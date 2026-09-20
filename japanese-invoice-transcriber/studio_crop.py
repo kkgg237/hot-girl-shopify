@@ -312,31 +312,41 @@ def apply_photo_skills(
 
             if is_detail_shot:
                 if "bottom" in category.lower():
-                    region = (0.25, 1.0)
+                    region = (0.20, 0.95)
+                elif "handbag" in category.lower() or "bag" in category.lower() or "shoe" in category.lower() or "accessory" in category.lower():
+                    region = (0.0, 1.0)
                 else:
-                    region = (0.08, 0.65)
-                crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=region)
+                    # Garment Item Focus for Tops / Dresses / Outerwear:
+                    # Focuses from straps/neckline (-0.02) down to waist/hip (0.68) with 88% fill
+                    region = (-0.02, 0.68)
+                crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=region, region_fill=0.88)
             elif "Handbag" in framing_preset or ("Auto" in framing_preset and ("bag" in category.lower() or "accessory" in category.lower())):
                 # Fixed Retail Display Shelf Baseline: 15% bottom padding (Y=85% pixel line)
                 crop_box = compute_crop_box_bottom_anchored((src_w, src_h), subj, (target_w, target_h), subject_height_fraction=0.68, bottom_margin_fraction=0.15)
             elif "Footwear" in framing_preset or ("Auto" in framing_preset and "shoe" in category.lower()):
                 # Fixed Floor Baseline for Shoes: 12% bottom padding (Y=88% pixel line)
                 crop_box = compute_crop_box_bottom_anchored((src_w, src_h), subj, (target_w, target_h), subject_height_fraction=0.75, bottom_margin_fraction=0.12)
+            elif "Tops" in framing_preset:
+                # Tops / Upper Body Framing: Upper torso (head/neck down to hips = 0.0 to 0.62 of subject)
+                crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.0, 0.62), region_fill=0.82)
             else:
                 if "Full-Body" in framing_preset:
                     subj_height_frac = 0.84
-                    v_bias = -0.04
-                elif "Tops" in framing_preset:
-                    subj_height_frac = 0.82
                     v_bias = -0.02
                 elif "bottom" in category.lower():
                     subj_height_frac = 0.78
                     v_bias = 0.0
                 else:
-                    subj_height_frac = 0.84
-                    v_bias = -0.04
+                    # Default category framing (e.g. Tops)
+                    if any(top_word in category.lower() for top_word in ("top", "shirt", "tank", "tee", "blouse", "sweater", "jacket")):
+                        crop_box = compute_region_crop_box((src_w, src_h), subj, (target_w, target_h), region_of_subject=(0.0, 0.65), region_fill=0.82)
+                    else:
+                        subj_height_frac = 0.84
+                        v_bias = -0.02
+                        crop_box = compute_crop_box((src_w, src_h), subj, (target_w, target_h), subj_height_frac, vertical_bias=v_bias)
 
-                crop_box = compute_crop_box((src_w, src_h), subj, (target_w, target_h), subj_height_frac, vertical_bias=v_bias)
+                if 'crop_box' not in locals():
+                    crop_box = compute_crop_box((src_w, src_h), subj, (target_w, target_h), subj_height_frac, vertical_bias=v_bias)
 
             cropped = current_img.crop(crop_box)
             current_img = cropped.resize((target_w, target_h), Image.Resampling.LANCZOS)
