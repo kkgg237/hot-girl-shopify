@@ -1,3 +1,10 @@
+[theme]
+base = "light"
+primaryColor = "#111111"
+backgroundColor = "#FAFAF8"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#111111"
+
 [server]
 address = "::"
 port = 8501

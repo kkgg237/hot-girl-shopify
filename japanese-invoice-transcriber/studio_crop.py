@@ -464,6 +464,24 @@ def process_single_image_worker(
 def render_studio_crop_tab():
     st.session_state["studio_crop_version"] = "2.2"
 
+    st.markdown("""
+    <style>
+    /* Sleek horizontal progress bar styling */
+    div[data-testid="stProgress"] {
+        margin-top: 4px;
+    }
+    div[data-testid="stProgress"] > div {
+        height: 18px !important;
+        border-radius: 9px !important;
+        background-color: #E5E7EB !important;
+    }
+    div[data-testid="stProgress"] > div > div {
+        border-radius: 9px !important;
+        background: linear-gradient(90deg, #111111 0%, #3B82F6 100%) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     if "saved_custom_colors" not in st.session_state:
         st.session_state["saved_custom_colors"] = ["#F8F2F2", "#E5E5E5"]
 
@@ -610,35 +628,73 @@ def render_studio_crop_tab():
 
         st.markdown(f"### Batch Queue Table ({len(filtered_prods)} Matching Products)")
 
-        # Master Checkbox & Toolbar
-        col_m1, col_m2 = st.columns([1.0, 3.0])
+        # Master Selection Callbacks
+        def toggle_all_matching():
+            master_val = st.session_state.get("studio_select_all_cb_v1", True)
+            for p in filtered_prods:
+                st.session_state[f"select_prod_{p['id']}"] = master_val
+
+        col_m1, col_m2, col_m3 = st.columns([1.5, 1.2, 1.2])
         with col_m1:
-            select_all = st.checkbox("Select All Matching", value=True, key="studio_select_all_cb_v1")
+            st.checkbox("Select All Matching", value=True, key="studio_select_all_cb_v1", on_change=toggle_all_matching)
+        with col_m2:
+            if st.button("✨ Select Processed Only", key="btn_sel_proc_only", use_container_width=True):
+                for p in filtered_prods:
+                    p_id = p["id"]
+                    images = p.get("images", [])
+                    has_proc = any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images)
+                    st.session_state[f"select_prod_{p_id}"] = has_proc
+                st.rerun()
+        with col_m3:
+            if st.button("⬜ Deselect All", key="btn_desel_all", use_container_width=True):
+                for p in filtered_prods:
+                    st.session_state[f"select_prod_{p['id']}"] = False
+                st.rerun()
 
         selected_prod_ids = []
+        selected_processed_prods = []
         for p in filtered_prods:
             p_id = p["id"]
             cb_k = f"select_prod_{p_id}"
-            if select_all:
+            if cb_k not in st.session_state:
                 st.session_state[cb_k] = True
             if st.session_state.get(cb_k, False):
                 selected_prod_ids.append(p_id)
+                images = p.get("images", [])
+                if any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images):
+                    selected_processed_prods.append(p)
 
-        st.caption(f"**{len(selected_prod_ids)} of {len(filtered_prods)} Products Selected** for Batch Action")
+        st.caption(f"**{len(selected_prod_ids)} of {len(filtered_prods)} Products Selected** ({len(selected_processed_prods)} with processed photos ready to push)")
 
         # Global Action Bar
         col_act1, col_act2, col_act3 = st.columns([1.5, 1.5, 1.0])
         with col_act1:
             if st.button(f"⚡ Batch Process Selected ({len(selected_prod_ids)} Items)", type="primary", use_container_width=True, disabled=len(selected_prod_ids) == 0, key="btn_batch_process_queue_v1"):
                 import time
+                import gc
                 now_str = time.strftime("%I:%M:%S %p")
-                with st.spinner(f"Batch processing {len(selected_prod_ids)} product(s) in parallel..."):
-                    import gc
+
+                progress_container = st.container(border=True)
+                with progress_container:
+                    st.markdown("#### ⚡ Batch Processing Progress")
+                    p_col1, p_col2 = st.columns([1.5, 2.5])
+                    with p_col1:
+                        status_box = st.empty()
+                    with p_col2:
+                        progress_bar = st.progress(0.0)
+
+                    total_items = len(selected_prod_ids)
+                    processed_items = 0
+
                     for p in filtered_prods:
                         p_id = p["id"]
                         if p_id in selected_prod_ids:
+                            p_title = p["title"]
                             images = p.get("images", [])
-                            cat_name = p.get("product_type") or p.get("title") or ""
+                            cat_name = p.get("product_type") or p.get("title") or "Garment"
+
+                            status_box.markdown(f"⏳ **Processing ({processed_items + 1}/{total_items}):**\n`{p_title}` ({len(images)} photos)")
+
                             with ThreadPoolExecutor(max_workers=min(len(images), 2)) as executor:
                                 futures = [
                                     executor.submit(
@@ -666,54 +722,20 @@ def render_studio_crop_tab():
                                             st.session_state[f"processed_time_{p_id}_{img_id}"] = now_str
                                     except Exception as err:
                                         st.error(f"Error in image worker: {err}")
+
+                            processed_items += 1
+                            progress_bar.progress(processed_items / total_items)
+                            status_box.markdown(f"✅ **Processed ({processed_items}/{total_items}):**\n`{p_title}`")
                             gc.collect()
-                st.success(f"Successfully processed {len(selected_prod_ids)} products at {now_str}!")
+
+                    status_box.success(f"🎉 Batch processed all {total_items} item(s) at {now_str}!")
                 st.rerun()
 
         with col_act2:
-            if st.button(f"🚀 Push {len(selected_prod_ids)} Approved Products to Shopify", type="primary", use_container_width=True, disabled=len(selected_prod_ids) == 0, key="btn_batch_push_queue_v1"):
-                pushed_prods = 0
-                with st.spinner(f"Pushing {len(selected_prod_ids)} products directly to Shopify..."):
-                    for p in filtered_prods:
-                        p_id = p["id"]
-                        if p_id in selected_prod_ids:
-                            images = p.get("images", [])
-                            to_push = []
-                            for img in images:
-                                s_key = f"edited_img_{p_id}_{img['id']}"
-                                inc_k = f"inc_img_{p_id}_{img['id']}"
-                                if s_key in st.session_state and st.session_state.get(inc_k, True):
-                                    to_push.append((img['id'], st.session_state[s_key]))
-
-                            if to_push:
-                                def push_worker_single(item):
-                                    img_id, img_bytes = item
-                                    try:
-                                        fixed_img = Image.open(io.BytesIO(img_bytes))
-                                        ok = update_shopify_product_image(p_id, img_id, fixed_img)
-                                        return img_id, ok
-                                    except Exception:
-                                        return img_id, False
-
-                                with ThreadPoolExecutor(max_workers=min(len(to_push), 4)) as executor:
-                                    res_list = list(executor.map(push_worker_single, to_push))
-
-                                ok_cnt = sum(1 for _, ok in res_list if ok)
-                                if ok_cnt > 0:
-                                    pushed_prods += 1
-                                    for img_id, ok in res_list:
-                                        if ok:
-                                            st.session_state[f"pushed_ok_{p_id}_{img_id}"] = True
-
-                try:
-                    fetch_active_shopify_products.clear()
-                except Exception:
-                    pass
-
-                if pushed_prods > 0:
-                    st.success(f"Successfully updated {pushed_prods} product(s) on Shopify!")
-                else:
-                    st.warning("No processed photos pushed. Please run Batch Process first.")
+            push_btn_label = f"🚀 Push {len(selected_processed_prods)} Processed Products to Shopify" if selected_processed_prods else "🚀 Push Processed Products to Shopify"
+            if st.button(push_btn_label, type="primary", use_container_width=True, disabled=len(selected_processed_prods) == 0, key="btn_batch_push_queue_v1"):
+                st.session_state["show_push_confirmation_modal"] = True
+                st.session_state["prods_to_push_ids"] = [p["id"] for p in selected_processed_prods]
                 st.rerun()
 
         with col_act3:
@@ -731,6 +753,163 @@ def render_studio_crop_tab():
                 st.toast("Cleared previews for selected products!")
                 st.rerun()
 
+        # Confirmation Dialog Modal before Push
+        if st.session_state.get("show_push_confirmation_modal", False):
+            modal_prods = [p for p in filtered_prods if p["id"] in st.session_state.get("prods_to_push_ids", [])]
+
+            if hasattr(st, "dialog"):
+                @st.dialog("🚀 Confirm Shopify Photo Update")
+                def render_push_confirmation_dialog(prods_to_push):
+                    st.markdown(f"### Ready to update **{len(prods_to_push)} Listing(s)** on Shopify")
+                    st.caption("The following products have processed photos ready to be updated directly on Shopify. Review them before confirming:")
+
+                    with st.container(height=320, border=True):
+                        for idx, p in enumerate(prods_to_push):
+                            p_id = p["id"]
+                            p_title = p["title"]
+                            vendor = p.get("vendor", "Past Studies")
+                            images = p.get("images", [])
+
+                            push_photos = [
+                                img for img in images 
+                                if f"edited_img_{p_id}_{img['id']}" in st.session_state 
+                                and st.session_state.get(f"inc_img_{p_id}_{img['id']}", True)
+                            ]
+
+                            c1, c2, c3 = st.columns([0.6, 3.2, 1.2])
+                            with c1:
+                                thumb_src = images[0]["src"] if images else ""
+                                if push_photos and f"edited_img_{p_id}_{push_photos[0]['id']}" in st.session_state:
+                                    try:
+                                        b64 = base64.b64encode(st.session_state[f"edited_img_{p_id}_{push_photos[0]['id']}"]).decode("utf-8")
+                                        thumb_src = f"data:image/jpeg;base64,{b64}"
+                                    except Exception:
+                                        pass
+                                if thumb_src:
+                                    st.markdown(f'<img src="{thumb_src}" style="width:44px; height:58px; object-fit:cover; border-radius:4px; border:1px solid #ccc;">', unsafe_allow_html=True)
+                            with c2:
+                                st.markdown(f"**{idx+1}. {p_title}**")
+                                st.caption(f"ID: `{p_id}` · Vendor: `{vendor}`")
+                            with c3:
+                                st.markdown(f"**{len(push_photos)} Photo(s)**")
+                            st.markdown("---")
+
+                    st.warning(f"⚠️ Confirming will update active images for these **{len(prods_to_push)} listing(s)** on Shopify.")
+
+                    col_c1, col_c2 = st.columns([1.2, 1.0])
+                    with col_c1:
+                        if st.button(f"🚀 Confirm & Push {len(prods_to_push)} Listings Now", type="primary", use_container_width=True, key="btn_confirm_push_modal_action"):
+                            st.session_state["execute_shopify_push_now"] = True
+                            st.session_state["show_push_confirmation_modal"] = False
+                            st.rerun()
+                    with col_c2:
+                        if st.button("❌ Cancel", use_container_width=True, key="btn_cancel_push_modal_action"):
+                            st.session_state["show_push_confirmation_modal"] = False
+                            st.rerun()
+
+                render_push_confirmation_dialog(modal_prods)
+            else:
+                with st.container(border=True):
+                    st.markdown(f"### 🚀 Confirm Shopify Photo Update ({len(modal_prods)} Listings)")
+                    for idx, p in enumerate(modal_prods):
+                        st.markdown(f"- **{p['title']}** (`ID: {p['id']}`)")
+                    col_c1, col_c2 = st.columns([1, 1])
+                    with col_c1:
+                        if st.button(f"Confirm & Push {len(modal_prods)} Listings Now", type="primary", key="btn_fallback_confirm_push"):
+                            st.session_state["execute_shopify_push_now"] = True
+                            st.session_state["show_push_confirmation_modal"] = False
+                            st.rerun()
+                    with col_c2:
+                        if st.button("Cancel", key="btn_fallback_cancel_push"):
+                            st.session_state["show_push_confirmation_modal"] = False
+                            st.rerun()
+
+        # Execute Push when confirmed
+        if st.session_state.get("execute_shopify_push_now", False):
+            st.session_state["execute_shopify_push_now"] = False
+            prods_to_push = [p for p in filtered_prods if p["id"] in st.session_state.get("prods_to_push_ids", [])]
+
+            pushed_prods = 0
+            pushed_titles = []
+            total_push_items = len(prods_to_push)
+            current_push_idx = 0
+            import time
+            now_str = time.strftime("%I:%M:%S %p")
+
+            push_container = st.container(border=True)
+            with push_container:
+                st.markdown("#### 🚀 Shopify Push Progress")
+                p_col1, p_col2 = st.columns([1.5, 2.5])
+                with p_col1:
+                    push_status_box = st.empty()
+                with p_col2:
+                    push_progress_bar = st.progress(0.0)
+
+                for p in prods_to_push:
+                    p_id = p["id"]
+                    p_title = p["title"]
+                    images = p.get("images", [])
+                    to_push = []
+                    for img in images:
+                        s_key = f"edited_img_{p_id}_{img['id']}"
+                        inc_k = f"inc_img_{p_id}_{img['id']}"
+                        if s_key in st.session_state and st.session_state.get(inc_k, True):
+                            to_push.append((img['id'], st.session_state[s_key]))
+
+                    if to_push:
+                        push_status_box.markdown(f"🚀 **Pushing Item ({current_push_idx + 1}/{total_push_items}):**\n`{p_title}` ({len(to_push)} photos)")
+
+                        def push_worker_single(item):
+                            img_id, img_bytes = item
+                            try:
+                                fixed_img = Image.open(io.BytesIO(img_bytes))
+                                ok = update_shopify_product_image(p_id, img_id, fixed_img)
+                                return img_id, ok
+                            except Exception:
+                                return img_id, False
+
+                        with ThreadPoolExecutor(max_workers=min(len(to_push), 4)) as executor:
+                            res_list = list(executor.map(push_worker_single, to_push))
+
+                        ok_cnt = sum(1 for _, ok in res_list if ok)
+                        if ok_cnt > 0:
+                            pushed_prods += 1
+                            pushed_titles.append(p_title)
+                            for img_id, ok in res_list:
+                                if ok:
+                                    st.session_state[f"pushed_ok_{p_id}_{img_id}"] = True
+
+                    current_push_idx += 1
+                    push_progress_bar.progress(current_push_idx / total_push_items)
+
+            try:
+                fetch_active_shopify_products.clear()
+            except Exception:
+                pass
+
+            if pushed_prods > 0:
+                st.session_state["last_push_summary"] = {
+                    "count": pushed_prods,
+                    "titles": pushed_titles,
+                    "time": now_str
+                }
+            st.rerun()
+
+        # Display Persistent Push Summary Banner
+        if "last_push_summary" in st.session_state:
+            summary = st.session_state["last_push_summary"]
+            with st.container(border=True):
+                col_s1, col_s2 = st.columns([4, 1])
+                with col_s1:
+                    st.success(f"🎉 **Shopify Update Complete at {summary['time']}!** Successfully updated photos for **{summary['count']} product listing(s)**.")
+                with col_s2:
+                    if st.button("Dismiss", key="btn_dismiss_push_summary", use_container_width=True):
+                        del st.session_state["last_push_summary"]
+                        st.rerun()
+                with st.expander(f"📋 View List of {summary['count']} Updated Listings", expanded=True):
+                    for t in summary["titles"]:
+                        st.markdown(f"- ✅ `{t}`")
+
         st.markdown("---")
 
         # Table Rows & Expandable Pre-Push Review Drawers
@@ -747,16 +926,26 @@ def render_studio_crop_tab():
             is_done = len(processed_keys) > 0
             pushed_ok_cnt = sum(1 for img in images if st.session_state.get(f"pushed_ok_{prod_id}_{img['id']}"))
 
-            first_thumb = images[0]["src"] if images else ""
+            # Single thumbnail for first image (processed if available, else original)
+            first_img_src = images[0]["src"] if images else ""
+            if images:
+                first_img_id = images[0]["id"]
+                first_state_key = f"edited_img_{prod_id}_{first_img_id}"
+                if first_state_key in st.session_state:
+                    try:
+                        b64_str = base64.b64encode(st.session_state[first_state_key]).decode("utf-8")
+                        first_img_src = f"data:image/jpeg;base64,{b64_str}"
+                    except Exception:
+                        pass
 
             # Row Table Strip
             with st.container(border=True):
                 r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([0.4, 0.8, 3.5, 1.2, 1.5])
                 with r_col1:
-                    st.checkbox("", value=select_all, key=f"select_prod_{prod_id}")
+                    st.checkbox("", key=f"select_prod_{prod_id}")
                 with r_col2:
-                    if first_thumb:
-                        st.markdown(f'<img src="{first_thumb}" style="width:50px; height:66px; object-fit:cover; border-radius:4px;">', unsafe_allow_html=True)
+                    if first_img_src:
+                        st.markdown(f'<img src="{first_img_src}" style="width:50px; height:66px; object-fit:cover; border-radius:4px; border:1px solid #ccc;">', unsafe_allow_html=True)
                 with r_col3:
                     st.markdown(f"**{prod_title}**")
                     st.caption(f"ID: `{prod_id}` · Vendor: `{vendor}` · Category: `{cat_tag}`")
