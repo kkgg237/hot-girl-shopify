@@ -626,17 +626,36 @@ def render_studio_crop_tab():
             st.info("No products match the selected filters.")
             return
 
+        # Calculate overall processed status count
+        total_proc_cnt = sum(1 for p in filtered_prods if any(f"edited_img_{p['id']}_{img['id']}" in st.session_state for img in p.get("images", [])))
+
         st.markdown(f"### Batch Queue Table ({len(filtered_prods)} Matching Products)")
+
+        # Queue View Status Filter Radio
+        col_f1, col_f2 = st.columns([2.2, 1.0])
+        with col_f1:
+            proc_filter = st.radio(
+                "Queue Display Filter",
+                [f"All Products ({len(filtered_prods)})", f"Processed Ready to Push ({total_proc_cnt})", f"Pending Process ({len(filtered_prods) - total_proc_cnt})"],
+                horizontal=True,
+                key="studio_proc_filter_radio_v2"
+            )
+
+        display_prods = filtered_prods
+        if "Processed Ready to Push" in proc_filter:
+            display_prods = [p for p in filtered_prods if any(f"edited_img_{p['id']}_{img['id']}" in st.session_state for img in p.get("images", []))]
+        elif "Pending Process" in proc_filter:
+            display_prods = [p for p in filtered_prods if not any(f"edited_img_{p['id']}_{img['id']}" in st.session_state for img in p.get("images", []))]
 
         # Master Selection Callbacks
         def toggle_all_matching():
             master_val = st.session_state.get("studio_select_all_cb_v1", True)
-            for p in filtered_prods:
+            for p in display_prods:
                 st.session_state[f"select_prod_{p['id']}"] = master_val
 
         col_m1, col_m2, col_m3 = st.columns([1.5, 1.2, 1.2])
         with col_m1:
-            st.checkbox("Select All Matching", value=True, key="studio_select_all_cb_v1", on_change=toggle_all_matching)
+            st.checkbox("Select All in Current View", value=True, key="studio_select_all_cb_v1", on_change=toggle_all_matching)
         with col_m2:
             if st.button("✨ Select Processed Only", key="btn_sel_proc_only", use_container_width=True):
                 for p in filtered_prods:
@@ -651,20 +670,25 @@ def render_studio_crop_tab():
                     st.session_state[f"select_prod_{p['id']}"] = False
                 st.rerun()
 
+        # Initialize selection defaults: if any product is processed, default pending items to UNCHECKED
         selected_prod_ids = []
         selected_processed_prods = []
         for p in filtered_prods:
             p_id = p["id"]
             cb_k = f"select_prod_{p_id}"
+            images = p.get("images", [])
+            has_proc = any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images)
+
             if cb_k not in st.session_state:
-                st.session_state[cb_k] = True
+                # If there are processed products in the list, default pending items to False
+                st.session_state[cb_k] = has_proc if total_proc_cnt > 0 else True
+
             if st.session_state.get(cb_k, False):
                 selected_prod_ids.append(p_id)
-                images = p.get("images", [])
-                if any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images):
+                if has_proc:
                     selected_processed_prods.append(p)
 
-        st.caption(f"**{len(selected_prod_ids)} of {len(filtered_prods)} Products Selected** ({len(selected_processed_prods)} with processed photos ready to push)")
+        st.caption(f"**{len(selected_processed_prods)} Processed Products Selected for Push** ({len(selected_prod_ids) - len(selected_processed_prods)} Pending items selected for Batch Processing)")
 
         # Global Action Bar
         col_act1, col_act2, col_act3 = st.columns([1.5, 1.5, 1.0])
@@ -727,6 +751,12 @@ def render_studio_crop_tab():
                             progress_bar.progress(processed_items / total_items)
                             status_box.markdown(f"✅ **Processed ({processed_items}/{total_items}):**\n`{p_title}`")
                             gc.collect()
+
+                    # Auto-select processed items only after batch process completes
+                    for p in filtered_prods:
+                        p_id = p["id"]
+                        images = p.get("images", [])
+                        st.session_state[f"select_prod_{p_id}"] = any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images)
 
                     status_box.success(f"🎉 Batch processed all {total_items} item(s) at {now_str}!")
                 st.rerun()
@@ -913,7 +943,7 @@ def render_studio_crop_tab():
         st.markdown("---")
 
         # Table Rows & Expandable Pre-Push Review Drawers
-        for idx, prod in enumerate(filtered_prods):
+        for idx, prod in enumerate(display_prods):
             prod_id = prod["id"]
             prod_title = prod["title"]
             images = prod.get("images", [])
