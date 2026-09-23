@@ -29,6 +29,32 @@ CROP_PIPELINE_DIR = Path("/home/kat/workspace/hot-girl-shopify/ecomm-crop-pipeli
 if str(CROP_PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(CROP_PIPELINE_DIR))
 
+CUSTOM_COLORS_FILE = Path(__file__).parent / "buyee" / "state" / "custom_colors.json"
+
+
+def load_custom_colors() -> list[str]:
+    defaults = ["#F8F2F2", "#E5E5E5"]
+    if CUSTOM_COLORS_FILE.exists():
+        try:
+            data = json.loads(CUSTOM_COLORS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                res = list(defaults)
+                for c in data:
+                    if isinstance(c, str) and c.startswith("#") and c not in res:
+                        res.append(c)
+                return res
+        except Exception:
+            pass
+    return defaults
+
+
+def save_custom_colors(colors: list[str]) -> None:
+    try:
+        CUSTOM_COLORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CUSTOM_COLORS_FILE.write_text(json.dumps(colors, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"Error saving custom colors: {e}")
+
 from crop_pipeline.tabletop_exposure import (
     process_pure_white_bg_equalization,
     process_tabletop_exposure,
@@ -200,7 +226,11 @@ def update_shopify_product_image(product_id: int, image_id: int, img_pil: Image.
         return False
 
     buf = io.BytesIO()
-    img_pil.save(buf, format="JPEG", quality=98, subsampling=0)
+    icc = img_pil.info.get("icc_profile")
+    save_kwargs = {"format": "JPEG", "quality": 98, "subsampling": 0}
+    if icc:
+        save_kwargs["icc_profile"] = icc
+    img_pil.save(buf, **save_kwargs)
     b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     url = f"https://{shop}/admin/api/2024-10/products/{product_id}/images/{image_id}.json"
@@ -276,6 +306,8 @@ def apply_photo_skills(
         target_w, target_h = 2048, 2048
     elif "Portrait" in canvas_ratio or "4:5" in canvas_ratio:
         target_w, target_h = 1638, 2048
+    elif "Native" in canvas_ratio or "Original" in canvas_ratio:
+        target_w, target_h = orig_img_pil.width, orig_img_pil.height
     else:
         target_w, target_h = TARGET_W, TARGET_H
 
@@ -383,7 +415,10 @@ def apply_photo_skills(
                     crop_box = compute_crop_box((src_w, src_h), subj, (target_w, target_h), subj_height_frac, vertical_bias=v_bias)
 
             cropped = current_img.crop(crop_box)
-            current_img = cropped.resize((target_w, target_h), Image.Resampling.LANCZOS)
+            if "Native" in canvas_ratio or "Original" in canvas_ratio:
+                current_img = cropped
+            else:
+                current_img = cropped.resize((target_w, target_h), Image.Resampling.LANCZOS)
         except Exception as e:
             st.warning(f"Auto-crop fallback due to subject detection: {e}")
 
@@ -452,8 +487,17 @@ def process_single_image_worker(
         framing_preset=framing_preset,
         img_position=img_position,
     )
+    icc = None
+    try:
+        icc = Image.open(io.BytesIO(raw_bytes)).info.get("icc_profile")
+    except Exception:
+        pass
+
     buf = io.BytesIO()
-    fixed_pil.save(buf, format="JPEG", quality=98, subsampling=0)
+    save_kwargs = {"format": "JPEG", "quality": 98, "subsampling": 0}
+    if icc:
+        save_kwargs["icc_profile"] = icc
+    fixed_pil.save(buf, **save_kwargs)
     out_bytes = buf.getvalue()
     save_cached_preview(prod_id, img_id, out_bytes)
     del fixed_pil, buf, raw_bytes
@@ -483,7 +527,7 @@ def render_studio_crop_tab():
     """, unsafe_allow_html=True)
 
     if "saved_custom_colors" not in st.session_state:
-        st.session_state["saved_custom_colors"] = ["#F8F2F2", "#E5E5E5"]
+        st.session_state["saved_custom_colors"] = load_custom_colors()
 
     st.markdown("### Studio Photo Skills & Processing Pipeline")
 
@@ -507,6 +551,8 @@ def render_studio_crop_tab():
                 
                 preset_options = [
                     "Pure White (#FFFFFF)",
+                    "Off-White (#F5F5F5)",
+                    "Soft Warm Off-White (#F2F1EF)",
                     "Warm Cyc (#F8F2F2)",
                     "Studio Light Grey (#E5E5E5)",
                     "Dark Charcoal (#222222)",
@@ -517,28 +563,47 @@ def render_studio_crop_tab():
                 with col_preset:
                     preset_choice = st.selectbox("Presets", preset_options, index=0, key="bg_preset_select_v4")
 
-                with col_picker:
-                    default_hex = "#FFFFFF"
-                    if "Warm" in preset_choice:
-                        default_hex = "#F8F2F2"
-                    elif "Light Grey" in preset_choice:
-                        default_hex = "#E5E5E5"
-                    elif "Charcoal" in preset_choice:
-                        default_hex = "#222222"
-                    elif "Pure Black" in preset_choice:
-                        default_hex = "#000000"
-                    elif preset_choice.startswith("Saved:"):
-                        default_hex = preset_choice.replace("Saved: ", "").strip()
+                default_hex = "#FFFFFF"
+                if "F5F5F5" in preset_choice or "Off-White" in preset_choice:
+                    default_hex = "#F5F5F5"
+                elif "F2F1EF" in preset_choice or "Soft Warm" in preset_choice:
+                    default_hex = "#F2F1EF"
+                elif "Warm Cyc" in preset_choice:
+                    default_hex = "#F8F2F2"
+                elif "Light Grey" in preset_choice:
+                    default_hex = "#E5E5E5"
+                elif "Charcoal" in preset_choice:
+                    default_hex = "#222222"
+                elif "Pure Black" in preset_choice:
+                    default_hex = "#000000"
+                elif preset_choice.startswith("Saved:"):
+                    default_hex = preset_choice.replace("Saved: ", "").strip()
 
+                if st.session_state.get("last_bg_preset_choice") != preset_choice:
+                    st.session_state["last_bg_preset_choice"] = preset_choice
+                    st.session_state["bg_color_picker_v4"] = default_hex
+
+                with col_picker:
                     picked_hex = st.color_picker("Custom Color", value=default_hex, key="bg_color_picker_v4")
                     target_bg_color = hex_to_rgb(picked_hex)
 
                 with col_btn:
                     st.write("")
-                    if st.button("Save Color", key="btn_save_color_v4", use_container_width=True):
-                        if picked_hex not in st.session_state["saved_custom_colors"]:
-                            st.session_state["saved_custom_colors"].append(picked_hex)
-                            st.success("Saved!")
+                    if preset_choice.startswith("Saved:"):
+                        del_hex = preset_choice.replace("Saved: ", "").strip()
+                        if st.button("Delete Color", key="btn_del_color_v4", use_container_width=True):
+                            if del_hex in st.session_state["saved_custom_colors"]:
+                                st.session_state["saved_custom_colors"].remove(del_hex)
+                                save_custom_colors(st.session_state["saved_custom_colors"])
+                                st.toast(f"Deleted {del_hex}")
+                                st.rerun()
+                    else:
+                        if st.button("Save Color", key="btn_save_color_v4", use_container_width=True):
+                            if picked_hex not in st.session_state["saved_custom_colors"]:
+                                st.session_state["saved_custom_colors"].append(picked_hex)
+                                save_custom_colors(st.session_state["saved_custom_colors"])
+                                st.success("Saved!")
+                                st.rerun()
 
             elif bg_option.startswith("Soft"):
                 bg_mode = "soft_20"
@@ -752,11 +817,9 @@ def render_studio_crop_tab():
                             status_box.markdown(f"✅ **Processed ({processed_items}/{total_items}):**\n`{p_title}`")
                             gc.collect()
 
-                    # Auto-select processed items only after batch process completes
-                    for p in filtered_prods:
-                        p_id = p["id"]
-                        images = p.get("images", [])
-                        st.session_state[f"select_prod_{p_id}"] = any(f"edited_img_{p_id}_{img['id']}" in st.session_state for img in images)
+                    # Keep selected items checked for push after batch process completes
+                    for p_id in selected_prod_ids:
+                        st.session_state[f"select_prod_{p_id}"] = True
 
                     status_box.success(f"🎉 Batch processed all {total_items} item(s) at {now_str}!")
                 st.rerun()
@@ -1065,6 +1128,9 @@ def render_studio_crop_tab():
                     category=category_name,
                     do_detail_crop=do_detail_crop,
                     edge_padding=int(edge_padding),
+                    canvas_ratio=canvas_ratio,
+                    framing_preset=framing_preset,
+                    img_position=idx + 1,
                 )
                 with cols[idx % len(cols)]:
                     st.image(transformed_pil, caption=f"{file.name} (Transformed)", use_container_width=True)

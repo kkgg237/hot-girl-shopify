@@ -87,8 +87,8 @@ def fetch_first_photo(
     page,
     auction_id: str,
     out_path: Path,
-    max_size: int = 200,
-    quality: int = 60,
+    max_size: Optional[int] = None,
+    quality: int = 98,
     timeout_ms: int = 20000,
 ) -> tuple[bool, str]:
     """Backward-compat wrapper — accepts a Yahoo Auctions ID, constructs
@@ -104,12 +104,12 @@ def fetch_first_photo_from_url(
     page,
     url: str,
     out_path: Path,
-    max_size: int = 200,
-    quality: int = 60,
+    max_size: Optional[int] = None,
+    quality: int = 98,
     timeout_ms: int = 20000,
 ) -> tuple[bool, str]:
     """Navigate to ANY Buyee item page (Yahoo Auctions OR btob), grab the
-    first photo (og:image preferred), save as a compressed thumbnail.
+    first photo (og:image preferred), save as 100% full-resolution original photo.
 
     Works for both URL families because the og:image meta tag is present
     on every Buyee item-detail page regardless of source namespace. The
@@ -152,7 +152,7 @@ def fetch_first_photo_from_url(
     if not img_bytes or len(img_bytes) < 200:
         return False, f"image too small ({len(img_bytes)} bytes)"
 
-    # Resize + compress
+    # Save 100% full original resolution & quality
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(img_bytes))
@@ -160,9 +160,10 @@ def fetch_first_photo_from_url(
         if img.mode in ("RGBA", "P", "LA"):
             img = img.convert("RGB")
         orig_w, orig_h = img.size
-        img.thumbnail((max_size, max_size), Image.LANCZOS)
+        if max_size and max_size > 0:
+            img.thumbnail((max_size, max_size), Image.LANCZOS)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        img.save(out_path, "JPEG", quality=quality, optimize=True)
+        img.save(out_path, "JPEG", quality=quality, subsampling=0, optimize=True)
         size_kb = out_path.stat().st_size / 1024
         return True, f"{orig_w}x{orig_h} → {img.width}x{img.height}, {size_kb:.1f} KB"
     except ImportError:
