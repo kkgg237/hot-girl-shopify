@@ -1247,6 +1247,7 @@ def render_header():
         f'<div class="ps-header">{logo_html}</div>',
         unsafe_allow_html=True,
     )
+    st.caption("Past Studies Tools v2.4 · Updated Sep 28 · All 10 Tabs Active (Invoices, Studio Auto-Crop, Reverse Image Search, Commercial Invoice, Shopify Audit, Bulk Drop Audit, Shopify Bulk Editor, Copy Formats, Pricing, Notes & Rules)")
 
 
 def render_buyee_sync_panel():
