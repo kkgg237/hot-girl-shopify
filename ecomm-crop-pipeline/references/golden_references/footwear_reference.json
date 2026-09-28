@@ -1,0 +1,14 @@
+{
+  "category": "Footwear / Shoes",
+  "reference_image": "footwear_reference.jpg",
+  "source_product_id": 10392796528916,
+  "source_title": "Chanel Canvas Flower Clog 36.5",
+  "target_baseline_pct": 88.0,
+  "tolerance_pct": 2.0,
+  "verified_metrics": {
+    "shoe_top_pct": 0.0,
+    "shoe_baseline_pct": 100.0,
+    "target_baseline_pct": 88.0,
+    "reference_gate_passed": false
+  }
+}

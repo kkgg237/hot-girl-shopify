@@ -1,0 +1,142 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+    @page {
+        size: A4 portrait;
+        margin: 18mm 20mm 18mm 20mm;
+    }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        color: #111111;
+        background-color: #ffffff;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+    }
+    header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-bottom: 1px solid #111111;
+        padding-bottom: 12px;
+        margin-bottom: 35px;
+    }
+    .brand-title {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+    }
+    .header-date {
+        font-size: 13px;
+        font-weight: 400;
+        letter-spacing: 0.5px;
+        color: #333333;
+    }
+    .items-container {
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+    }
+    .item-card {
+        display: flex;
+        align-items: center;
+        gap: 35px;
+        page-break-inside: avoid;
+        padding-bottom: 30px;
+        border-bottom: 1px solid #e5e5e5;
+    }
+    .item-card:last-child {
+        border-bottom: none;
+    }
+    .item-image-wrapper {
+        width: 220px;
+        height: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #fafafa;
+        border: 1px solid #f0f0f0;
+    }
+    .item-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+    .item-details {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        font-size: 13px;
+        line-height: 1.6;
+        flex: 1;
+    }
+    .detail-row {
+        display: flex;
+        align-items: baseline;
+    }
+    .label {
+        font-weight: 600;
+        color: #777777;
+        width: 100px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 1.2px;
+    }
+    .value {
+        font-weight: 500;
+        color: #111111;
+        font-size: 14px;
+    }
+    .notes-box {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background-color: #f7f7f7;
+        border-left: 2px solid #111111;
+        font-size: 12px;
+        color: #333333;
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <div class="brand-title">PAST STUDIES</div>
+    <div class="header-date">September 2026</div>
+</header>
+
+<div class="items-container">
+
+    <div class="item-card">
+        <div class="item-image-wrapper">
+            <img class="item-image" src="data:image/jpeg;base64,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" alt="AM-CAM-0079">
+        </div>
+        <div class="item-details">
+            <div class="detail-row"><span class="label">SKU</span><span class="value">AM-CAM-0079</span></div>
+            <div class="detail-row"><span class="label">Brand</span><span class="value">Just Cavalli</span></div>
+            <div class="detail-row"><span class="label">Size</span><span class="value">XS</span></div>
+            <div class="detail-row"><span class="label">Material</span><span class="value">Silk / Viscose Blend</span></div>
+            
+        </div>
+    </div>
+    
+    <div class="item-card">
+        <div class="item-image-wrapper">
+            <img class="item-image" src="data:image/jpeg;base64,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" alt="AM-MAG-0012">
+        </div>
+        <div class="item-details">
+            <div class="detail-row"><span class="label">SKU</span><span class="value">AM-MAG-0012</span></div>
+            <div class="detail-row"><span class="label">Brand</span><span class="value">Just Cavalli</span></div>
+            <div class="detail-row"><span class="label">Size</span><span class="value">L</span></div>
+            <div class="detail-row"><span class="label">Material</span><span class="value">Cotton Jersey</span></div>
+            
+        </div>
+    </div>
+    
+</div>
+
+</body>
+</html>

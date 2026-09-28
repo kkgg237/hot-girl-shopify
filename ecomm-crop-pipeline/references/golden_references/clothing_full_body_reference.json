@@ -1,0 +1,17 @@
+{
+  "category": "Clothing Full Body / Sets",
+  "reference_image": "clothing_full_body_reference.jpg",
+  "source_product_id": 10382104101140,
+  "source_title": "2000s Just Cavalli Cream Yellow Mixed Floral Patchwork Tank Jeans Set",
+  "target_headline_pct": 5.0,
+  "target_feetline_pct": 96.0,
+  "target_model_span_pct": 91.0,
+  "tolerance_pct": 1.5,
+  "verified_metrics": {
+    "headline_pct": 5.1,
+    "feetline_pct": 96.0,
+    "model_span_pct": 90.9,
+    "target_span_pct": 91.0,
+    "reference_gate_passed": true
+  }
+}

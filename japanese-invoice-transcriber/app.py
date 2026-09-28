@@ -109,15 +109,20 @@ h1, h2, h3, h4, h5, h6, .display, .display-num {
 .block-container { padding-top: 2rem; padding-bottom: 6rem; max-width: 1280px; }
 
 /* Tab bar wrapping and visibility */
-div[data-baseweb="tab-list"] {
+div[data-baseweb="tab-list"],
+div[role="tablist"] {
     flex-wrap: wrap !important;
     gap: 4px 12px !important;
     border-bottom: 1px solid #ddd !important;
+    overflow-x: visible !important;
 }
-button[data-baseweb="tab"] {
+button[data-baseweb="tab"],
+div[data-testid="stTab"],
+div[role="tab"] {
     padding: 8px 14px !important;
     font-size: 0.85rem !important;
     font-weight: 500 !important;
+    white-space: nowrap !important;
 }
 
 /* Page header — logo-only, no text */
@@ -416,12 +421,17 @@ button[kind="secondary"]:hover *,
 }
 
 /* Stage tabs */
-.stTabs [data-baseweb="tab-list"] {
+.stTabs [data-baseweb="tab-list"],
+.stTabs div[role="tablist"] {
     gap: 0;
     border-bottom: 1px solid #111;
     margin-bottom: 1.5rem;
+    flex-wrap: wrap !important;
+    overflow-x: visible !important;
 }
-.stTabs [data-baseweb="tab"] {
+.stTabs [data-baseweb="tab"],
+.stTabs div[data-testid="stTab"],
+.stTabs div[role="tab"] {
     font-family: 'Arial Nova', Arial, sans-serif !important;
     font-size: 0.82rem !important;
     font-weight: 500;
@@ -434,12 +444,17 @@ button[kind="secondary"]:hover *,
     border: none !important;
     border-bottom: 2px solid transparent !important;
     margin-right: 0.5rem;
+    white-space: nowrap !important;
 }
-.stTabs [data-baseweb="tab"][aria-selected="true"] {
+.stTabs [data-baseweb="tab"][aria-selected="true"],
+.stTabs div[data-testid="stTab"][aria-selected="true"],
+.stTabs div[role="tab"][aria-selected="true"] {
     color: #111 !important;
     border-bottom: 2px solid #111 !important;
 }
-.stTabs [data-baseweb="tab-panel"] { padding-top: 1rem; }
+.stTabs [data-baseweb="tab-panel"],
+.stTabs div[role="tabpanel"],
+.stTabs div[data-testid="stTabPanel"] { padding-top: 1rem; }
 
 /* Shared-input cards on the Cost tab */
 .shared-inputs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;

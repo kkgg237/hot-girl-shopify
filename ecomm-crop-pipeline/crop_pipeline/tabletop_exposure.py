@@ -140,7 +140,15 @@ def process_pure_white_bg_equalization(
 
     alpha_float = alpha_mask.astype(np.float32) / 255.0
     alpha_feathered = cv2.GaussianBlur(alpha_float, (7, 7), 0)
-    bg_weight = np.expand_dims(1.0 - alpha_feathered, axis=2)
+
+    # Protect dark elements (thin heels, shoe soles, ground contact shadows) from being overwritten by background fill
+    gray = cv2.cvtColor(np.array(orig_img_pil), cv2.COLOR_RGB2GRAY).astype(np.float32)
+    shadow_prot = np.clip((210.0 - gray) / 210.0, 0.0, 1.0)
+    shadow_prot = np.power(shadow_prot, 1.8)
+    combined_fg_mask = np.maximum(alpha_feathered, shadow_prot)
+
+    fg_weight = np.expand_dims(combined_fg_mask, axis=2)
+    bg_weight = 1.0 - fg_weight
     
     img_bgr = cv2.cvtColor(np.array(orig_img_pil), cv2.COLOR_RGB2BGR)
     lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -157,7 +165,7 @@ def process_pure_white_bg_equalization(
     target_rgb_np = np.array(target_color, dtype=np.float32)
     bg_final = bg_lifted_rgb * (1.0 - lum) + target_rgb_np * lum
     
-    final_rgb = img_np * (1.0 - bg_weight) + bg_final * bg_weight
+    final_rgb = img_np * fg_weight + bg_final * bg_weight
     return Image.fromarray(np.clip(final_rgb, 0, 255).astype(np.uint8))
 
 

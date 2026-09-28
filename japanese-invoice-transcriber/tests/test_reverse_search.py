@@ -48,7 +48,7 @@ def test_format_shopify_title():
         garment_type="Jacket Skirt",
         is_set=True,
     )
-    assert title == "2003 Roberto Cavalli Mon Amour White Tiger Tattoo Graphic Skirt Set"
+    assert title == "2003 Roberto Cavalli Mon Amour Animal Print Multi Print Skirt Set"
 
 
 def test_format_shopify_title_y2k_normalization():
@@ -61,6 +61,38 @@ def test_format_shopify_title_y2k_normalization():
         is_set=False,
     )
     assert title == "2000s Jean Paul Gaultier Tattoo Top"
+
+
+def test_format_shopify_title_multi_color_and_multi_print():
+    # Pink Blue Green top -> Pink Multicolor Top
+    title_multi_color = format_shopify_title(
+        designer="Just Cavalli",
+        year_era="2000s",
+        color="Pink Blue Green",
+        print_pattern="Floral",
+        garment_type="Top",
+    )
+    assert title_multi_color == "2000s Just Cavalli Pink Multicolor Floral Top"
+
+    # Animal Print + Floral -> Animal Print Multi Print
+    title_multi_print = format_shopify_title(
+        designer="Roberto Cavalli",
+        year_era="2002",
+        color="Pink",
+        print_pattern="Animal Print, Floral Print",
+        garment_type="Dress",
+    )
+    assert title_multi_print == "2002 Roberto Cavalli Pink Animal Print Multi Print Dress"
+
+    # Single color + single print remains unchanged
+    title_single = format_shopify_title(
+        designer="Blumarine",
+        year_era="2000s",
+        color="Pink",
+        print_pattern="Zebra Print",
+        garment_type="Top",
+    )
+    assert title_single == "2000s Blumarine Pink Zebra Print Top"
 
 
 def test_plain_language_garment_type_and_fabric_filtering():

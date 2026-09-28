@@ -35,9 +35,11 @@ meta:
   version: 1
   title_format: "[Era] Brand Color Pattern Material Category"
   notes: |
-    Strict structured-only titles. Never leak description text.
+    Strict structured-only titles. Streamlined adjectives optimized for Shopify and SEO.
+    Multi-Color Rule: Select main dominant color and append 'Multicolor' (e.g. 'Pink Multicolor').
+    Multi-Print Rule: Select main dominant print category and append 'Multi Print' (e.g. 'Animal Print Multi Print').
     Era is gated to 4-digit years by default; decades may be allowed
-    per category in the future via titles.era_policy.allow_decades_for.
+    per category via titles.era_policy.allow_decades_for.
 
 # =============================================================================
 # Title rules

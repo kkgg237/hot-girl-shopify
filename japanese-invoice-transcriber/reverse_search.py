@@ -436,6 +436,97 @@ def build_search_urls(query: str, image_url: str = "") -> dict[str, str]:
     return urls
 
 
+def normalize_color_adjective(color_text: str) -> str:
+    """Streamlines color adjectives according to ecomm SEO rules:
+    - Single color -> Cap Title Case (e.g. 'Pink', 'Blue')
+    - Multiple colors (e.g. 'Pink Blue Green', 'pink, blue, green', 'pink/blue') -> 'Pink Multicolor'
+    - 'Pink Multicolored' or 'Pink Multicolor' -> 'Pink Multicolor'
+    - 'Multicolor' or 'Multicolored' alone -> 'Multicolor'
+    """
+    if not color_text:
+        return ""
+    text = color_text.strip()
+    import re
+    clean_words = [w for w in re.split(r"[\s,/\\&]+", text) if w]
+    if not clean_words:
+        return ""
+
+    known_colors = {
+        "black", "white", "blue", "pink", "green", "red", "yellow", "purple",
+        "orange", "brown", "beige", "grey", "gray", "silver", "gold", "cream",
+        "tan", "nude", "khaki", "navy", "bronze", "turquoise", "burgundy", "maroon"
+    }
+
+    has_multi = any(w.lower() in ("multicolor", "multicolored", "multi") for w in clean_words)
+
+    found_colors = []
+    for w in clean_words:
+        w_low = w.lower()
+        if w_low in known_colors and w_low not in [c.lower() for c in found_colors]:
+            found_colors.append(w.capitalize())
+
+    if len(found_colors) >= 2 or (len(found_colors) >= 1 and has_multi):
+        main_col = found_colors[0]
+        return f"{main_col} Multicolor"
+    elif len(found_colors) == 1:
+        return found_colors[0]
+    elif has_multi:
+        return "Multicolor"
+    else:
+        return " ".join(w.capitalize() if not w.isupper() else w for w in clean_words)
+
+
+def normalize_print_adjective(print_text: str) -> str:
+    """Streamlines print/pattern adjectives according to ecomm SEO rules:
+    - Single print (e.g. 'Zebra Print', 'Newspaper Print', 'Floral') -> Title Case
+    - Multiple prints (e.g. 'Leopard Floral Print', 'Animal Print & Floral') -> 'Animal Print Multi Print'
+    - 'Animal Print Multi Print' -> 'Animal Print Multi Print'
+    - 'Multi Print' / 'Multiprint' -> 'Multi Print'
+    """
+    if not print_text:
+        return ""
+    text = print_text.strip()
+    import re
+
+    text_low = text.lower()
+    has_multi = any(k in text_low for k in ["multi print", "multiprint", "multi-print", "multiple prints", "multi pattern", "multi-pattern"])
+
+    delimiters = [",", "/", "&", " and "]
+    has_delimiters = any(d in text_low for d in delimiters)
+
+    print_categories = [
+        ("Animal Print", ["animal", "leopard", "cheetah", "tiger", "zebra", "snake", "snakeskin", "python", "crocodile", "reptile"]),
+        ("Newspaper Print", ["newspaper", "gazette"]),
+        ("Floral Print", ["floral", "flower", "flowers", "botanical"]),
+        ("Tattoo Print", ["tattoo"]),
+        ("Mosaic Print", ["mosaic"]),
+        ("Abstract Print", ["abstract"]),
+        ("Graphic Print", ["graphic"]),
+        ("Paisley Print", ["paisley"]),
+        ("Camo Print", ["camo", "camouflage"]),
+        ("Checkered Print", ["checkered", "checkerboard", "plaid", "tartan"]),
+        ("Stripe Print", ["stripe", "striped", "stripes"]),
+    ]
+
+    found_cats = []
+    for cat_name, tokens in print_categories:
+        if any(t in text_low for t in tokens):
+            if cat_name not in found_cats:
+                found_cats.append(cat_name)
+
+    if len(found_cats) >= 2 or (len(found_cats) >= 1 and (has_multi or has_delimiters)):
+        main_p = found_cats[0]
+        return f"{main_p} Multi Print"
+    elif has_multi:
+        if found_cats:
+            return f"{found_cats[0]} Multi Print"
+        return "Multi Print"
+    else:
+        clean = re.sub(r"\s+", " ", text)
+        words = clean.split()
+        return " ".join(w.capitalize() if not w.isupper() else w for w in words)
+
+
 def format_shopify_title(
     designer: str = "",
     year_era: str = "",
@@ -513,9 +604,11 @@ def format_shopify_title(
             parts.append(cap(c_clean))
         col_clean = strip_brand_and_ordinary_fabrics(color, d_clean)
         if col_clean:
+            col_clean = normalize_color_adjective(col_clean)
             parts.append(cap(col_clean))
         p_clean = strip_brand_and_ordinary_fabrics(print_pattern, d_clean)
         if p_clean:
+            p_clean = normalize_print_adjective(p_clean)
             parts.append(cap(p_clean))
         e_clean = strip_brand_and_ordinary_fabrics(extra_details, d_clean)
         if e_clean:
@@ -547,10 +640,12 @@ def format_shopify_title(
 
     col_clean = strip_brand_and_ordinary_fabrics(color, d_clean)
     if col_clean:
+        col_clean = normalize_color_adjective(col_clean)
         parts.append(cap(col_clean))
 
     p_clean = strip_brand_and_ordinary_fabrics(print_pattern, d_clean)
     if p_clean:
+        p_clean = normalize_print_adjective(p_clean)
         parts.append(cap(p_clean))
 
     e_clean = strip_brand_and_ordinary_fabrics(extra_details, d_clean)
@@ -725,8 +820,8 @@ Apply the following evaluation rules:
    - Designer / Brand (e.g. Roberto Cavalli, Jean Paul Gaultier, Blumarine, Just Cavalli, Dolce & Gabbana, Missoni)
    - Era / Year: Use '2000s', '1990s', or specific year like '2003', '2002', 'S/S 2003'. Do NOT use 'Y2K' or 'y2k' — use '2000s' instead.
    - Collection Name (if famous/identifiable, e.g. "Mon Amour", "Cyberbaba", "Butterflies")
-   - Color: Distinct primary/secondary colors (e.g. Blue, Black, White, Red, Multicolor)
-   - Print / Pattern: Distinct pattern description (e.g. Tiger Print, Newspaper Print, Floral, Zebra)
+   - Color: Streamlined for SEO. Single color if uniform (e.g. Blue, Black, Pink). If item has multiple colors (e.g., pink, blue, green), choose the main dominant color and append 'Multicolor' (e.g. 'Pink Multicolor'). If no clear dominant color, pick one primary color + 'Multicolor' (e.g. 'Blue Multicolor'). Never list 3+ individual color names.
+   - Print / Pattern: Streamlined for SEO (e.g. Animal Print, Newspaper Print, Floral, Zebra). If item has multiple prints, identify the main dominant print and append 'Multi Print' (e.g. 'Animal Print Multi Print', 'Floral Multi Print'). Keep adjectives concise and non-wordy.
    - Extra Details: Key visual embellishments (e.g. Rhinestone, Asymmetrical, Sheer Mesh, Cutout, Lace Trim)
    - Garment Type: Plain category (e.g. Top, Tank, Sweater, Dress, Skirt, Bottoms, Jacket, Bag, Set)
    - Fabric / Material: (e.g. Silk, Leather, Denim, Mesh, Cotton)
